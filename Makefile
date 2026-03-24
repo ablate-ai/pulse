@@ -56,7 +56,7 @@ clean:
 	rm -rf $(DIST_DIR)
 
 clean-dev:
-	rm -rf dev-data dev-certs
+	rm -rf dev-data
 
 # 获取开发用证书（需要先启动 server）
 dev-certs:
@@ -72,45 +72,44 @@ dev-certs:
 	@echo "    .then(d => console.log(d.certificate))"
 	@echo ""
 	@echo "4. 复制输出的证书内容（包括 BEGIN/END CERTIFICATE）"
-	@echo "5. 保存到 dev-certs/server_client_cert.pem"
 	@echo "============================================"
-	@mkdir -p dev-certs
+	@mkdir -p dev-data/node
 	@read -p "按回车继续..." _
 	@echo ""
 	@echo "请输入证书内容（按 Ctrl+D 结束输入）："
-	@cat > dev-certs/server_client_cert.pem
-	@if [ ! -s dev-certs/server_client_cert.pem ]; then \
+	@cat > dev-data/node/server_client_cert.pem
+	@if [ ! -s dev-data/node/server_client_cert.pem ]; then \
 		echo "错误：证书文件为空"; \
 		exit 1; \
 	fi
-	@echo "✓ 证书已保存到 dev-certs/server_client_cert.pem"
+	@echo "✓ 证书已保存到 dev-data/node/server_client_cert.pem"
 
 # 开发模式运行 server
 run-server: build-server
 	@echo "Starting development server..."
-	@mkdir -p dev-data dev-certs
+	@mkdir -p dev-data/server
 	@PULSE_SERVER_ADDR=:8080 \
 	 PULSE_ADMIN_USERNAME=admin \
 	 PULSE_ADMIN_PASSWORD=admin123 \
 	 PULSE_DB_PATH=./dev-data/pulse.db \
 	 PULSE_WEB_DIR=./web/mvp \
-	 PULSE_SERVER_NODE_CLIENT_CERT_FILE=./dev-certs/server_client_cert.pem \
-	 PULSE_SERVER_NODE_CLIENT_KEY_FILE=./dev-certs/server_client_key.pem \
+	 PULSE_SERVER_NODE_CLIENT_CERT_FILE=./dev-data/server/server_client_cert.pem \
+	 PULSE_SERVER_NODE_CLIENT_KEY_FILE=./dev-data/server/server_client_key.pem \
 	 ./dist/pulse-server
 
 # 开发模式运行 node（需要先运行 make dev-certs）
 run-node: build-node
 	@echo "Starting development node..."
-	@if [ ! -f dev-certs/server_client_cert.pem ]; then \
-		echo "Error: dev-certs/server_client_cert.pem not found"; \
+	@if [ ! -f dev-data/node/server_client_cert.pem ]; then \
+		echo "Error: dev-data/node/server_client_cert.pem not found"; \
 		echo "Please run 'make dev-certs' first (server must be running)"; \
 		exit 1; \
 	fi
-	@mkdir -p dev-data
+	@mkdir -p dev-data/node
 	@PULSE_NODE_ADDR=:8081 \
 	 PULSE_NODE_SERVER_URL=http://localhost:8080 \
 	 PULSE_NODE_NAME=dev-node \
-	 PULSE_NODE_TLS_CERT_FILE=./dev-certs/node_cert.pem \
-	 PULSE_NODE_TLS_KEY_FILE=./dev-certs/node_key.pem \
-	 PULSE_NODE_TLS_CLIENT_CERT_FILE=./dev-certs/server_client_cert.pem \
+	 PULSE_NODE_TLS_CERT_FILE=./dev-data/node/node_cert.pem \
+	 PULSE_NODE_TLS_KEY_FILE=./dev-data/node/node_key.pem \
+	 PULSE_NODE_TLS_CLIENT_CERT_FILE=./dev-data/node/server_client_cert.pem \
 	 ./dist/pulse-node
