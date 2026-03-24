@@ -7,7 +7,18 @@ DIST_DIR ?= dist
 SINGBOX_TAGS ?= with_clash_api
 LDFLAGS = -s -w -X pulse/internal/buildinfo.Version=$(VERSION) -X pulse/internal/buildinfo.Commit=$(COMMIT) -X pulse/internal/buildinfo.BuildDate=$(BUILD_DATE)
 
-.PHONY: build build-server build-node build-cli wasm test package-server package-node checksums clean clean-dev dev-certs run-server run-node
+# 版本管理
+CURRENT_VERSION := $(shell git tag --sort=-v:refname | grep '^v' | head -1 | sed 's/^v//')
+CURRENT_VERSION := $(if $(CURRENT_VERSION),$(CURRENT_VERSION),0.0.0)
+_VER_PARTS    = $(subst ., ,$(CURRENT_VERSION))
+MAJOR        := $(word 1,$(_VER_PARTS))
+MINOR        := $(word 2,$(_VER_PARTS))
+PATCH        := $(word 3,$(_VER_PARTS))
+NEXT_PATCH   := $(MAJOR).$(MINOR).$(shell echo $$(($(PATCH)+1)))
+NEXT_MINOR   := $(MAJOR).$(shell echo $$(($(MINOR)+1))).0
+NEXT_MAJOR   := $(shell echo $$(($(MAJOR)+1))).0.0
+
+.PHONY: build build-server build-node build-cli wasm test package-server package-node checksums clean clean-dev dev-certs run-server run-node release _do_release
 
 build: wasm build-cli build-server build-node
 
@@ -53,6 +64,30 @@ package-node: build-node
 checksums:
 	cd $(DIST_DIR)/release && shasum -a 256 *.tar.gz > checksums.txt
 
+release:
+	@echo "当前版本: v$(CURRENT_VERSION)"
+	@echo ""
+	@echo "  1) patch → v$(NEXT_PATCH)"
+	@echo "  2) minor → v$(NEXT_MINOR)"
+	@echo "  3) major → v$(NEXT_MAJOR)"
+	@echo ""
+	@read -p "选择 [1/2/3]: " choice; \
+	case $$choice in \
+	  1) $(MAKE) _do_release V=$(NEXT_PATCH) ;; \
+	  2) $(MAKE) _do_release V=$(NEXT_MINOR) ;; \
+	  3) $(MAKE) _do_release V=$(NEXT_MAJOR) ;; \
+	  *) echo "已取消"; exit 1 ;; \
+	esac
+
+_do_release:
+	@echo ">>> 运行测试..."
+	@go test ./... || exit 1
+	@git tag v$(V)
+	@echo ">>> 推送标签 v$(V)..."
+	@git push origin main
+	@git push origin v$(V)
+	@echo ">>> 发布完成，CI 正在构建 v$(V)"
+
 clean:
 	rm -rf $(DIST_DIR)
 
@@ -86,7 +121,7 @@ dev-certs:
 	@echo "✓ 证书已保存到 dev-data/node/server_client_cert.pem"
 
 # 开发模式运行 server
-run-server: build-server
+run-server: wasm build-server
 	@echo "Starting development server..."
 	@mkdir -p dev-data/server
 	@PULSE_SERVER_ADDR=:8080 \
