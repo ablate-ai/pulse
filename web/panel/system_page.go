@@ -77,6 +77,51 @@ func (a *app) loadSystemInfo() {
 		resp.DisabledUsersCount,
 		escape(lastApplied),
 	))
+	a.loadNodeInstallInfo()
+}
+
+func (a *app) loadNodeInstallInfo() {
+	var settings struct {
+		Certificate string `json:"certificate"`
+	}
+	if err := getJSON("/v1/node/settings", &settings, a.token); err != nil {
+		a.handleAuthError(err)
+		a.byID("node-install-info").Set("innerHTML", `<p class="meta">加载安装信息失败</p>`)
+		a.setStatus("加载 node 安装信息失败: " + err.Error())
+		return
+	}
+
+	serverURL := strings.TrimSpace(a.window.Get("location").Get("origin").String())
+	command := fmt.Sprintf(
+		"curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \\\n  PULSE_SERVER_URL='%s' \\\n  PULSE_NODE_SETTINGS_TOKEN='%s' sh -s -- node",
+		serverURL,
+		a.token,
+	)
+
+	container := a.byID("node-install-info")
+	container.Get("classList").Call("remove", "empty")
+	container.Set("innerHTML", fmt.Sprintf(
+		`<article class="install-card">
+			<p class="meta">控制面地址</p>
+			<pre>%s</pre>
+		</article>
+		<article class="install-card">
+			<p class="meta">Bearer Token</p>
+			<pre>%s</pre>
+		</article>
+		<article class="install-card wide">
+			<p class="meta">安装命令</p>
+			<pre>%s</pre>
+		</article>
+		<article class="install-card wide">
+			<p class="meta">Node 信任证书 PEM</p>
+			<pre>%s</pre>
+		</article>`,
+		escape(serverURL),
+		escape(strings.TrimSpace(a.token)),
+		escape(command),
+		escape(strings.TrimSpace(settings.Certificate)),
+	))
 }
 
 func (a *app) syncUsage() {

@@ -21,7 +21,9 @@
 └── README.md
 ```
 
-## 运行
+## 开发环境
+
+### 本地运行
 
 ```bash
 go run ./cmd/pulse help
@@ -29,7 +31,13 @@ go run ./cmd/pulse server
 go run ./cmd/pulse node
 ```
 
-## 构建
+默认控制面前端可通过下面这些路径访问：
+
+- `/overview`
+- `/nodes`
+- `/users`
+
+### 本地构建
 
 ```bash
 go build ./cmd/pulse
@@ -37,7 +45,17 @@ go build ./cmd/pulse-server
 go build ./cmd/pulse-node
 ```
 
-## 打包发布
+### 前端目录
+
+前端静态资源目录已经改为 `web/panel`。
+
+- 本地开发默认使用 `./web/panel`
+- 发布包默认安装到 `/usr/local/share/pulse/web/panel`
+- `PULSE_WEB_DIR` 默认指向 `/usr/local/share/pulse/web/panel`
+
+## 发布
+
+### GitHub Release
 
 默认不需要手动在本地打包。
 
@@ -58,29 +76,30 @@ make checksums
 
 本地产物会输出到 `dist/release/`。
 
-## 安装脚本
+## 生产安装
 
 安装脚本在 `scripts/install.sh`。
 
 推荐按下面的固定顺序安装：
 
-1. 安装 `server`
+### 1. 安装 `server`
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
   PULSE_ADMIN_PASSWORD='strong-password' sh -s -- server
 ```
 
-2. 由管理员从控制面获取安装 node 用的 token
+### 2. 在控制面页面里查看并复制安装 `node` 所需信息
 
-```bash
-curl -H "Authorization: Bearer <admin-token>" \
-  https://panel.example.com/v1/node/settings
-```
+当前推荐在控制面页面中直接查看：
 
-3. 在 node 机器上直接安装 `node`
+- 控制面地址
+- 安装 `node` 用的 Bearer Token
+- node 需要信任的证书内容
 
-推荐直接让安装脚本从控制面拉取证书：
+### 3. 在 `node` 机器上安装 `node`
+
+推荐方式：把页面里提供的控制面地址和 Token 直接传给安装脚本，由脚本从控制面拉取证书
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
@@ -88,27 +107,29 @@ curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/instal
   PULSE_NODE_SETTINGS_TOKEN='<admin-token>' sh -s -- node
 ```
 
-如果控制面证书暂时不方便直接拉取，脚本也支持在安装时交互粘贴证书内容。执行命令后，直接把整段 PEM 粘贴到终端，脚本会在读取到 `-----END CERTIFICATE-----` 后自动继续：
+备选方式 A：安装时交互粘贴证书内容
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | sh -s -- node
 ```
 
-如果你已经把证书内容放在本地文件里，也可以直接传 PEM 内容：
+执行命令后，直接把整段 PEM 粘贴到终端，脚本会在读取到 `-----END CERTIFICATE-----` 后自动继续。
+
+备选方式 B：直接传 PEM 内容
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
   PULSE_NODE_TLS_CLIENT_CERT_PEM="$(cat server_client_cert.pem)" sh -s -- node
 ```
 
-如果你已经提前把证书保存成文件，也可以继续传文件路径：
+备选方式 C：传证书文件路径
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
   PULSE_NODE_TLS_CLIENT_CERT_FILE='/etc/pulse/server_client_cert.pem' sh -s -- node
 ```
 
-当前脚本会：
+### 安装脚本会做什么
 
 - 下载 GitHub Release 对应平台的 `tar.gz`
 - 安装二进制到 `/usr/local/bin`
