@@ -1,0 +1,327 @@
+package serverapi
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strings"
+	"time"
+
+	"pulse/internal/nodes"
+	"pulse/internal/users"
+)
+
+type API struct {
+	store         nodes.Store
+	clientFactory func(node nodes.Node) *nodes.Client
+}
+
+type upsertNodeRequest struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	BaseURL   string `json:"base_url"`
+	AuthToken string `json:"auth_token"`
+}
+
+type singboxConfigRequest struct {
+	Config string `json:"config"`
+}
+
+func New(store nodes.Store) *API {
+	return &API{
+		store: store,
+		clientFactory: func(node nodes.Node) *nodes.Client {
+			return nodes.NewClient(node.BaseURL, node.AuthToken)
+		},
+	}
+}
+
+func RegisterUsersAPI(mux *http.ServeMux, usersStore users.Store, nodesStore nodes.Store) {
+	base := New(nodesStore)
+	newUserAPI(usersStore, nodesStore, base).Register(mux)
+}
+
+func (a *API) Register(mux *http.ServeMux) {
+	mux.HandleFunc("/v1/nodes", a.handleNodes)
+	mux.HandleFunc("/v1/nodes/", a.handleNodeRoutes)
+}
+
+func (a *API) handleNodes(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		items, err := a.store.List()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"nodes": items})
+	case http.MethodPost:
+		var req upsertNodeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
+			return
+		}
+		if req.ID == "" || req.Name == "" || req.BaseURL == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "id, name and base_url are required"})
+			return
+		}
+		node, err := a.store.Upsert(nodes.Node{
+			ID:        req.ID,
+			Name:      req.Name,
+			BaseURL:   strings.TrimRight(req.BaseURL, "/"),
+			AuthToken: req.AuthToken,
+		})
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, node)
+	default:
+		writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
+	}
+}
+
+func (a *API) handleNodeRoutes(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/v1/nodes/")
+	parts := strings.Split(path, "/")
+	if len(parts) == 0 || parts[0] == "" {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "node id is required"})
+		return
+	}
+
+	nodeID := parts[0]
+	if len(parts) == 1 {
+		a.handleNode(w, r, nodeID)
+		return
+	}
+
+	switch strings.Join(parts[1:], "/") {
+	case "runtime":
+		a.handleNodeRuntime(w, r, nodeID)
+	case "runtime/status":
+		a.handleNodeStatus(w, r, nodeID)
+	case "runtime/usage":
+		a.handleNodeUsage(w, r, nodeID)
+	case "runtime/logs":
+		a.handleNodeLogs(w, r, nodeID)
+	case "runtime/start":
+		a.handleNodeStart(w, r, nodeID)
+	case "runtime/stop":
+		a.handleNodeStop(w, r, nodeID)
+	case "runtime/restart":
+		a.handleNodeRestart(w, r, nodeID)
+	default:
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "route not found"})
+	}
+}
+
+func (a *API) handleNode(w http.ResponseWriter, r *http.Request, nodeID string) {
+	switch r.Method {
+	case http.MethodGet:
+		node, err := a.store.Get(nodeID)
+		if err != nil {
+			writeNodeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, node)
+	case http.MethodDelete:
+		if err := a.store.Delete(nodeID); err != nil {
+			writeNodeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
+	default:
+		writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodDelete)
+	}
+}
+
+func (a *API) handleNodeRuntime(w http.ResponseWriter, r *http.Request, nodeID string) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, http.MethodGet)
+		return
+	}
+	client, err := a.clientFor(nodeID)
+	if err != nil {
+		writeNodeError(w, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	out, err := client.Runtime(ctx)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (a *API) handleNodeStatus(w http.ResponseWriter, r *http.Request, nodeID string) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, http.MethodGet)
+		return
+	}
+	client, err := a.clientFor(nodeID)
+	if err != nil {
+		writeNodeError(w, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	out, err := client.Status(ctx)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (a *API) handleNodeLogs(w http.ResponseWriter, r *http.Request, nodeID string) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, http.MethodGet)
+		return
+	}
+	client, err := a.clientFor(nodeID)
+	if err != nil {
+		writeNodeError(w, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	out, err := client.Logs(ctx)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (a *API) handleNodeUsage(w http.ResponseWriter, r *http.Request, nodeID string) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, http.MethodGet)
+		return
+	}
+	client, err := a.clientFor(nodeID)
+	if err != nil {
+		writeNodeError(w, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	out, err := client.Usage(ctx)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (a *API) handleNodeStart(w http.ResponseWriter, r *http.Request, nodeID string) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+	req, ok := decodeConfigRequest(w, r)
+	if !ok {
+		return
+	}
+	client, err := a.clientFor(nodeID)
+	if err != nil {
+		writeNodeError(w, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	out, err := client.Start(ctx, nodes.ConfigRequest{Config: req.Config})
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (a *API) handleNodeStop(w http.ResponseWriter, r *http.Request, nodeID string) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+	client, err := a.clientFor(nodeID)
+	if err != nil {
+		writeNodeError(w, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	out, err := client.Stop(ctx)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (a *API) handleNodeRestart(w http.ResponseWriter, r *http.Request, nodeID string) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+	req, ok := decodeConfigRequest(w, r)
+	if !ok {
+		return
+	}
+	client, err := a.clientFor(nodeID)
+	if err != nil {
+		writeNodeError(w, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	out, err := client.Restart(ctx, nodes.ConfigRequest{Config: req.Config})
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (a *API) clientFor(nodeID string) (*nodes.Client, error) {
+	node, err := a.store.Get(nodeID)
+	if err != nil {
+		return nil, err
+	}
+	return a.clientFactory(node), nil
+}
+
+func decodeConfigRequest(w http.ResponseWriter, r *http.Request) (singboxConfigRequest, bool) {
+	var req singboxConfigRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
+		return singboxConfigRequest{}, false
+	}
+	if req.Config == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "config is required"})
+		return singboxConfigRequest{}, false
+	}
+	return req, true
+}
+
+func writeNodeError(w http.ResponseWriter, err error) {
+	status := http.StatusInternalServerError
+	if errors.Is(err, nodes.ErrNodeNotFound) {
+		status = http.StatusNotFound
+	}
+	writeJSON(w, status, map[string]any{"error": err.Error()})
+}
+
+func writeMethodNotAllowed(w http.ResponseWriter, allow string) {
+	w.Header().Set("Allow", allow)
+	writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}

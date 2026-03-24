@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pulse MVP</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="app">
+    <header class="hero">
+      <p class="eyebrow">Pulse MVP</p>
+      <h1>节点、用户、订阅</h1>
+      <p class="sub">一个很薄的控制面，只覆盖当前 MVP 主链路。</p>
+      <div id="status" class="status">页面初始化中...</div>
+    </header>
+
+    <section id="auth-panel" class="panel auth-panel">
+      <div class="panel-head">
+        <h2>管理员登录</h2>
+      </div>
+      <form id="login-form" class="stack auth-form">
+        <input id="login-username" placeholder="admin" required>
+        <input id="login-password" type="password" placeholder="admin" required>
+        <button type="submit">登录</button>
+      </form>
+      <p class="meta">默认账号密码由 `PULSE_ADMIN_USERNAME` / `PULSE_ADMIN_PASSWORD` 控制。</p>
+    </section>
+
+    <section id="app-panel" hidden>
+    <section class="panel">
+      <div class="panel-head">
+        <h2>系统统计</h2>
+        <button id="refresh-system" type="button" class="ghost">刷新</button>
+        <button id="sync-usage" type="button" class="ghost">同步使用量</button>
+      </div>
+      <div id="system-info" class="list empty">暂无统计</div>
+    </section>
+
+    <section class="grid">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>添加节点</h2>
+          <button id="logout" type="button" class="ghost">退出</button>
+        </div>
+        <form id="node-form" class="stack">
+          <input id="node-id" placeholder="node-1" required>
+          <input id="node-name" placeholder="节点名称" required>
+          <input id="node-url" placeholder="http://127.0.0.1:8081" required>
+          <input id="node-token" placeholder="dev-token">
+          <button type="submit">保存节点</button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h2>创建用户</h2>
+        <form id="user-form" class="stack">
+          <input id="user-id" placeholder="user-1" required>
+          <input id="user-name" placeholder="alice" required>
+          <select id="user-protocol" required>
+            <option value="vless">VLESS</option>
+            <option value="trojan">Trojan</option>
+            <option value="shadowsocks">Shadowsocks</option>
+          </select>
+          <input id="user-secret" placeholder="密码/密钥，可留空自动生成">
+          <input id="user-method" placeholder="Shadowsocks 加密，如 aes-128-gcm">
+          <input id="user-domain" placeholder="example.com" required>
+          <input id="user-port" placeholder="443" type="number" required>
+          <input id="user-traffic-limit" placeholder="流量上限字节，0 表示不限" type="number" min="0">
+          <select id="user-node" required>
+            <option value="">先选择节点</option>
+          </select>
+          <button type="submit">创建用户</button>
+        </form>
+      </section>
+    </section>
+
+    <section class="grid">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>节点</h2>
+          <button id="refresh-nodes" type="button" class="ghost">刷新</button>
+        </div>
+        <div id="nodes" class="list empty">暂无节点</div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>用户</h2>
+          <button id="refresh-users" type="button" class="ghost">刷新</button>
+        </div>
+        <div id="users" class="list empty">暂无用户</div>
+      </section>
+    </section>
+    </section>
+  </main>
+
+  <script src="/wasm_exec.js"></script>
+  <script>
+    const go = new Go();
+    WebAssembly.instantiateStreaming(fetch("/app.wasm"), go.importObject).then((result) => {
+      go.run(result.instance);
+    }).catch((error) => {
+      const el = document.getElementById("status");
+      if (el) el.textContent = "Wasm 加载失败: " + error;
+    });
+  </script>
+</body>
+</html>

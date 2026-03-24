@@ -1,0 +1,16 @@
+[Unit]
+Description=Pulse Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/pulse/pulse-server.env
+ExecStart=/usr/local/bin/pulse-server
+WorkingDirectory=/var/lib/pulse
+Restart=always
+RestartSec=3
+User=root
+
+[Install]
+WantedBy=multi-user.target

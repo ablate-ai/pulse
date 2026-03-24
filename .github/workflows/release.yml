@@ -1,0 +1,64 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [server, node]
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build release package
+        run: |
+          make package-${{ matrix.component }} \
+            TARGET_OS=linux \
+            TARGET_ARCH=${{ matrix.arch }} \
+            VERSION=${GITHUB_REF_NAME}
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pulse-${{ matrix.component }}-${{ matrix.arch }}
+          path: dist/release/pulse-${{ matrix.component }}-linux-${{ matrix.arch }}.tar.gz
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/artifacts
+
+      - name: Collect release files
+        run: |
+          mkdir -p dist/release
+          find dist/artifacts -name '*.tar.gz' -exec cp {} dist/release/ \;
+          cp scripts/install.sh dist/release/install.sh
+          chmod +x dist/release/install.sh
+          cd dist/release
+          sha256sum *.tar.gz > checksums.txt
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/release/*.tar.gz
+            dist/release/checksums.txt
+            dist/release/install.sh
