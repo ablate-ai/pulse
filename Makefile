@@ -6,7 +6,7 @@ TARGET_ARCH ?= $(shell go env GOARCH)
 DIST_DIR ?= dist
 LDFLAGS = -s -w -X pulse/internal/buildinfo.Version=$(VERSION) -X pulse/internal/buildinfo.Commit=$(COMMIT) -X pulse/internal/buildinfo.BuildDate=$(BUILD_DATE)
 
-.PHONY: build build-server build-node build-cli wasm test package-server package-node checksums clean
+.PHONY: build build-server build-node build-cli wasm test package-server package-node checksums clean clean-dev run-server run-node
 
 build: wasm build-cli build-server build-node
 
@@ -54,3 +54,23 @@ checksums:
 
 clean:
 	rm -rf $(DIST_DIR)
+
+clean-dev:
+	rm -rf dev-data
+
+# 开发模式运行 server
+run-server: build-server
+	@echo "Starting development server..."
+	@mkdir -p dev-data
+	@PULSE_SERVER_ADDR=:8080 \
+	 PULSE_ADMIN_USERNAME=admin \
+	 PULSE_ADMIN_PASSWORD=admin123 \
+	 PULSE_DB_PATH=./dev-data/pulse.db \
+	 PULSE_WEB_DIR=./web/mvp \
+	 ./dist/pulse-server
+
+# 开发模式运行 node
+run-node: build-node
+	@echo "Starting development node..."
+	@echo "Make sure to set PULSE_NODE_* environment variables"
+	@./dist/pulse-node
