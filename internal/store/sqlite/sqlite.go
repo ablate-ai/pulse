@@ -184,7 +184,7 @@ func (db *DB) migrateUsersTable() error {
 		}
 	}
 
-	// 将旧 enabled 列数据迁移到 status 列
+	// 将旧 enabled 列数据迁移到 status 列，然后重建表去掉 enabled 列
 	if _, hasEnabled := columns["enabled"]; hasEnabled {
 		if _, err := db.conn.Exec(`
 			UPDATE users SET status = CASE WHEN enabled = 0 THEN 'disabled' ELSE 'active' END
@@ -192,8 +192,64 @@ func (db *DB) migrateUsersTable() error {
 		`); err != nil {
 			return fmt.Errorf("migrate users enabled→status: %w", err)
 		}
+		if err := db.dropUsersEnabledColumn(); err != nil {
+			return err
+		}
 	}
 
+	return nil
+}
+
+// dropUsersEnabledColumn 通过重建表的方式移除旧的 enabled 列。
+func (db *DB) dropUsersEnabledColumn() error {
+	_, err := db.conn.Exec(`
+		CREATE TABLE IF NOT EXISTS users_new (
+			id TEXT PRIMARY KEY,
+			username TEXT NOT NULL,
+			uuid TEXT NOT NULL,
+			protocol TEXT NOT NULL DEFAULT 'vless',
+			secret TEXT NOT NULL DEFAULT '',
+			method TEXT NOT NULL DEFAULT 'aes-128-gcm',
+			status TEXT NOT NULL DEFAULT 'active',
+			expire_at TEXT,
+			data_limit_reset_strategy TEXT NOT NULL DEFAULT 'no_reset',
+			node_id TEXT NOT NULL,
+			domain TEXT NOT NULL,
+			port INTEGER NOT NULL,
+			inbound_tag TEXT NOT NULL,
+			traffic_limit_bytes INTEGER NOT NULL DEFAULT 0,
+			upload_bytes INTEGER NOT NULL DEFAULT 0,
+			download_bytes INTEGER NOT NULL DEFAULT 0,
+			used_bytes INTEGER NOT NULL DEFAULT 0,
+			synced_upload_bytes INTEGER NOT NULL DEFAULT 0,
+			synced_download_bytes INTEGER NOT NULL DEFAULT 0,
+			apply_count INTEGER NOT NULL DEFAULT 0,
+			last_applied_at TEXT NOT NULL DEFAULT '',
+			last_traffic_reset_at TEXT,
+			created_at TEXT NOT NULL
+		)
+	`)
+	if err != nil {
+		return fmt.Errorf("create users_new: %w", err)
+	}
+	if _, err := db.conn.Exec(`
+		INSERT INTO users_new SELECT
+			id, username, uuid, protocol, secret, method,
+			status, expire_at, data_limit_reset_strategy,
+			node_id, domain, port, inbound_tag,
+			traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
+			synced_upload_bytes, synced_download_bytes,
+			apply_count, last_applied_at, last_traffic_reset_at, created_at
+		FROM users
+	`); err != nil {
+		return fmt.Errorf("copy users to users_new: %w", err)
+	}
+	if _, err := db.conn.Exec(`DROP TABLE users`); err != nil {
+		return fmt.Errorf("drop old users table: %w", err)
+	}
+	if _, err := db.conn.Exec(`ALTER TABLE users_new RENAME TO users`); err != nil {
+		return fmt.Errorf("rename users_new to users: %w", err)
+	}
 	return nil
 }
 

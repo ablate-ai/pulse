@@ -55,6 +55,13 @@ func (a *app) bind() {
 		return nil
 	}))
 
+	// 生成 Reality 密钥对
+	a.byID("btn-gen-keypair").Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
+		go a.generateRealityKeypair()
+		return nil
+	}))
+
+
 	// 用户列表过滤
 	for _, id := range []string{"user-search", "user-filter-protocol", "user-filter-status"} {
 		id := id

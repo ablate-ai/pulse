@@ -25,7 +25,26 @@ func Link(user users.User) string {
 func vlessLink(user users.User) string {
 	query := url.Values{}
 	query.Set("type", "tcp")
-	query.Set("security", "none")
+
+	if user.Security == "reality" {
+		query.Set("security", "reality")
+		query.Set("pbk", user.RealityPublicKey)
+		query.Set("sid", user.RealityShortID)
+		if user.RealitySpiderX != "" {
+			query.Set("spx", user.RealitySpiderX)
+		}
+		if user.SNI != "" {
+			query.Set("sni", user.SNI)
+		}
+		if user.Fingerprint != "" {
+			query.Set("fp", user.Fingerprint)
+		}
+		if user.Flow != "" {
+			query.Set("flow", user.Flow)
+		}
+	} else {
+		query.Set("security", "none")
+	}
 
 	u := url.URL{
 		Scheme:   "vless",

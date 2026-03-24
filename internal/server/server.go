@@ -106,6 +106,8 @@ func Run() error {
 	serverapi.RegisterUsersAPI(protectedV1, userStore, store, clientOptions)
 	serverapi.RegisterSystemAPI(protectedV1, userStore, store, clientOptions)
 	serverapi.RegisterInboundsAPI(protectedV1, inboundStore)
+	serverapi.RegisterToolsAPI(protectedV1)
+	mux.Handle("/v1/tools/", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/node/settings", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/node/settings.pem", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/system/info", authManager.Middleware(protectedV1))

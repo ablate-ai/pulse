@@ -3,7 +3,9 @@ package proxycfg
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"sort"
+	"strconv"
 
 	"pulse/internal/users"
 )
@@ -21,6 +23,7 @@ type inbound struct {
 	ListenPort int              `json:"listen_port"`
 	Users      []map[string]any `json:"users"`
 	Transport  map[string]any   `json:"transport,omitempty"`
+	TLS        map[string]any   `json:"tls,omitempty"`
 	Method     string           `json:"method,omitempty"`
 	Password   string           `json:"password,omitempty"`
 }
@@ -57,6 +60,7 @@ func BuildSingboxConfig(nodeUsers []users.User) (string, error) {
 				ListenPort: user.Port,
 				Users:      make([]map[string]any, 0, 1),
 				Transport:  transportFor(key.Protocol),
+				TLS:        realityTLSFor(user),
 				Method:     key.Method,
 				Password:   inboundPasswordFor(key.Protocol, key.Method),
 			})
@@ -128,6 +132,44 @@ func inboundPasswordFor(protocol, method string) string {
 		return "pulse-shared-secret"
 	default:
 		return ""
+	}
+}
+
+// realityTLSFor 生成 sing-box inbound 的 Reality TLS 配置。
+// 仅当 Security=="reality" 且 RealityPrivateKey 非空时生效。
+func realityTLSFor(user users.User) map[string]any {
+	if user.Security != "reality" || user.RealityPrivateKey == "" {
+		return nil
+	}
+
+	handshakeServer := "www.google.com"
+	handshakePort := 443
+	if user.RealityHandshakeAddr != "" {
+		if host, portStr, err := net.SplitHostPort(user.RealityHandshakeAddr); err == nil {
+			handshakeServer = host
+			if p, err := strconv.Atoi(portStr); err == nil {
+				handshakePort = p
+			}
+		}
+	}
+
+	shortIDs := []string{""}
+	if user.RealityShortID != "" {
+		shortIDs = []string{user.RealityShortID}
+	}
+
+	return map[string]any{
+		"enabled":     true,
+		"server_name": handshakeServer,
+		"reality": map[string]any{
+			"enabled": true,
+			"handshake": map[string]any{
+				"server":      handshakeServer,
+				"server_port": handshakePort,
+			},
+			"private_key": user.RealityPrivateKey,
+			"short_id":    shortIDs,
+		},
 	}
 }
 

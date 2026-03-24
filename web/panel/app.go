@@ -19,6 +19,15 @@ type user struct {
 	Protocol               string `json:"protocol"`
 	Secret                 string `json:"secret"`
 	Method                 string `json:"method"`
+	Security               string `json:"security"`
+	Flow                   string `json:"flow"`
+	SNI                    string `json:"sni"`
+	Fingerprint            string `json:"fingerprint"`
+	RealityPublicKey       string `json:"reality_public_key"`
+	RealityShortID         string `json:"reality_short_id"`
+	RealitySpiderX         string `json:"reality_spider_x"`
+	RealityPrivateKey      string `json:"reality_private_key"`
+	RealityHandshakeAddr   string `json:"reality_handshake_addr"`
 	Status                 string `json:"status"`
 	ExpireAt               string `json:"expire_at"`
 	DataLimitResetStrategy string `json:"data_limit_reset_strategy"`

@@ -31,6 +31,15 @@ type createUserRequest struct {
 	Protocol               string     `json:"protocol"`
 	Secret                 string     `json:"secret"`
 	Method                 string     `json:"method"`
+	Security               string     `json:"security"`
+	Flow                   string     `json:"flow"`
+	SNI                    string     `json:"sni"`
+	Fingerprint            string     `json:"fingerprint"`
+	RealityPublicKey       string     `json:"reality_public_key"`
+	RealityShortID         string     `json:"reality_short_id"`
+	RealitySpiderX         string     `json:"reality_spider_x"`
+	RealityPrivateKey      string     `json:"reality_private_key"`
+	RealityHandshakeAddr   string     `json:"reality_handshake_addr"`
 	NodeID                 string     `json:"node_id"`
 	Domain                 string     `json:"domain"`
 	Port                   int        `json:"port"`
@@ -47,6 +56,15 @@ type updateUserRequest struct {
 	NodeID                 string     `json:"node_id"`
 	Domain                 string     `json:"domain"`
 	Port                   int        `json:"port"`
+	Security               string     `json:"security"`
+	Flow                   string     `json:"flow"`
+	SNI                    string     `json:"sni"`
+	Fingerprint            string     `json:"fingerprint"`
+	RealityPublicKey       string     `json:"reality_public_key"`
+	RealityShortID         string     `json:"reality_short_id"`
+	RealitySpiderX         string     `json:"reality_spider_x"`
+	RealityPrivateKey      string     `json:"reality_private_key"`
+	RealityHandshakeAddr   string     `json:"reality_handshake_addr"`
 }
 
 func newUserAPI(usersStore users.Store, nodesStore nodes.Store, base *API) *userAPI {
@@ -116,6 +134,15 @@ func (a *userAPI) handleUsers(w http.ResponseWriter, r *http.Request) {
 			Protocol:               protocol,
 			Secret:                 req.Secret,
 			Method:                 req.Method,
+			Security:               req.Security,
+			Flow:                   req.Flow,
+			SNI:                    req.SNI,
+			Fingerprint:            req.Fingerprint,
+			RealityPublicKey:       req.RealityPublicKey,
+			RealityShortID:         req.RealityShortID,
+			RealitySpiderX:         req.RealitySpiderX,
+			RealityPrivateKey:      req.RealityPrivateKey,
+			RealityHandshakeAddr:   req.RealityHandshakeAddr,
 			Status:                 users.StatusActive,
 			ExpireAt:               req.ExpireAt,
 			DataLimitResetStrategy: req.DataLimitResetStrategy,
@@ -226,6 +253,33 @@ func (a *userAPI) handleUpdateUser(w http.ResponseWriter, r *http.Request, userI
 	}
 	if req.Port > 0 {
 		user.Port = req.Port
+	}
+	if req.Security != "" {
+		user.Security = req.Security
+	}
+	if req.Flow != "" {
+		user.Flow = req.Flow
+	}
+	if req.SNI != "" {
+		user.SNI = req.SNI
+	}
+	if req.Fingerprint != "" {
+		user.Fingerprint = req.Fingerprint
+	}
+	if req.RealityPublicKey != "" {
+		user.RealityPublicKey = req.RealityPublicKey
+	}
+	if req.RealityShortID != "" {
+		user.RealityShortID = req.RealityShortID
+	}
+	if req.RealitySpiderX != "" {
+		user.RealitySpiderX = req.RealitySpiderX
+	}
+	if req.RealityPrivateKey != "" {
+		user.RealityPrivateKey = req.RealityPrivateKey
+	}
+	if req.RealityHandshakeAddr != "" {
+		user.RealityHandshakeAddr = req.RealityHandshakeAddr
 	}
 
 	updated, err := a.users.Upsert(user)

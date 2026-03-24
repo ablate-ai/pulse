@@ -111,6 +111,17 @@
                 <input id="user-method" placeholder="加密方式（如 aes-128-gcm）">
               </div>
 
+              <!-- Reality 字段（VLESS 专用） -->
+              <div id="user-reality-wrap" hidden>
+                <div class="form-row">
+                  <input id="user-reality-sni" placeholder="目标域名，如 www.google.com" style="flex:1">
+                  <button type="button" id="btn-gen-keypair" class="btn btn-ghost btn-sm">一键生成</button>
+                </div>
+                <input id="user-reality-pubkey" placeholder="公钥">
+                <input id="user-reality-privkey" placeholder="私钥（服务端）">
+                <input id="user-reality-shortid" placeholder="Short ID">
+              </div>
+
               <div class="form-row-2">
                 <input id="user-domain" placeholder="example.com" required>
                 <input id="user-port" placeholder="443" type="number" min="1" max="65535" required>

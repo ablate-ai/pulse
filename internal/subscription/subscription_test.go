@@ -74,6 +74,31 @@ func TestTrojanLink(t *testing.T) {
 	}
 }
 
+func TestVlessRealityLink(t *testing.T) {
+	u := users.User{
+		Username:         "eve",
+		UUID:             "33333333-3333-3333-3333-333333333333",
+		Protocol:         "vless",
+		Domain:           "1.2.3.4",
+		Port:             443,
+		Security:         "reality",
+		Flow:             "xtls-rprx-vision",
+		SNI:              "www.google.com",
+		Fingerprint:      "chrome",
+		RealityPublicKey: "abc123publickey",
+		RealityShortID:   "deadbeef",
+	}
+	link := Link(u)
+	if !strings.HasPrefix(link, "vless://") {
+		t.Fatalf("expected vless:// prefix, got %s", link)
+	}
+	for _, want := range []string{"security=reality", "pbk=abc123publickey", "sid=deadbeef", "sni=www.google.com", "fp=chrome", "flow=xtls-rprx-vision"} {
+		if !strings.Contains(link, want) {
+			t.Errorf("expected %q in link: %s", want, link)
+		}
+	}
+}
+
 func TestShadowsocksLink(t *testing.T) {
 	u := users.User{
 		Username: "dave",

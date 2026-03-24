@@ -15,12 +15,14 @@ func (a *app) syncProtocolFields() {
 	secretEl := a.byID("user-secret")
 	methodWrap := a.byID("user-method-wrap")
 	methodEl := a.byID("user-method")
+	realityWrap := a.byID("user-reality-wrap")
 
 	switch protocol {
 	case "trojan":
 		secretEl.Set("placeholder", "Trojan 密码，可留空自动生成")
 		methodWrap.Set("hidden", true)
 		methodEl.Set("disabled", true)
+		realityWrap.Set("hidden", true)
 	case "shadowsocks":
 		secretEl.Set("placeholder", "Shadowsocks 密码，可留空自动生成")
 		methodWrap.Set("hidden", false)
@@ -28,11 +30,34 @@ func (a *app) syncProtocolFields() {
 		if methodEl.Get("value").String() == "" {
 			methodEl.Set("value", "aes-128-gcm")
 		}
-	default:
-		secretEl.Set("placeholder", "VLESS/VMess UUID，可留空自动生成")
+		realityWrap.Set("hidden", true)
+	case "vless":
+		secretEl.Set("placeholder", "UUID，可留空自动生成")
 		methodWrap.Set("hidden", true)
 		methodEl.Set("disabled", true)
+		realityWrap.Set("hidden", false)
+	default: // vmess
+		secretEl.Set("placeholder", "VMess UUID，可留空自动生成")
+		methodWrap.Set("hidden", true)
+		methodEl.Set("disabled", true)
+		realityWrap.Set("hidden", true)
 	}
+}
+
+func (a *app) generateRealityKeypair() {
+	var resp struct {
+		PrivateKey string `json:"private_key"`
+		PublicKey  string `json:"public_key"`
+		ShortID    string `json:"short_id"`
+	}
+	if err := getJSON("/v1/tools/reality-keypair", &resp, a.token); err != nil {
+		a.setStatus("生成失败: " + err.Error())
+		return
+	}
+	a.byID("user-reality-pubkey").Set("value", resp.PublicKey)
+	a.byID("user-reality-privkey").Set("value", resp.PrivateKey)
+	a.byID("user-reality-shortid").Set("value", resp.ShortID)
+	a.setStatus("已生成密钥对和 Short ID")
 }
 
 func (a *app) createUser() {
@@ -52,6 +77,21 @@ func (a *app) createUser() {
 		"port":                      port,
 		"traffic_limit_bytes":       gbToBytes(a.value("user-traffic-limit")),
 		"data_limit_reset_strategy": a.value("user-reset-strategy"),
+	}
+
+	// VLESS 固定使用 Reality
+	if a.value("user-protocol") == "vless" {
+		sni := a.value("user-reality-sni")
+		payload["security"] = "reality"
+		payload["flow"] = "xtls-rprx-vision"
+		payload["fingerprint"] = "chrome"
+		payload["sni"] = sni
+		payload["reality_public_key"] = a.value("user-reality-pubkey")
+		payload["reality_private_key"] = a.value("user-reality-privkey")
+		payload["reality_short_id"] = a.value("user-reality-shortid")
+		if sni != "" {
+			payload["reality_handshake_addr"] = sni + ":443"
+		}
 	}
 
 	if expireVal := a.value("user-expire-at"); expireVal != "" {

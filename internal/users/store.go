@@ -32,6 +32,17 @@ type User struct {
 	Protocol              string     `json:"protocol"`
 	Secret                string     `json:"secret,omitempty"`
 	Method                string     `json:"method,omitempty"`
+	// TLS / Reality 配置（客户端侧）
+	Security              string     `json:"security,omitempty"`            // none / tls / reality
+	Flow                  string     `json:"flow,omitempty"`                // xtls-rprx-vision
+	SNI                   string     `json:"sni,omitempty"`
+	Fingerprint           string     `json:"fingerprint,omitempty"`
+	RealityPublicKey      string     `json:"reality_public_key,omitempty"`
+	RealityShortID        string     `json:"reality_short_id,omitempty"`
+	RealitySpiderX        string     `json:"reality_spider_x,omitempty"`
+	// Reality 服务端配置（用于生成 sing-box inbound）
+	RealityPrivateKey     string     `json:"reality_private_key,omitempty"`
+	RealityHandshakeAddr  string     `json:"reality_handshake_addr,omitempty"` // host:port，如 www.google.com:443
 	Status                string     `json:"status"`
 	ExpireAt              *time.Time `json:"expire_at,omitempty"`
 	DataLimitResetStrategy string    `json:"data_limit_reset_strategy"`
