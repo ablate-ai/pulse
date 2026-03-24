@@ -48,26 +48,6 @@ func (a *app) bind() {
 		return nil
 	}))
 
-	// 快捷操作
-	a.byID("refresh-nodes").Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
-		go a.loadNodes()
-		return nil
-	}))
-
-	a.byID("refresh-users").Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
-		go a.loadUsers()
-		return nil
-	}))
-
-	a.byID("refresh-system").Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
-		go a.loadSystemInfo()
-		return nil
-	}))
-
-	a.byID("sync-usage").Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
-		go a.syncUsage()
-		return nil
-	}))
 
 	// 协议切换
 	a.byID("user-protocol").Call("addEventListener", "change", js.FuncOf(func(this js.Value, args []js.Value) any {
