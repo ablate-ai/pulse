@@ -7,19 +7,19 @@ import (
 	"pulse/internal/users"
 )
 
-func TestBuildVLESSSingboxConfigOmitsUnsupportedFieldsForVLESS(t *testing.T) {
-	config, err := BuildVLESSSingboxConfig([]users.User{{
+func TestBuildSingboxConfigOmitsUnsupportedFieldsForVLESS(t *testing.T) {
+	config, err := BuildSingboxConfig([]users.User{{
 		ID:       "u1",
 		Username: "alice",
 		UUID:     "11111111-1111-1111-1111-111111111111",
 		Protocol: "vless",
-		Enabled:  true,
+		Status:   users.StatusActive,
 		NodeID:   "node-1",
 		Domain:   "example.com",
 		Port:     39001,
 	}})
 	if err != nil {
-		t.Fatalf("BuildVLESSSingboxConfig() error = %v", err)
+		t.Fatalf("BuildSingboxConfig() error = %v", err)
 	}
 
 	if strings.Contains(config, `"transport"`) {
@@ -33,20 +33,20 @@ func TestBuildVLESSSingboxConfigOmitsUnsupportedFieldsForVLESS(t *testing.T) {
 	}
 }
 
-func TestBuildVLESSSingboxConfigKeepsShadowsocksMethod(t *testing.T) {
-	config, err := BuildVLESSSingboxConfig([]users.User{{
+func TestBuildSingboxConfigKeepsShadowsocksMethod(t *testing.T) {
+	config, err := BuildSingboxConfig([]users.User{{
 		ID:       "u1",
 		Username: "alice",
 		Protocol: "shadowsocks",
 		Secret:   "secret",
 		Method:   "aes-256-gcm",
-		Enabled:  true,
+		Status:   users.StatusActive,
 		NodeID:   "node-1",
 		Domain:   "example.com",
 		Port:     39002,
 	}})
 	if err != nil {
-		t.Fatalf("BuildVLESSSingboxConfig() error = %v", err)
+		t.Fatalf("BuildSingboxConfig() error = %v", err)
 	}
 
 	if !strings.Contains(config, `"method": "aes-256-gcm"`) {

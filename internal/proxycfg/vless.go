@@ -25,7 +25,7 @@ type inbound struct {
 	Password   string           `json:"password,omitempty"`
 }
 
-func BuildVLESSSingboxConfig(nodeUsers []users.User) (string, error) {
+func BuildSingboxConfig(nodeUsers []users.User) (string, error) {
 	if len(nodeUsers) == 0 {
 		return "", fmt.Errorf("at least one user is required")
 	}

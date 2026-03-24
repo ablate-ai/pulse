@@ -2,6 +2,7 @@ package subscription
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/url"
 
@@ -10,6 +11,8 @@ import (
 
 func Link(user users.User) string {
 	switch user.Protocol {
+	case "vmess":
+		return vmessLink(user)
 	case "trojan":
 		return trojanLink(user)
 	case "shadowsocks":
@@ -49,6 +52,28 @@ func trojanLink(user users.User) string {
 	}
 
 	return u.String()
+}
+
+// vmessLink 生成标准 vmess:// 链接（v2 JSON base64 格式）。
+func vmessLink(user users.User) string {
+	obj := map[string]any{
+		"v":    "2",
+		"ps":   user.Username,
+		"add":  user.Domain,
+		"port": fmt.Sprintf("%d", user.Port),
+		"id":   user.UUID,
+		"aid":  "0",
+		"net":  "tcp",
+		"type": "none",
+		"host": "",
+		"path": "",
+		"tls":  "",
+	}
+	data, err := json.Marshal(obj)
+	if err != nil {
+		return ""
+	}
+	return "vmess://" + base64.StdEncoding.EncodeToString(data)
 }
 
 func shadowsocksLink(user users.User) string {
