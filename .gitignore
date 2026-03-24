@@ -4,6 +4,9 @@ dist/
 coverage.out
 pulse
 pulse.db
+cache.db
+*.pem
+dev-data/
 Marzban/
 Marzban-node/
 .gocache/
