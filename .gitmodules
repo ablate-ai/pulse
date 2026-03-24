@@ -1,6 +1,0 @@
-[submodule "Marzban"]
-	path = Marzban
-	url = https://github.com/Gozargah/Marzban.git
-[submodule "Marzban-node"]
-	path = Marzban-node
-	url = https://github.com/Gozargah/Marzban-node.git
