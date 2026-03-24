@@ -211,6 +211,18 @@ func (c *Client) Restart(ctx context.Context, req ConfigRequest) (Status, error)
 	return out, err
 }
 
+type CertPaths struct {
+	Domain   string `json:"domain"`
+	CertPath string `json:"cert_path"`
+	KeyPath  string `json:"key_path"`
+}
+
+func (c *Client) EnsureCert(ctx context.Context, domain string) (CertPaths, error) {
+	var out CertPaths
+	err := c.do(ctx, http.MethodPost, "/v1/node/cert/ensure", map[string]string{"domain": domain}, &out)
+	return out, err
+}
+
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
 	if c.initErr != nil {
 		return fmt.Errorf("configure node client: %w", c.initErr)

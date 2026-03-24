@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"pulse/internal/cert"
+	"pulse/internal/certmgr"
 	"pulse/internal/config"
 	"pulse/internal/nodeapi"
 	"pulse/internal/singbox"
@@ -21,6 +22,8 @@ func Run() error {
 	cfg := config.Load()
 	manager := singbox.NewManager()
 	runtimeInfo := manager.RuntimeInfo(context.Background())
+
+	cm := certmgr.New(cfg.CertDir, cfg.ACMEEmail)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +48,7 @@ func Run() error {
 		})
 	})
 
-	nodeapi.New(manager).Register(mux)
+	nodeapi.New(manager, cm).Register(mux)
 
 	tlsConfig, err := buildTLSConfig(cfg)
 	if err != nil {

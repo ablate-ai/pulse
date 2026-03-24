@@ -43,6 +43,9 @@ type User struct {
 	// Reality 服务端配置（用于生成 sing-box inbound）
 	RealityPrivateKey     string     `json:"reality_private_key,omitempty"`
 	RealityHandshakeAddr  string     `json:"reality_handshake_addr,omitempty"` // host:port，如 www.google.com:443
+	// Trojan TLS 证书路径（不入库，apply 时由节点返回后临时填充）
+	TLSCertPath           string     `json:"-"`
+	TLSKeyPath            string     `json:"-"`
 	Status                string     `json:"status"`
 	ExpireAt              *time.Time `json:"expire_at,omitempty"`
 	DataLimitResetStrategy string    `json:"data_limit_reset_strategy"`

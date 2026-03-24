@@ -14,6 +14,9 @@ type Config struct {
 	NodeTLSCertFile          string
 	NodeTLSKeyFile           string
 	NodeTLSClientCertFile    string
+	// Trojan TLS 证书管理
+	CertDir   string // certmagic 证书存储目录
+	ACMEEmail string // ACME 账号邮箱（Let's Encrypt 要求）
 }
 
 func Load() Config {
@@ -29,6 +32,8 @@ func Load() Config {
 		NodeTLSCertFile:          envOrDefault("PULSE_NODE_TLS_CERT_FILE", "./node_cert.pem"),
 		NodeTLSKeyFile:           envOrDefault("PULSE_NODE_TLS_KEY_FILE", "./node_key.pem"),
 		NodeTLSClientCertFile:    envOrDefault("PULSE_NODE_TLS_CLIENT_CERT_FILE", ""),
+		CertDir:                  envOrDefault("PULSE_CERT_DIR", "./certs"),
+		ACMEEmail:                envOrDefault("PULSE_ACME_EMAIL", ""),
 	}
 }
 

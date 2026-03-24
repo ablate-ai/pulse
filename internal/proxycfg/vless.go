@@ -60,7 +60,7 @@ func BuildSingboxConfig(nodeUsers []users.User) (string, error) {
 				ListenPort: user.Port,
 				Users:      make([]map[string]any, 0, 1),
 				Transport:  transportFor(key.Protocol),
-				TLS:        realityTLSFor(user),
+				TLS:        tlsFor(user),
 				Method:     key.Method,
 				Password:   inboundPasswordFor(key.Protocol, key.Method),
 			})
@@ -132,6 +132,27 @@ func inboundPasswordFor(protocol, method string) string {
 		return "pulse-shared-secret"
 	default:
 		return ""
+	}
+}
+
+// tlsFor 根据协议和 security 选择合适的 TLS 配置。
+func tlsFor(user users.User) map[string]any {
+	if protocolOf(user) == "trojan" {
+		return trojanTLSFor(user)
+	}
+	return realityTLSFor(user)
+}
+
+// trojanTLSFor 生成 Trojan inbound 的标准 TLS 配置。
+// 需要 user.TLSCertPath 和 user.TLSKeyPath 在 apply 前由节点填充。
+func trojanTLSFor(user users.User) map[string]any {
+	if user.TLSCertPath == "" || user.TLSKeyPath == "" {
+		return nil
+	}
+	return map[string]any{
+		"enabled":          true,
+		"certificate_path": user.TLSCertPath,
+		"key_path":         user.TLSKeyPath,
 	}
 }
 

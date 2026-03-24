@@ -60,7 +60,15 @@ func vlessLink(user users.User) string {
 func trojanLink(user users.User) string {
 	query := url.Values{}
 	query.Set("type", "tcp")
-	query.Set("security", "none")
+	query.Set("security", "tls")
+	sni := user.SNI
+	if sni == "" {
+		sni = user.Domain
+	}
+	query.Set("sni", sni)
+	if user.Fingerprint != "" {
+		query.Set("fp", user.Fingerprint)
+	}
 
 	u := url.URL{
 		Scheme:   "trojan",

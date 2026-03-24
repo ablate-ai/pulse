@@ -469,10 +469,35 @@ func applyNodeUsers(ctx context.Context, client *nodes.Client, nodeUsers []users
 		status, err := client.Stop(ctx)
 		return status, "", err
 	}
+	// 为 Trojan 用户申请/确认 TLS 证书，将路径回填到 user 中
+	if err := ensureTrojanCerts(ctx, client, activeUsers); err != nil {
+		return nodes.Status{}, "", err
+	}
 	config, err := proxycfg.BuildSingboxConfig(activeUsers)
 	if err != nil {
 		return nodes.Status{}, "", err
 	}
 	status, err := client.Restart(ctx, nodes.ConfigRequest{Config: config})
 	return status, config, err
+}
+
+// ensureTrojanCerts 对 Trojan 用户按域名去重调用节点 EnsureCert，并回填证书路径。
+func ensureTrojanCerts(ctx context.Context, client *nodes.Client, activeUsers []users.User) error {
+	certsByDomain := make(map[string]nodes.CertPaths)
+	for i, u := range activeUsers {
+		if u.Protocol != "trojan" {
+			continue
+		}
+		domain := u.Domain
+		if _, ok := certsByDomain[domain]; !ok {
+			paths, err := client.EnsureCert(ctx, domain)
+			if err != nil {
+				return fmt.Errorf("ensure cert for %s: %w", domain, err)
+			}
+			certsByDomain[domain] = paths
+		}
+		activeUsers[i].TLSCertPath = certsByDomain[domain].CertPath
+		activeUsers[i].TLSKeyPath = certsByDomain[domain].KeyPath
+	}
+	return nil
 }

@@ -6,24 +6,25 @@ import (
 	"net/http"
 	"time"
 
+	"pulse/internal/certmgr"
 	"pulse/internal/singbox"
 )
 
 type API struct {
 	manager *singbox.Manager
+	certs   *certmgr.Manager
 }
 
 type singboxConfigRequest struct {
 	Config string `json:"config"`
 }
 
-func New(manager *singbox.Manager) *API {
-	return &API{
-		manager: manager,
-	}
+func New(manager *singbox.Manager, certs *certmgr.Manager) *API {
+	return &API{manager: manager, certs: certs}
 }
 
 func (a *API) Register(mux *http.ServeMux) {
+	mux.HandleFunc("/v1/node/cert/ensure", a.handleCertEnsure)
 	mux.HandleFunc("/v1/node/runtime", a.handleRuntime)
 	mux.HandleFunc("/v1/node/runtime/status", a.handleStatus)
 	mux.HandleFunc("/v1/node/runtime/usage", a.handleUsage)
@@ -141,6 +142,31 @@ func (a *API) handleRestart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, a.manager.Status())
+}
+
+func (a *API) handleCertEnsure(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+	var req struct {
+		Domain string `json:"domain"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Domain == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "domain is required"})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+	defer cancel()
+	if err := a.certs.Ensure(ctx, req.Domain); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"domain":    req.Domain,
+		"cert_path": a.certs.CertPath(req.Domain),
+		"key_path":  a.certs.KeyPath(req.Domain),
+	})
 }
 
 func decodeConfigRequest(w http.ResponseWriter, r *http.Request) (singboxConfigRequest, bool) {

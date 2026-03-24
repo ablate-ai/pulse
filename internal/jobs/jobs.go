@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"pulse/internal/nodes"
@@ -207,6 +208,22 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeUsers []users
 	if len(active) == 0 {
 		status, err := client.Stop(ctx)
 		return status, "", err
+	}
+	// Trojan 用户需要先确保证书存在
+	certsByDomain := make(map[string]nodes.CertPaths)
+	for i, u := range active {
+		if u.Protocol != "trojan" {
+			continue
+		}
+		if _, ok := certsByDomain[u.Domain]; !ok {
+			paths, err := client.EnsureCert(ctx, u.Domain)
+			if err != nil {
+				return nodes.Status{}, "", fmt.Errorf("ensure cert for %s: %w", u.Domain, err)
+			}
+			certsByDomain[u.Domain] = paths
+		}
+		active[i].TLSCertPath = certsByDomain[u.Domain].CertPath
+		active[i].TLSKeyPath = certsByDomain[u.Domain].KeyPath
 	}
 	config, err := proxycfg.BuildSingboxConfig(active)
 	if err != nil {
