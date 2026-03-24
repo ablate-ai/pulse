@@ -60,15 +60,30 @@ clean-dev:
 
 # 获取开发用证书（需要先启动 server）
 dev-certs:
-	@echo "Fetching development certificates from server..."
+	@echo "============================================"
+	@echo "获取 node 证书步骤："
+	@echo "1. 访问 http://localhost:8080"
+	@echo "2. 登录（admin/admin123）"
+	@echo "3. 在浏览器开发者工具中执行："
+	@echo ""
+	@echo "   fetch('/v1/node/settings', {"
+	@echo "     headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }"
+	@echo "   }).then(r => r.json())"
+	@echo "    .then(d => console.log(d.certificate))"
+	@echo ""
+	@echo "4. 复制输出的证书内容（包括 BEGIN/END CERTIFICATE）"
+	@echo "5. 保存到 dev-certs/server_client_cert.pem"
+	@echo "============================================"
 	@mkdir -p dev-certs
-	@curl -s http://localhost:8080/v1/node/settings | grep -o '"certificate":"[^"]*' | cut -d'"' -f4 > dev-certs/server_client_cert.pem
+	@read -p "按回车继续..." _
+	@echo ""
+	@echo "请输入证书内容（按 Ctrl+D 结束输入）："
+	@cat > dev-certs/server_client_cert.pem
 	@if [ ! -s dev-certs/server_client_cert.pem ]; then \
-		echo "Failed to fetch certificate. Make sure server is running on http://localhost:8080"; \
-		rm -f dev-certs/server_client_cert.pem; \
+		echo "错误：证书文件为空"; \
 		exit 1; \
 	fi
-	@echo "Certificates saved to dev-certs/server_client_cert.pem"
+	@echo "✓ 证书已保存到 dev-certs/server_client_cert.pem"
 
 # 开发模式运行 server
 run-server: build-server
