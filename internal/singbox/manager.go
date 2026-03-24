@@ -28,6 +28,7 @@ var ErrNotRunning = errors.New("sing-box is not running")
 type Manager struct {
 	mu        sync.Mutex
 	instance  *box.Box
+	starting  bool
 	startedAt time.Time
 	logs      []string
 	traffic   trafficManager
@@ -77,22 +78,27 @@ func NewManager() *Manager {
 
 func (m *Manager) Start(config string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	if m.instance != nil {
+		m.mu.Unlock()
 		return errors.New("sing-box is already running")
 	}
+	if m.starting {
+		m.mu.Unlock()
+		return errors.New("sing-box is already starting")
+	}
+	m.starting = true
+	m.mu.Unlock()
+
+	defer func() {
+		m.mu.Lock()
+		m.starting = false
+		m.mu.Unlock()
+	}()
 
 	ctx := include.Context(context.Background())
 	var options option.Options
 	if err := sbJSON.UnmarshalContext(ctx, []byte(config), &options); err != nil {
 		return fmt.Errorf("parse sing-box config: %w", err)
-	}
-	if options.Experimental == nil {
-		options.Experimental = &option.ExperimentalOptions{}
-	}
-	if options.Experimental.ClashAPI == nil {
-		options.Experimental.ClashAPI = &option.ClashAPIOptions{}
 	}
 
 	instance, err := box.New(box.Options{
@@ -108,10 +114,12 @@ func (m *Manager) Start(config string) error {
 		return fmt.Errorf("start sing-box: %w", err)
 	}
 
+	m.mu.Lock()
 	m.instance = instance
 	m.startedAt = time.Now().UTC()
 	m.traffic = extractTrafficManager(ctx)
 	m.appendLogLocked("sing-box started")
+	m.mu.Unlock()
 	return nil
 }
 

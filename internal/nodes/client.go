@@ -91,6 +91,7 @@ func buildHTTPClient(node Node, options ClientOptions) (*http.Client, error) {
 	tlsConfig := &tls.Config{
 		MinVersion: tls.VersionTLS12,
 	}
+	var clientPair *tls.Certificate
 	if options.ClientCertFile != "" || options.ClientKeyFile != "" {
 		if options.ClientCertFile == "" || options.ClientKeyFile == "" {
 			return nil, fmt.Errorf("client cert file and key file must be configured together")
@@ -99,9 +100,10 @@ func buildHTTPClient(node Node, options ClientOptions) (*http.Client, error) {
 		if err != nil {
 			return nil, fmt.Errorf("load client key pair: %w", err)
 		}
+		clientPair = &pair
 		tlsConfig.Certificates = []tls.Certificate{pair}
 	}
-	serverCert, err := fetchServerCertificatePEM(node.BaseURL)
+	serverCert, err := fetchServerCertificatePEM(node.BaseURL, clientPair)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +134,7 @@ func buildHTTPClient(node Node, options ClientOptions) (*http.Client, error) {
 	return httpClient, nil
 }
 
-func fetchServerCertificatePEM(rawURL string) (string, error) {
+func fetchServerCertificatePEM(rawURL string, clientPair *tls.Certificate) (string, error) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return "", fmt.Errorf("parse node url: %w", err)
@@ -141,11 +143,15 @@ func fetchServerCertificatePEM(rawURL string) (string, error) {
 	if _, _, err := net.SplitHostPort(address); err != nil {
 		address = net.JoinHostPort(parsed.Hostname(), "443")
 	}
-
-	conn, err := tls.Dial("tcp", address, &tls.Config{
+	tlsConfig := &tls.Config{
 		InsecureSkipVerify: true,
 		MinVersion:         tls.VersionTLS12,
-	})
+	}
+	if clientPair != nil {
+		tlsConfig.Certificates = []tls.Certificate{*clientPair}
+	}
+
+	conn, err := tls.Dial("tcp", address, tlsConfig)
 	if err != nil {
 		return "", fmt.Errorf("dial node tls: %w", err)
 	}

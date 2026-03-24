@@ -289,9 +289,11 @@ func (a *app) loadNodes() {
 				<p class="meta">%s</p>
 				<div class="actions">
 					<button data-action="runtime" data-id="%s">查看 Runtime</button>
+					<button data-action="logs" data-id="%s">查看 Logs</button>
 					<button data-action="delete-node" data-id="%s" class="ghost">删除</button>
 				</div>
-			 </article>`, escape(n.Name), escape(n.BaseURL), escape(n.ID), escape(n.ID))
+				<div id="node-logs-%s" class="detail-box" hidden></div>
+			 </article>`, escape(n.Name), escape(n.BaseURL), escape(n.ID), escape(n.ID), escape(n.ID), escape(n.ID))
 		container.Set("innerHTML", container.Get("innerHTML").String()+card)
 		option := a.document.Call("createElement", "option")
 		option.Set("value", n.ID)
@@ -357,7 +359,7 @@ func (a *app) loadUsers() {
 }
 
 func (a *app) bindNodeButtons() {
-	buttons := a.document.Call("querySelectorAll", "[data-action='runtime'], [data-action='delete-node']")
+	buttons := a.document.Call("querySelectorAll", "[data-action='runtime'], [data-action='logs'], [data-action='delete-node']")
 	length := buttons.Get("length").Int()
 	for i := 0; i < length; i++ {
 		button := buttons.Index(i)
@@ -396,6 +398,24 @@ func (a *app) bindNodeButtons() {
 						usage.DownloadTotal,
 						usage.Connections,
 					))
+				case "logs":
+					var resp struct {
+						Logs []string `json:"logs"`
+					}
+					if err := getJSON("/v1/nodes/"+id+"/runtime/logs", &resp, a.token); err != nil {
+						a.handleAuthError(err)
+						a.setStatus("读取节点日志失败: " + err.Error())
+						return
+					}
+					box := a.byID("node-logs-" + id)
+					box.Set("hidden", false)
+					if len(resp.Logs) == 0 {
+						box.Set("textContent", "暂无日志")
+						a.setStatus("节点日志为空: " + id)
+						return
+					}
+					box.Set("textContent", strings.Join(resp.Logs, "\n"))
+					a.setStatus(fmt.Sprintf("已加载节点 %s 最近 %d 条日志", id, len(resp.Logs)))
 				case "delete-node":
 					if err := doRequest(http.MethodDelete, "/v1/nodes/"+id, nil, nil, a.token); err != nil {
 						a.handleAuthError(err)
@@ -574,7 +594,17 @@ func doRequest(method, path string, payload any, out any, token string) error {
 
 	if resp.StatusCode >= 400 {
 		data, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf(strings.TrimSpace(string(data)))
+		var apiErr struct {
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal(data, &apiErr); err == nil && strings.TrimSpace(apiErr.Error) != "" {
+			return fmt.Errorf(apiErr.Error)
+		}
+		message := strings.TrimSpace(string(data))
+		if message == "" {
+			message = resp.Status
+		}
+		return fmt.Errorf(message)
 	}
 
 	if out == nil {

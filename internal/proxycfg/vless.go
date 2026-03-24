@@ -109,6 +109,9 @@ func protocolOf(user users.User) string {
 }
 
 func methodOf(user users.User) string {
+	if protocolOf(user) != "shadowsocks" {
+		return ""
+	}
 	if user.Method != "" {
 		return user.Method
 	}
@@ -116,12 +119,7 @@ func methodOf(user users.User) string {
 }
 
 func transportFor(protocol string) map[string]any {
-	switch protocol {
-	case "shadowsocks":
-		return nil
-	default:
-		return map[string]any{"type": "tcp"}
-	}
+	return nil
 }
 
 func inboundPasswordFor(protocol, method string) string {

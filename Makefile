@@ -4,6 +4,7 @@ BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 TARGET_OS ?= $(shell go env GOOS)
 TARGET_ARCH ?= $(shell go env GOARCH)
 DIST_DIR ?= dist
+SINGBOX_TAGS ?= with_clash_api
 LDFLAGS = -s -w -X pulse/internal/buildinfo.Version=$(VERSION) -X pulse/internal/buildinfo.Commit=$(COMMIT) -X pulse/internal/buildinfo.BuildDate=$(BUILD_DATE)
 
 .PHONY: build build-server build-node build-cli wasm test package-server package-node checksums clean clean-dev dev-certs run-server run-node
@@ -17,7 +18,7 @@ build-server:
 	CGO_ENABLED=0 GOOS=$(TARGET_OS) GOARCH=$(TARGET_ARCH) go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/pulse-server ./cmd/pulse-server
 
 build-node:
-	CGO_ENABLED=0 GOOS=$(TARGET_OS) GOARCH=$(TARGET_ARCH) go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/pulse-node ./cmd/pulse-node
+	CGO_ENABLED=0 GOOS=$(TARGET_OS) GOARCH=$(TARGET_ARCH) go build -tags "$(SINGBOX_TAGS)" -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/pulse-node ./cmd/pulse-node
 
 wasm:
 	GOOS=js GOARCH=wasm go build -ldflags "$(LDFLAGS)" -o web/mvp/app.wasm ./web/mvp
@@ -113,4 +114,3 @@ run-node: build-node
 	 PULSE_NODE_TLS_KEY_FILE=./dev-data/node/node_key.pem \
 	 PULSE_NODE_TLS_CLIENT_CERT_FILE=./dev-data/server/server_client_cert.pem \
 	 ./dist/pulse-node
-
