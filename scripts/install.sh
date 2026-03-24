@@ -23,13 +23,10 @@ usage() {
 
 示例:
   curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
-    sh -s -- server
-
-  curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
-    sh -s -- node
-
-  curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
     PULSE_ADMIN_PASSWORD='strong-password' sh -s -- server
+
+  curl -H "Authorization: Bearer <admin-token>" \
+    https://panel.example.com/v1/node/settings
 
   curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
     PULSE_NODE_TLS_CLIENT_CERT_FILE='/etc/pulse/server_client_cert.pem' sh -s -- node

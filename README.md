@@ -53,33 +53,23 @@ make checksums
 
 安装脚本在 `scripts/install.sh`。
 
-示例：
+推荐按下面的固定顺序安装：
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
-  sh -s -- server
-```
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
-  sh -s -- node
-```
-
-首次安装 server 时可以直接指定管理员密码：
+1. 安装 `server`
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
   PULSE_ADMIN_PASSWORD='strong-password' sh -s -- server
 ```
 
-按 `Marzban` 的方式，推荐先由管理员从控制面的 `/v1/node/settings` 获取受信任的客户端证书，再放到 node 上：
+2. 由管理员从控制面的 `/v1/node/settings` 获取 node 需要信任的证书
 
 ```bash
 curl -H "Authorization: Bearer <admin-token>" \
   https://panel.example.com/v1/node/settings
 ```
 
-拿到证书后，再安装 node 并指定它信任的 server 客户端证书路径：
+3. 将证书保存到 node 机器后，再安装 `node`
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
