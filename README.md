@@ -56,13 +56,34 @@ make checksums
 示例：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/scripts/install.sh | \
-  PULSE_REPO=OWNER/REPO sh -s -- server
+curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
+  sh -s -- server
 ```
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/scripts/install.sh | \
-  PULSE_REPO=OWNER/REPO sh -s -- node v0.1.0
+curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
+  sh -s -- node
+```
+
+首次安装 server 时可以直接指定管理员密码：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
+  PULSE_ADMIN_PASSWORD='strong-password' sh -s -- server
+```
+
+按 `Marzban` 的方式，推荐先由管理员从控制面的 `/v1/node/settings` 获取受信任的客户端证书，再放到 node 上：
+
+```bash
+curl -H "Authorization: Bearer <admin-token>" \
+  https://panel.example.com/v1/node/settings
+```
+
+拿到证书后，再安装 node 并指定它信任的 server 客户端证书路径：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
+  PULSE_NODE_TLS_CLIENT_CERT_FILE='/etc/pulse/server_client_cert.pem' sh -s -- node
 ```
 
 当前脚本会：
@@ -70,6 +91,9 @@ curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/scripts/install.sh 
 - 下载 GitHub Release 对应平台的 `tar.gz`
 - 安装二进制到 `/usr/local/bin`
 - 安装示例配置到 `/etc/pulse`
+- `server` 首次启动时自动生成用于访问节点的客户端证书与私钥
+- 管理员可通过控制面 `/v1/node/settings` 获取 node 需要信任的 server 客户端证书
+- 将安装时提供的管理员密码或 TLS 证书路径写入 `/etc/pulse/*.env`
 - 安装 `systemd` 服务
 - 自动执行 `systemctl enable --now`
 

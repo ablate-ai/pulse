@@ -16,10 +16,6 @@ func TestUserSubscriptionAndApplyFlow(t *testing.T) {
 	var capturedConfig string
 	nodeMux := http.NewServeMux()
 	nodeMux.HandleFunc("/v1/node/runtime/restart", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer token-1" {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
 		var req map[string]string
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		capturedConfig = req["config"]
@@ -32,15 +28,14 @@ func TestUserSubscriptionAndApplyFlow(t *testing.T) {
 
 	nodeStore := nodes.NewMemoryStore()
 	_, _ = nodeStore.Upsert(nodes.Node{
-		ID:        "node-1",
-		Name:      "node 1",
-		BaseURL:   "http://node.test",
-		AuthToken: "token-1",
+		ID:      "node-1",
+		Name:    "node 1",
+		BaseURL: "http://node.test",
 	})
 
-	baseAPI := New(nodeStore)
+	baseAPI := New(nodeStore, nodes.ClientOptions{})
 	baseAPI.clientFactory = func(node nodes.Node) *nodes.Client {
-		return nodes.NewClientWithHTTPClient(node.BaseURL, node.AuthToken, &http.Client{
+		return nodes.NewClientWithHTTPClient(node.BaseURL, &http.Client{
 			Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				rec := httptest.NewRecorder()
 				nodeMux.ServeHTTP(rec, req)
@@ -104,15 +99,14 @@ func TestUserSubscriptionAndApplyFlow(t *testing.T) {
 func TestUserSupportsMultipleProtocols(t *testing.T) {
 	nodeStore := nodes.NewMemoryStore()
 	_, _ = nodeStore.Upsert(nodes.Node{
-		ID:        "node-1",
-		Name:      "node 1",
-		BaseURL:   "http://node.test",
-		AuthToken: "token-1",
+		ID:      "node-1",
+		Name:    "node 1",
+		BaseURL: "http://node.test",
 	})
 
-	baseAPI := New(nodeStore)
+	baseAPI := New(nodeStore, nodes.ClientOptions{})
 	baseAPI.clientFactory = func(node nodes.Node) *nodes.Client {
-		return nodes.NewClientWithHTTPClient(node.BaseURL, node.AuthToken, &http.Client{
+		return nodes.NewClientWithHTTPClient(node.BaseURL, &http.Client{
 			Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				rec := httptest.NewRecorder()
 				if req.URL.Path == "/v1/node/runtime/restart" {
@@ -164,15 +158,14 @@ func TestSyncUsageDisablesLimitedUserAndReloadsNode(t *testing.T) {
 	var capturedConfig string
 	nodeStore := nodes.NewMemoryStore()
 	_, _ = nodeStore.Upsert(nodes.Node{
-		ID:        "node-1",
-		Name:      "node 1",
-		BaseURL:   "http://node.test",
-		AuthToken: "token-1",
+		ID:      "node-1",
+		Name:    "node 1",
+		BaseURL: "http://node.test",
 	})
 
-	baseAPI := New(nodeStore)
+	baseAPI := New(nodeStore, nodes.ClientOptions{})
 	baseAPI.clientFactory = func(node nodes.Node) *nodes.Client {
-		return nodes.NewClientWithHTTPClient(node.BaseURL, node.AuthToken, &http.Client{
+		return nodes.NewClientWithHTTPClient(node.BaseURL, &http.Client{
 			Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				rec := httptest.NewRecorder()
 				switch req.URL.Path {

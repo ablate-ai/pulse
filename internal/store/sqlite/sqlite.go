@@ -44,7 +44,7 @@ func (db *DB) init() error {
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
 			base_url TEXT NOT NULL,
-			auth_token TEXT NOT NULL
+			certificate TEXT NOT NULL DEFAULT ''
 		);`,
 		`CREATE TABLE IF NOT EXISTS users (
 			id TEXT PRIMARY KEY,
@@ -75,8 +75,25 @@ func (db *DB) init() error {
 			return fmt.Errorf("init sqlite schema: %w", err)
 		}
 	}
+	if err := db.migrateNodesTable(); err != nil {
+		return err
+	}
 	if err := db.migrateUsersTable(); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (db *DB) migrateNodesTable() error {
+	columns, err := db.tableColumns("nodes")
+	if err != nil {
+		return err
+	}
+
+	if _, ok := columns["certificate"]; !ok {
+		if _, err := db.conn.Exec(`ALTER TABLE nodes ADD COLUMN certificate TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("migrate nodes table: %w", err)
+		}
 	}
 	return nil
 }

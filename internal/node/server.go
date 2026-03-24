@@ -2,11 +2,16 @@ package node
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
+	"pulse/internal/cert"
 	"pulse/internal/config"
 	"pulse/internal/nodeapi"
 	"pulse/internal/singbox"
@@ -40,11 +45,17 @@ func Run() error {
 		})
 	})
 
-	nodeapi.New(manager, cfg.NodeAuthToken).Register(mux)
+	nodeapi.New(manager).Register(mux)
+
+	tlsConfig, err := buildTLSConfig(cfg)
+	if err != nil {
+		return err
+	}
 
 	srv := &http.Server{
 		Addr:              cfg.NodeAddr,
 		Handler:           mux,
+		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -58,12 +69,41 @@ func Run() error {
 	}
 
 	log.Printf("pulse-node listening on %s", cfg.NodeAddr)
-	err := srv.ListenAndServe()
+	err = srv.ListenAndServeTLS("", "")
 	if err == nil || err == http.ErrServerClosed {
 		return shutdown(srv)
 	}
 
 	return err
+}
+
+func buildTLSConfig(cfg config.Config) (*tls.Config, error) {
+	if err := cert.EnsureSelfSignedKeyPair(cfg.NodeTLSCertFile, cfg.NodeTLSKeyFile, "pulse-node"); err != nil {
+		return nil, err
+	}
+	if cfg.NodeTLSClientCertFile == "" {
+		return nil, fmt.Errorf("PULSE_NODE_TLS_CLIENT_CERT_FILE is required")
+	}
+
+	certPair, err := tls.LoadX509KeyPair(cfg.NodeTLSCertFile, cfg.NodeTLSKeyFile)
+	if err != nil {
+		return nil, err
+	}
+	clientPEM, err := os.ReadFile(cfg.NodeTLSClientCertFile)
+	if err != nil {
+		return nil, err
+	}
+	clientPool := x509.NewCertPool()
+	if !clientPool.AppendCertsFromPEM(clientPEM) {
+		return nil, fmt.Errorf("parse client certificate")
+	}
+
+	return &tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		Certificates: []tls.Certificate{certPair},
+		ClientCAs:    clientPool,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+	}, nil
 }
 
 func shutdown(srv *http.Server) error {

@@ -7,19 +7,32 @@ usage() {
   install.sh server|node [version]
 
 环境变量:
-  PULSE_REPO          GitHub 仓库，格式 owner/repo，必填
+  PULSE_REPO          GitHub 仓库，格式 owner/repo，默认 ablate-ai/pulse
   PULSE_INSTALL_BIN   二进制安装目录，默认 /usr/local/bin
   PULSE_INSTALL_ETC   配置安装目录，默认 /etc/pulse
   PULSE_INSTALL_SHARE 共享资源目录，默认 /usr/local/share/pulse
   PULSE_INSTALL_LIB   systemd 安装目录，默认 /etc/systemd/system
   PULSE_STATE_DIR     工作目录，默认 /var/lib/pulse
+  PULSE_ADMIN_USERNAME server 安装时写入管理员用户名，默认 admin
+  PULSE_ADMIN_PASSWORD server 安装时写入管理员密码，默认 change-me
+  PULSE_SERVER_NODE_CLIENT_CERT_FILE server 访问节点时使用的客户端证书路径
+  PULSE_SERVER_NODE_CLIENT_KEY_FILE  server 访问节点时使用的客户端私钥路径
+  PULSE_NODE_TLS_CERT_FILE           node 服务端证书路径
+  PULSE_NODE_TLS_KEY_FILE            node 服务端私钥路径
+  PULSE_NODE_TLS_CLIENT_CERT_FILE    node 信任的 server 客户端证书路径
 
 示例:
-  curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/scripts/install.sh | \
-    PULSE_REPO=OWNER/REPO sh -s -- server
+  curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
+    sh -s -- server
 
-  curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/scripts/install.sh | \
-    PULSE_REPO=OWNER/REPO sh -s -- node v0.1.0
+  curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
+    sh -s -- node
+
+  curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
+    PULSE_ADMIN_PASSWORD='strong-password' sh -s -- server
+
+  curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
+    PULSE_NODE_TLS_CLIENT_CERT_FILE='/etc/pulse/server_client_cert.pem' sh -s -- node
 EOF
 }
 
@@ -41,6 +54,35 @@ run_as_root() {
   fi
   echo "需要 root 权限运行: $*" >&2
   exit 1
+}
+
+quote_env_value() {
+  printf "'%s'" "$(printf "%s" "$1" | sed "s/'/'\\\\''/g")"
+}
+
+set_env_file_value() {
+  file="$1"
+  key="$2"
+  value="$(quote_env_value "$3")"
+  tmp_file="$(mktemp)"
+
+  awk -v key="$key" -v value="$value" '
+    BEGIN { updated = 0 }
+    index($0, key "=") == 1 {
+      print key "=" value
+      updated = 1
+      next
+    }
+    { print }
+    END {
+      if (!updated) {
+        print key "=" value
+      }
+    }
+  ' "$file" > "$tmp_file"
+
+  run_as_root install -m 0644 "$tmp_file" "$file"
+  rm -f "$tmp_file"
 }
 
 arch() {
@@ -74,11 +116,7 @@ need_cmd curl
 need_cmd tar
 need_cmd install
 
-repo="${PULSE_REPO:-}"
-if [ -z "$repo" ]; then
-  echo "必须设置 PULSE_REPO=owner/repo" >&2
-  exit 1
-fi
+repo="${PULSE_REPO:-ablate-ai/pulse}"
 
 os="linux"
 cpu="$(arch)"
@@ -120,6 +158,18 @@ if [ "$component" = "server" ]; then
   if [ ! -f "$env_target" ]; then
     run_as_root install -m 0644 "${package_dir}/etc/pulse/pulse-server.env.example" "$env_target"
   fi
+  if [ "${PULSE_ADMIN_USERNAME+x}" = "x" ]; then
+    set_env_file_value "$env_target" "PULSE_ADMIN_USERNAME" "$PULSE_ADMIN_USERNAME"
+  fi
+  if [ "${PULSE_ADMIN_PASSWORD+x}" = "x" ]; then
+    set_env_file_value "$env_target" "PULSE_ADMIN_PASSWORD" "$PULSE_ADMIN_PASSWORD"
+  fi
+  if [ "${PULSE_SERVER_NODE_CLIENT_CERT_FILE+x}" = "x" ]; then
+    set_env_file_value "$env_target" "PULSE_SERVER_NODE_CLIENT_CERT_FILE" "$PULSE_SERVER_NODE_CLIENT_CERT_FILE"
+  fi
+  if [ "${PULSE_SERVER_NODE_CLIENT_KEY_FILE+x}" = "x" ]; then
+    set_env_file_value "$env_target" "PULSE_SERVER_NODE_CLIENT_KEY_FILE" "$PULSE_SERVER_NODE_CLIENT_KEY_FILE"
+  fi
   run_as_root install -m 0644 "${package_dir}/lib/systemd/system/pulse-server.service" "${lib_dir}/pulse-server.service"
   if command -v systemctl >/dev/null 2>&1; then
     run_as_root systemctl daemon-reload
@@ -129,6 +179,15 @@ else
   env_target="${etc_dir}/pulse-node.env"
   if [ ! -f "$env_target" ]; then
     run_as_root install -m 0644 "${package_dir}/etc/pulse/pulse-node.env.example" "$env_target"
+  fi
+  if [ "${PULSE_NODE_TLS_CERT_FILE+x}" = "x" ]; then
+    set_env_file_value "$env_target" "PULSE_NODE_TLS_CERT_FILE" "$PULSE_NODE_TLS_CERT_FILE"
+  fi
+  if [ "${PULSE_NODE_TLS_KEY_FILE+x}" = "x" ]; then
+    set_env_file_value "$env_target" "PULSE_NODE_TLS_KEY_FILE" "$PULSE_NODE_TLS_KEY_FILE"
+  fi
+  if [ "${PULSE_NODE_TLS_CLIENT_CERT_FILE+x}" = "x" ]; then
+    set_env_file_value "$env_target" "PULSE_NODE_TLS_CLIENT_CERT_FILE" "$PULSE_NODE_TLS_CLIENT_CERT_FILE"
   fi
   run_as_root install -m 0644 "${package_dir}/lib/systemd/system/pulse-node.service" "${lib_dir}/pulse-node.service"
   if command -v systemctl >/dev/null 2>&1; then

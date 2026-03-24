@@ -14,10 +14,6 @@ import (
 func TestNodeLifecycleAndProxyEndpoints(t *testing.T) {
 	nodeMux := http.NewServeMux()
 	nodeMux.HandleFunc("/v1/node/runtime", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer token-1" {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"available": true,
 			"version":   "v1.13.3",
@@ -50,9 +46,9 @@ func TestNodeLifecycleAndProxyEndpoints(t *testing.T) {
 	})
 
 	store := nodes.NewMemoryStore()
-	api := New(store)
+	api := New(store, nodes.ClientOptions{})
 	api.clientFactory = func(node nodes.Node) *nodes.Client {
-		return nodes.NewClientWithHTTPClient(node.BaseURL, node.AuthToken, &http.Client{
+		return nodes.NewClientWithHTTPClient(node.BaseURL, &http.Client{
 			Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				rec := httptest.NewRecorder()
 				nodeMux.ServeHTTP(rec, req)
@@ -63,7 +59,7 @@ func TestNodeLifecycleAndProxyEndpoints(t *testing.T) {
 	mux := http.NewServeMux()
 	api.Register(mux)
 
-	upsertBody := []byte(`{"id":"node-1","name":"node 1","base_url":"http://node.test","auth_token":"token-1"}`)
+	upsertBody := []byte(`{"id":"node-1","name":"node 1","base_url":"http://node.test"}`)
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/v1/nodes", bytes.NewReader(upsertBody))
 	mux.ServeHTTP(rec, req)

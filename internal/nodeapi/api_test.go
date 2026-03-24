@@ -11,22 +11,13 @@ import (
 
 func TestRuntimeEndpointRequiresAuthAndReturnsInfo(t *testing.T) {
 	manager := singbox.NewManager()
-	api := New(manager, "secret-token")
+	api := New(manager)
 
 	mux := http.NewServeMux()
 	api.Register(mux)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/node/runtime", nil)
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", rec.Code)
-	}
-
-	req = httptest.NewRequest(http.MethodGet, "/v1/node/runtime", nil)
-	req.Header.Set("Authorization", "Bearer secret-token")
-	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -55,21 +46,13 @@ func TestRuntimeEndpointRequiresAuthAndReturnsInfo(t *testing.T) {
 
 func TestUsageEndpointRequiresAuthAndReturnsStats(t *testing.T) {
 	manager := singbox.NewManager()
-	api := New(manager, "secret-token")
+	api := New(manager)
 
 	mux := http.NewServeMux()
 	api.Register(mux)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/node/runtime/usage", nil)
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", rec.Code)
-	}
-
-	req = httptest.NewRequest(http.MethodGet, "/v1/node/runtime/usage", nil)
-	req.Header.Set("Authorization", "Bearer secret-token")
-	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)

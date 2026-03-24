@@ -5,10 +5,9 @@ import "errors"
 var ErrNodeNotFound = errors.New("node not found")
 
 type Node struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	BaseURL   string `json:"base_url"`
-	AuthToken string `json:"auth_token,omitempty"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	BaseURL string `json:"base_url"`
 }
 
 type Store interface {

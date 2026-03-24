@@ -22,10 +22,9 @@ func TestSQLiteStoresPersistData(t *testing.T) {
 	userStore := db.UserStore()
 
 	_, err = nodeStore.Upsert(nodes.Node{
-		ID:        "node-1",
-		Name:      "node 1",
-		BaseURL:   "http://127.0.0.1:8081",
-		AuthToken: "dev-token",
+		ID:      "node-1",
+		Name:    "node 1",
+		BaseURL: "https://127.0.0.1:8081",
 	})
 	if err != nil {
 		t.Fatalf("node upsert error = %v", err)

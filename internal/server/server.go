@@ -9,6 +9,7 @@ import (
 
 	"pulse/internal/auth"
 	"pulse/internal/buildinfo"
+	"pulse/internal/cert"
 	"pulse/internal/config"
 	"pulse/internal/nodes"
 	"pulse/internal/serverapi"
@@ -19,6 +20,9 @@ import (
 
 func Run() error {
 	cfg := config.Load()
+	if err := cert.EnsureSelfSignedKeyPair(cfg.ServerNodeClientCertFile, cfg.ServerNodeClientKeyFile, "pulse-server-node-client"); err != nil {
+		return err
+	}
 	db, err := sqliteStore.Open(cfg.DBPath)
 	if err != nil {
 		return err
@@ -28,6 +32,10 @@ func Run() error {
 	var store nodes.Store = db.NodeStore()
 	var userStore users.Store = db.UserStore()
 	authManager := auth.NewManager(cfg.AdminUsername, cfg.AdminPassword)
+	clientOptions := nodes.ClientOptions{
+		ClientCertFile: cfg.ServerNodeClientCertFile,
+		ClientKeyFile:  cfg.ServerNodeClientKeyFile,
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -67,9 +75,9 @@ func Run() error {
 		})
 	})
 	registerWeb(mux, cfg.WebDir)
-	serverapi.New(store).Register(protectedV1)
-	serverapi.RegisterUsersAPI(protectedV1, userStore, store)
-	serverapi.RegisterSystemAPI(protectedV1, userStore, store)
+	serverapi.New(store, clientOptions).Register(protectedV1)
+	serverapi.RegisterUsersAPI(protectedV1, userStore, store, clientOptions)
+	serverapi.RegisterSystemAPI(protectedV1, userStore, store, clientOptions)
 	mux.Handle("/v1/system/info", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/system/sync-usage", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/nodes", authManager.Middleware(protectedV1))

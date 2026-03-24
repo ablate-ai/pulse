@@ -5,24 +5,41 @@ import (
 	"net/http"
 	"time"
 
+	"pulse/internal/cert"
+	"pulse/internal/config"
 	"pulse/internal/nodes"
 	"pulse/internal/users"
 )
 
 type systemAPI struct {
-	users users.Store
-	nodes nodes.Store
-	base  *API
+	users             users.Store
+	nodes             nodes.Store
+	base              *API
+	nodeClientCertPEM string
 }
 
-func RegisterSystemAPI(mux *http.ServeMux, usersStore users.Store, nodesStore nodes.Store) {
-	base := New(nodesStore)
+func RegisterSystemAPI(mux *http.ServeMux, usersStore users.Store, nodesStore nodes.Store, clientOptions nodes.ClientOptions) {
+	cfg := config.Load()
+	clientCertPEM, _ := cert.ReadCertificatePEM(cfg.ServerNodeClientCertFile)
+	base := New(nodesStore, clientOptions)
 	api := &systemAPI{
-		users: usersStore,
-		nodes: nodesStore,
-		base:  base,
+		users:             usersStore,
+		nodes:             nodesStore,
+		base:              base,
+		nodeClientCertPEM: clientCertPEM,
 	}
+	mux.HandleFunc("/v1/node/settings", api.handleNodeSettings)
 	mux.HandleFunc("/v1/system/sync-usage", api.handleSyncUsage)
+}
+
+func (a *systemAPI) handleNodeSettings(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, http.MethodGet)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"certificate": a.nodeClientCertPEM,
+	})
 }
 
 func (a *systemAPI) handleSyncUsage(w http.ResponseWriter, r *http.Request) {

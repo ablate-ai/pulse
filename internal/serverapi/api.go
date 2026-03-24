@@ -14,31 +14,32 @@ import (
 
 type API struct {
 	store         nodes.Store
+	clientOptions nodes.ClientOptions
 	clientFactory func(node nodes.Node) *nodes.Client
 }
 
 type upsertNodeRequest struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	BaseURL   string `json:"base_url"`
-	AuthToken string `json:"auth_token"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	BaseURL string `json:"base_url"`
 }
 
 type singboxConfigRequest struct {
 	Config string `json:"config"`
 }
 
-func New(store nodes.Store) *API {
+func New(store nodes.Store, clientOptions nodes.ClientOptions) *API {
 	return &API{
-		store: store,
+		store:         store,
+		clientOptions: clientOptions,
 		clientFactory: func(node nodes.Node) *nodes.Client {
-			return nodes.NewClient(node.BaseURL, node.AuthToken)
+			return nodes.NewClient(node, clientOptions)
 		},
 	}
 }
 
-func RegisterUsersAPI(mux *http.ServeMux, usersStore users.Store, nodesStore nodes.Store) {
-	base := New(nodesStore)
+func RegisterUsersAPI(mux *http.ServeMux, usersStore users.Store, nodesStore nodes.Store, clientOptions nodes.ClientOptions) {
+	base := New(nodesStore, clientOptions)
 	newUserAPI(usersStore, nodesStore, base).Register(mux)
 }
 
@@ -67,10 +68,9 @@ func (a *API) handleNodes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		node, err := a.store.Upsert(nodes.Node{
-			ID:        req.ID,
-			Name:      req.Name,
-			BaseURL:   strings.TrimRight(req.BaseURL, "/"),
-			AuthToken: req.AuthToken,
+			ID:      req.ID,
+			Name:    req.Name,
+			BaseURL: strings.TrimRight(req.BaseURL, "/"),
 		})
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})

@@ -140,10 +140,9 @@ func (a *app) syncProtocolFields() {
 
 func (a *app) createNode() {
 	payload := map[string]any{
-		"id":         a.value("node-id"),
-		"name":       a.value("node-name"),
-		"base_url":   a.value("node-url"),
-		"auth_token": a.value("node-token"),
+		"id":       a.value("node-id"),
+		"name":     a.value("node-name"),
+		"base_url": a.value("node-url"),
 	}
 	if err := postJSON("/v1/nodes", payload, nil, a.token); err != nil {
 		a.handleAuthError(err)

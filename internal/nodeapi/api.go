@@ -6,35 +6,32 @@ import (
 	"net/http"
 	"time"
 
-	"pulse/internal/nodeauth"
 	"pulse/internal/singbox"
 )
 
 type API struct {
-	manager   *singbox.Manager
-	authToken string
+	manager *singbox.Manager
 }
 
 type singboxConfigRequest struct {
 	Config string `json:"config"`
 }
 
-func New(manager *singbox.Manager, authToken string) *API {
+func New(manager *singbox.Manager) *API {
 	return &API{
-		manager:   manager,
-		authToken: authToken,
+		manager: manager,
 	}
 }
 
 func (a *API) Register(mux *http.ServeMux) {
-	mux.Handle("/v1/node/runtime", nodeauth.Middleware(a.authToken, http.HandlerFunc(a.handleRuntime)))
-	mux.Handle("/v1/node/runtime/status", nodeauth.Middleware(a.authToken, http.HandlerFunc(a.handleStatus)))
-	mux.Handle("/v1/node/runtime/usage", nodeauth.Middleware(a.authToken, http.HandlerFunc(a.handleUsage)))
-	mux.Handle("/v1/node/runtime/version", nodeauth.Middleware(a.authToken, http.HandlerFunc(a.handleVersion)))
-	mux.Handle("/v1/node/runtime/logs", nodeauth.Middleware(a.authToken, http.HandlerFunc(a.handleLogs)))
-	mux.Handle("/v1/node/runtime/start", nodeauth.Middleware(a.authToken, http.HandlerFunc(a.handleStart)))
-	mux.Handle("/v1/node/runtime/stop", nodeauth.Middleware(a.authToken, http.HandlerFunc(a.handleStop)))
-	mux.Handle("/v1/node/runtime/restart", nodeauth.Middleware(a.authToken, http.HandlerFunc(a.handleRestart)))
+	mux.HandleFunc("/v1/node/runtime", a.handleRuntime)
+	mux.HandleFunc("/v1/node/runtime/status", a.handleStatus)
+	mux.HandleFunc("/v1/node/runtime/usage", a.handleUsage)
+	mux.HandleFunc("/v1/node/runtime/version", a.handleVersion)
+	mux.HandleFunc("/v1/node/runtime/logs", a.handleLogs)
+	mux.HandleFunc("/v1/node/runtime/start", a.handleStart)
+	mux.HandleFunc("/v1/node/runtime/stop", a.handleStop)
+	mux.HandleFunc("/v1/node/runtime/restart", a.handleRestart)
 }
 
 func (a *API) handleRuntime(w http.ResponseWriter, r *http.Request) {

@@ -3,17 +3,27 @@ package nodes
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
 
 type Client struct {
 	baseURL    string
-	authToken  string
 	httpClient *http.Client
+	initErr    error
+}
+
+type ClientOptions struct {
+	ClientCertFile string
+	ClientKeyFile  string
 }
 
 type RuntimeInfo struct {
@@ -53,18 +63,104 @@ type ConfigRequest struct {
 	Config string `json:"config"`
 }
 
-func NewClient(baseURL, authToken string) *Client {
-	return NewClientWithHTTPClient(baseURL, authToken, &http.Client{
-		Timeout: 5 * time.Second,
-	})
+func NewClient(node Node, options ClientOptions) *Client {
+	httpClient, err := buildHTTPClient(node, options)
+	return &Client{
+		baseURL:    strings.TrimRight(node.BaseURL, "/"),
+		httpClient: httpClient,
+		initErr:    err,
+	}
 }
 
-func NewClientWithHTTPClient(baseURL, authToken string, httpClient *http.Client) *Client {
+func NewClientWithHTTPClient(baseURL string, httpClient *http.Client) *Client {
 	return &Client{
 		baseURL:    strings.TrimRight(baseURL, "/"),
-		authToken:  authToken,
 		httpClient: httpClient,
 	}
+}
+
+func buildHTTPClient(node Node, options ClientOptions) (*http.Client, error) {
+	httpClient := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+	if !strings.HasPrefix(strings.TrimSpace(node.BaseURL), "https://") {
+		return httpClient, nil
+	}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	tlsConfig := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+	}
+	if options.ClientCertFile != "" || options.ClientKeyFile != "" {
+		if options.ClientCertFile == "" || options.ClientKeyFile == "" {
+			return nil, fmt.Errorf("client cert file and key file must be configured together")
+		}
+		pair, err := tls.LoadX509KeyPair(options.ClientCertFile, options.ClientKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("load client key pair: %w", err)
+		}
+		tlsConfig.Certificates = []tls.Certificate{pair}
+	}
+	serverCert, err := fetchServerCertificatePEM(node.BaseURL)
+	if err != nil {
+		return nil, err
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM([]byte(serverCert)) {
+		return nil, fmt.Errorf("parse node certificate")
+	}
+	tlsConfig.InsecureSkipVerify = true
+	tlsConfig.VerifyConnection = func(cs tls.ConnectionState) error {
+		if len(cs.PeerCertificates) == 0 {
+			return fmt.Errorf("node tls handshake did not present a certificate")
+		}
+		opts := x509.VerifyOptions{
+			Roots:         roots,
+			Intermediates: x509.NewCertPool(),
+		}
+		for _, cert := range cs.PeerCertificates[1:] {
+			opts.Intermediates.AddCert(cert)
+		}
+		_, err := cs.PeerCertificates[0].Verify(opts)
+		if err != nil {
+			return fmt.Errorf("verify node certificate: %w", err)
+		}
+		return nil
+	}
+	transport.TLSClientConfig = tlsConfig
+	httpClient.Transport = transport
+	return httpClient, nil
+}
+
+func fetchServerCertificatePEM(rawURL string) (string, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("parse node url: %w", err)
+	}
+	address := parsed.Host
+	if _, _, err := net.SplitHostPort(address); err != nil {
+		address = net.JoinHostPort(parsed.Hostname(), "443")
+	}
+
+	conn, err := tls.Dial("tcp", address, &tls.Config{
+		InsecureSkipVerify: true,
+		MinVersion:         tls.VersionTLS12,
+	})
+	if err != nil {
+		return "", fmt.Errorf("dial node tls: %w", err)
+	}
+	defer conn.Close()
+
+	state := conn.ConnectionState()
+	if len(state.PeerCertificates) == 0 {
+		return "", fmt.Errorf("node did not present a certificate")
+	}
+	pemBytes := pemEncodeCertificate(state.PeerCertificates[0].Raw)
+	return string(pemBytes), nil
+}
+
+func pemEncodeCertificate(raw []byte) []byte {
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: raw})
 }
 
 func (c *Client) Runtime(ctx context.Context) (RuntimeInfo, error) {
@@ -110,6 +206,9 @@ func (c *Client) Restart(ctx context.Context, req ConfigRequest) (Status, error)
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
+	if c.initErr != nil {
+		return fmt.Errorf("configure node client: %w", c.initErr)
+	}
 	var bodyReader *bytes.Reader
 	if body == nil {
 		bodyReader = bytes.NewReader(nil)
@@ -124,9 +223,6 @@ func (c *Client) do(ctx context.Context, method, path string, body any, out any)
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bodyReader)
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
-	}
-	if c.authToken != "" {
-		req.Header.Set("Authorization", "Bearer "+c.authToken)
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")

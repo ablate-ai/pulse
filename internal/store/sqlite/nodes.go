@@ -14,13 +14,13 @@ type NodeStore struct {
 
 func (s *NodeStore) Upsert(node nodes.Node) (nodes.Node, error) {
 	_, err := s.db.Exec(`
-		INSERT INTO nodes (id, name, base_url, auth_token)
+		INSERT INTO nodes (id, name, base_url, certificate)
 		VALUES (?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name = excluded.name,
 			base_url = excluded.base_url,
-			auth_token = excluded.auth_token
-	`, node.ID, node.Name, node.BaseURL, node.AuthToken)
+			certificate = excluded.certificate
+	`, node.ID, node.Name, node.BaseURL, "")
 	if err != nil {
 		return nodes.Node{}, fmt.Errorf("upsert node: %w", err)
 	}
@@ -44,8 +44,8 @@ func (s *NodeStore) Delete(id string) error {
 
 func (s *NodeStore) Get(id string) (nodes.Node, error) {
 	var node nodes.Node
-	err := s.db.QueryRow(`SELECT id, name, base_url, auth_token FROM nodes WHERE id = ?`, id).
-		Scan(&node.ID, &node.Name, &node.BaseURL, &node.AuthToken)
+	err := s.db.QueryRow(`SELECT id, name, base_url, certificate FROM nodes WHERE id = ?`, id).
+		Scan(&node.ID, &node.Name, &node.BaseURL, new(string))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nodes.Node{}, nodes.ErrNodeNotFound
 	}
@@ -56,7 +56,7 @@ func (s *NodeStore) Get(id string) (nodes.Node, error) {
 }
 
 func (s *NodeStore) List() ([]nodes.Node, error) {
-	rows, err := s.db.Query(`SELECT id, name, base_url, auth_token FROM nodes ORDER BY id`)
+	rows, err := s.db.Query(`SELECT id, name, base_url, certificate FROM nodes ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("list nodes: %w", err)
 	}
@@ -65,7 +65,7 @@ func (s *NodeStore) List() ([]nodes.Node, error) {
 	items := make([]nodes.Node, 0)
 	for rows.Next() {
 		var node nodes.Node
-		if err := rows.Scan(&node.ID, &node.Name, &node.BaseURL, &node.AuthToken); err != nil {
+		if err := rows.Scan(&node.ID, &node.Name, &node.BaseURL, new(string)); err != nil {
 			return nil, fmt.Errorf("scan node: %w", err)
 		}
 		items = append(items, node)
