@@ -78,6 +78,8 @@ func Run() error {
 	serverapi.New(store, clientOptions).Register(protectedV1)
 	serverapi.RegisterUsersAPI(protectedV1, userStore, store, clientOptions)
 	serverapi.RegisterSystemAPI(protectedV1, userStore, store, clientOptions)
+	mux.Handle("/v1/node/settings", authManager.Middleware(protectedV1))
+	mux.Handle("/v1/node/settings.pem", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/system/info", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/system/sync-usage", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/nodes", authManager.Middleware(protectedV1))

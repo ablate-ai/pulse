@@ -29,6 +29,7 @@ func RegisterSystemAPI(mux *http.ServeMux, usersStore users.Store, nodesStore no
 		nodeClientCertPEM: clientCertPEM,
 	}
 	mux.HandleFunc("/v1/node/settings", api.handleNodeSettings)
+	mux.HandleFunc("/v1/node/settings.pem", api.handleNodeSettingsPEM)
 	mux.HandleFunc("/v1/system/sync-usage", api.handleSyncUsage)
 }
 
@@ -40,6 +41,16 @@ func (a *systemAPI) handleNodeSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"certificate": a.nodeClientCertPEM,
 	})
+}
+
+func (a *systemAPI) handleNodeSettingsPEM(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, http.MethodGet)
+		return
+	}
+	w.Header().Set("Content-Type", "application/x-pem-file")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(a.nodeClientCertPEM))
 }
 
 func (a *systemAPI) handleSyncUsage(w http.ResponseWriter, r *http.Request) {

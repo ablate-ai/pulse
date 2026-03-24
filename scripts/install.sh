@@ -20,6 +20,10 @@ usage() {
   PULSE_NODE_TLS_CERT_FILE           node 服务端证书路径
   PULSE_NODE_TLS_KEY_FILE            node 服务端私钥路径
   PULSE_NODE_TLS_CLIENT_CERT_FILE    node 信任的 server 客户端证书路径
+  PULSE_NODE_TLS_CLIENT_CERT_PEM     node 信任的 server 客户端证书内容，传入后会自动写入证书文件
+  PULSE_SERVER_URL                   node 安装时用于获取证书的控制面地址，例如 https://panel.example.com
+  PULSE_NODE_SETTINGS_TOKEN          node 安装时用于请求控制面 `/v1/node/settings.pem` 的 Bearer Token
+  PULSE_SERVER_INSECURE              设为 1 时，node 安装拉取证书会对控制面使用 curl -k
 
 示例:
   curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
@@ -30,7 +34,86 @@ usage() {
 
   curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
     PULSE_NODE_TLS_CLIENT_CERT_FILE='/etc/pulse/server_client_cert.pem' sh -s -- node
+
+  curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
+    PULSE_NODE_TLS_CLIENT_CERT_PEM="$(cat server_client_cert.pem)" sh -s -- node
+
+  curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
+    PULSE_SERVER_URL='https://panel.example.com' \
+    PULSE_NODE_SETTINGS_TOKEN='<admin-token>' sh -s -- node
 EOF
+}
+
+tty_available() {
+  [ -r /dev/tty ] && [ -w /dev/tty ]
+}
+
+prompt_node_client_cert_pem() {
+  target_file="$1"
+  if ! tty_available; then
+    echo "缺少 PULSE_NODE_TLS_CLIENT_CERT_FILE 或 PULSE_NODE_TLS_CLIENT_CERT_PEM，且当前无法交互输入证书" >&2
+    exit 1
+  fi
+
+  cert_tmp="$(mktemp)"
+  printf "请粘贴 node 需要信任的 server 客户端证书 PEM 内容。\n" > /dev/tty
+  printf "脚本会在读取到 -----END CERTIFICATE----- 后自动继续。\n" > /dev/tty
+  : > "$cert_tmp"
+  while IFS= read -r line < /dev/tty; do
+    printf "%s\n" "$line" >> "$cert_tmp"
+    if [ "$line" = "-----END CERTIFICATE-----" ]; then
+      break
+    fi
+  done
+  if [ ! -s "$cert_tmp" ]; then
+    rm -f "$cert_tmp"
+    echo "证书内容为空，安装终止" >&2
+    exit 1
+  fi
+
+  run_as_root mkdir -p "$(dirname "$target_file")"
+  run_as_root install -m 0644 "$cert_tmp" "$target_file"
+  rm -f "$cert_tmp"
+}
+
+fetch_node_client_cert_pem() {
+  target_file="$1"
+  settings_url="${PULSE_NODE_SETTINGS_URL:-}"
+  if [ -z "$settings_url" ]; then
+    server_url="${PULSE_SERVER_URL:-}"
+    if [ -z "$server_url" ]; then
+      return 1
+    fi
+    settings_url="${server_url%/}/v1/node/settings.pem"
+  fi
+
+  token="${PULSE_NODE_SETTINGS_TOKEN:-}"
+  if [ -z "$token" ]; then
+    return 1
+  fi
+
+  cert_tmp="$(mktemp)"
+  curl_opts="-fsSL"
+  if [ "${PULSE_SERVER_INSECURE:-}" = "1" ]; then
+    curl_opts="$curl_opts -k"
+  fi
+
+  if ! sh -c "curl $curl_opts -H 'Authorization: Bearer $token' '$settings_url' -o '$cert_tmp'"; then
+    rm -f "$cert_tmp"
+    echo "从控制面获取 node 客户端证书失败: $settings_url" >&2
+    exit 1
+  fi
+
+  if [ ! -s "$cert_tmp" ]; then
+    rm -f "$cert_tmp"
+    echo "从控制面获取到的证书内容为空" >&2
+    exit 1
+  fi
+
+  run_as_root mkdir -p "$(dirname "$target_file")"
+  run_as_root install -m 0644 "$cert_tmp" "$target_file"
+  rm -f "$cert_tmp"
+  return 0
 }
 
 need_cmd() {
@@ -176,6 +259,22 @@ else
   env_target="${etc_dir}/pulse-node.env"
   if [ ! -f "$env_target" ]; then
     run_as_root install -m 0644 "${package_dir}/etc/pulse/pulse-node.env.example" "$env_target"
+  fi
+  cert_target="${PULSE_NODE_TLS_CLIENT_CERT_FILE:-${etc_dir}/server_client_cert.pem}"
+  if [ "${PULSE_NODE_TLS_CLIENT_CERT_PEM+x}" = "x" ]; then
+    cert_tmp="$(mktemp)"
+    printf "%s\n" "$PULSE_NODE_TLS_CLIENT_CERT_PEM" > "$cert_tmp"
+    run_as_root mkdir -p "$(dirname "$cert_target")"
+    run_as_root install -m 0644 "$cert_tmp" "$cert_target"
+    rm -f "$cert_tmp"
+    PULSE_NODE_TLS_CLIENT_CERT_FILE="$cert_target"
+  elif [ "${PULSE_NODE_TLS_CLIENT_CERT_FILE+x}" != "x" ]; then
+    if fetch_node_client_cert_pem "$cert_target"; then
+      PULSE_NODE_TLS_CLIENT_CERT_FILE="$cert_target"
+    else
+      prompt_node_client_cert_pem "$cert_target"
+      PULSE_NODE_TLS_CLIENT_CERT_FILE="$cert_target"
+    fi
   fi
   if [ "${PULSE_NODE_TLS_CERT_FILE+x}" = "x" ]; then
     set_env_file_value "$env_target" "PULSE_NODE_TLS_CERT_FILE" "$PULSE_NODE_TLS_CERT_FILE"

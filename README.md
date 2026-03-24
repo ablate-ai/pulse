@@ -71,14 +71,37 @@ curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/instal
   PULSE_ADMIN_PASSWORD='strong-password' sh -s -- server
 ```
 
-2. 由管理员从控制面的 `/v1/node/settings` 获取 node 需要信任的证书
+2. 由管理员从控制面获取安装 node 用的 token
 
 ```bash
 curl -H "Authorization: Bearer <admin-token>" \
   https://panel.example.com/v1/node/settings
 ```
 
-3. 将证书保存到 node 机器后，再安装 `node`
+3. 在 node 机器上直接安装 `node`
+
+推荐直接让安装脚本从控制面拉取证书：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
+  PULSE_SERVER_URL='https://panel.example.com' \
+  PULSE_NODE_SETTINGS_TOKEN='<admin-token>' sh -s -- node
+```
+
+如果控制面证书暂时不方便直接拉取，脚本也支持在安装时交互粘贴证书内容。执行命令后，直接把整段 PEM 粘贴到终端，脚本会在读取到 `-----END CERTIFICATE-----` 后自动继续：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | sh -s -- node
+```
+
+如果你已经把证书内容放在本地文件里，也可以直接传 PEM 内容：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
+  PULSE_NODE_TLS_CLIENT_CERT_PEM="$(cat server_client_cert.pem)" sh -s -- node
+```
+
+如果你已经提前把证书保存成文件，也可以继续传文件路径：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
@@ -91,7 +114,8 @@ curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/instal
 - 安装二进制到 `/usr/local/bin`
 - 安装示例配置到 `/etc/pulse`
 - `server` 首次启动时自动生成用于访问节点的客户端证书与私钥
-- 管理员可通过控制面 `/v1/node/settings` 获取 node 需要信任的 server 客户端证书
+- 管理员可通过控制面 `/v1/node/settings` 或 `/v1/node/settings.pem` 获取 node 需要信任的 server 客户端证书
+- `node` 安装时支持四种方式：从控制面自动拉取、交互粘贴证书、直接传 PEM 内容、传证书文件路径
 - 将安装时提供的管理员密码或 TLS 证书路径写入 `/etc/pulse/*.env`
 - 安装 `systemd` 服务
 - 自动执行 `systemctl enable --now`

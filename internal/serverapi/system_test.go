@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"pulse/internal/nodes"
@@ -34,5 +35,25 @@ func TestNodeSettingsReturnsCertificate(t *testing.T) {
 	}
 	if body.Certificate == "" {
 		t.Fatalf("expected certificate in response")
+	}
+}
+
+func TestNodeSettingsPEMReturnsPlainCertificate(t *testing.T) {
+	api := &systemAPI{
+		users:             users.NewMemoryStore(),
+		nodes:             nodes.NewMemoryStore(),
+		base:              New(nodes.NewMemoryStore(), nodes.ClientOptions{}),
+		nodeClientCertPEM: "-----BEGIN CERTIFICATE-----\nTEST\n-----END CERTIFICATE-----\n",
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/node/settings.pem", nil)
+	rec := httptest.NewRecorder()
+	api.handleNodeSettingsPEM(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if got := rec.Body.String(); !strings.HasPrefix(got, "-----BEGIN CERTIFICATE-----") {
+		t.Fatalf("unexpected pem body: %q", got)
 	}
 }
