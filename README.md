@@ -39,7 +39,16 @@ go build ./cmd/pulse-node
 
 ## 打包发布
 
-本地生成 Linux 发布包：
+默认不需要手动在本地打包。
+
+推送形如 `v*` 的 Git tag 后，GitHub Actions 会自动：
+
+- 构建 `pulse-server` 与 `pulse-node`
+- 生成 Linux `amd64` / `arm64` 发布包
+- 生成 `checksums.txt`
+- 发布到 GitHub Release
+
+如果只是本地验证打包流程，再手动执行：
 
 ```bash
 make package-server TARGET_OS=linux TARGET_ARCH=amd64 VERSION=v0.1.0
@@ -47,7 +56,7 @@ make package-node TARGET_OS=linux TARGET_ARCH=amd64 VERSION=v0.1.0
 make checksums
 ```
 
-产物会输出到 `dist/release/`。
+本地产物会输出到 `dist/release/`。
 
 ## 安装脚本
 

@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -25,10 +26,11 @@ jobs:
 
       - name: Build release package
         run: |
+          version="${GITHUB_REF_NAME:-dev}"
           make package-${{ matrix.component }} \
             TARGET_OS=linux \
             TARGET_ARCH=${{ matrix.arch }} \
-            VERSION=${GITHUB_REF_NAME}
+            VERSION=${version}
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
