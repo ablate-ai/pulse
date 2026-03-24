@@ -101,14 +101,14 @@
 - [x] 建立 `internal/proxycfg`
 - [ ] 建立 `internal/templates`
 - [x] 支持创建用户
-- [ ] 支持更新用户
+- [x] 支持更新用户（PUT /v1/users/{id}）
 - [x] 支持删除用户
-- [ ] 支持用户状态管理
+- [x] 支持用户状态管理（active/disabled/limited/expired/on_hold 状态机）
 - [x] 支持流量限制
-- [ ] 支持到期时间限制
-- [ ] 支持周期流量重置规则
+- [x] 支持到期时间限制（expire_at 字段，EffectiveStatus 自动计算）
+- [x] 支持周期流量重置规则（data_limit_reset_strategy 字段 + ResetTraffic 定时 job）
 - [ ] 支持单用户多协议配置
-- [ ] 支持 Vmess
+- [x] 支持 Vmess（proxycfg + vmess:// 订阅链接）
 - [x] 支持 VLESS
 - [x] 支持 Trojan
 - [x] 支持 Shadowsocks
@@ -122,17 +122,17 @@
 ## Phase 5: 统计、任务与自动化
 
 - [x] 建立 `internal/usage`
-- [ ] 建立 `internal/jobs`
+- [x] 建立 `internal/jobs`
 - [ ] 建立 `internal/online`
 - [ ] 建立 `internal/notify`
 - [x] 支持使用量采集
 - [ ] 支持在线状态采集
-- [ ] 支持定时任务调度
-- [ ] 支持过期用户自动处理
-- [ ] 支持周期流量自动重置
+- [x] 支持定时任务调度（Scheduler + Job + 启动时随 context 运行）
+- [ ] 支持过期用户自动处理（EffectiveStatus 已实时计算，定时重载待补）
+- [x] 支持周期流量自动重置（ResetTraffic job，每分钟检查）
 - [ ] 支持基础通知机制
 - [ ] 支持基础运营报表
-- [ ] 补任务可靠性测试
+- [x] 补任务可靠性测试（ShouldResetTraffic + SyncUsage + ResetTraffic 全覆盖）
 
 ## Phase 6: 面板与交互层
 
@@ -142,10 +142,10 @@
 - [ ] 如果重做前端，确定技术栈和目录结构
 - [x] 完成最小 MVP 面板（登录/节点新增/用户新增/系统概览）
 - [x] 完成登录页
-- [ ] 完成用户管理页
-- [ ] 完成节点管理页
+- [x] 完成用户管理页（状态徽章、流量进度条、编辑 Modal、状态/协议/关键词过滤）
+- [x] 完成节点管理页（启动/停止/重启/日志、运行状态徽章）
 - [ ] 完成系统配置页
-- [ ] 完成订阅相关交互
+- [x] 完成订阅相关交互（一键获取订阅链接）
 
 ## Phase 7: CLI、发布与运维
 
@@ -173,26 +173,49 @@
 
 ## 对照 Marzban 当前差距
 
-- [ ] 多管理员与权限模型
-- [ ] 用户模板 CRUD、模板应用与批量开通
-- [ ] 用户高级状态机：`active` / `disabled` / `limited` / `expired` / `on_hold`
-- [ ] 到期时间、按周期流量重置、手动重置流量、订阅撤销与轮换
-- [ ] 单用户多协议
-- [ ] Vmess 支持
-- [ ] Clash / ClashMeta / Sing-box / V2Ray JSON / Outline 订阅输出
-- [ ] 分享链接与二维码生成
-- [ ] 入站、出站、host、fallback 与系统核心配置的读取和编辑
-- [ ] TLS / REALITY / 多入站同端口等高级配置管理
-- [ ] 节点更新、重连、状态持久化、节点使用量统计
-- [ ] 节点日志 WebSocket 流式转发
-- [ ] 用户历史用量、节点历史用量、在线用户统计
-- [ ] 定时任务体系：usage record / review users / expired cleanup / reset
-- [ ] Webhook 通知
-- [ ] Telegram Bot
-- [ ] Discord 集成
-- [ ] 管理 CLI（admin / user / subscription）
-- [ ] 数据导入导出与备份恢复
-- [ ] 多语言与完整前端面板
+> 参照 Marzban `app/routers/*`、`app/models/*`、`app/jobs/*` 能力集全面核对（2026-03-24）。
+> 优先级：P0 必须 → P1 重要 → P2 中等 → P3 锦上添花
+
+### P0：核心商业逻辑（阻塞 MVP）
+
+- [x] **用户状态机**：`active` / `disabled` / `limited` / `expired` / `on_hold` 五态；`EffectiveStatus()` 在读取时实时计算，无需写库 job
+- [x] **流量重置策略**：`no_reset` / `day` / `week` / `month` / `year`；`ResetTraffic` 定时 job 每分钟检查并重置
+- [x] **用户到期管理**：`expire_at` 字段 + `EffectiveStatus()` 自动计算 expired 状态；`on_hold_expire_duration` / `on_hold_timeout` 暂缓
+- [x] **多协议支持**：VMess（UUID + vmess:// 标准 base64 链接）、Trojan（password）、Shadowsocks（method）完整支持；sing-box 配置统一由 `BuildSingboxConfig` 生成；单用户多协议绑定暂缓
+- [x] **Inbound / Host 管理**：`/v1/inbounds` + `/v1/hosts` CRUD；Host 含 `remark/address/port/sni/host/path/security/alpn/fingerprint/allow_insecure/mux_enable` 字段；SQLite 持久化；用户级 `excluded_inbounds` 暂缓
+
+### P1：重要功能
+
+- [x] **定时任务体系**：`SyncUsage`（1 分钟）/ `ResetTraffic`（1 分钟，按 DataLimitResetStrategy）；Scheduler 随 server context 启动；`review_users` / `remove_expired_users` 通过 EffectiveStatus 运行时计算替代
+- [ ] **Webhook 通知**：15+ 事件类型（`user_created/updated/deleted/limited/expired/disabled/enabled` 等）+ 重试机制 + `WEBHOOK_SECRET` 签名验证
+- [ ] **多管理员与权限模型**：多 Admin + `is_sudo` 权限区分 + Admin 下用户隔离 + `set-owner` 转移所有权 + 批量禁用/激活所属用户
+- [ ] **NextPlan 系统**：用户订阅到期/流量耗尽后自动切换下一计划（`add_remaining_traffic`、`fire_on_either` 字段）；`/user/{username}/active-next` 端点
+
+### P2：中等优先级
+
+- [ ] **用户模板系统**：`/user_template` CRUD；模板包含 `data_limit/expire_duration/inbounds/username_prefix/suffix`
+- [ ] **使用量历史记录**：`NodeUserUsage` / `NodeUsage` 时序表；`/user/{username}/usage` 和 `/node/{id}/usage` 按日期范围查询；重置时写入 `UserUsageResetLogs`
+- [ ] **批量用户操作**：`/users/reset`（全量重置流量）、`/users/expired`（查询/删除过期用户）
+- [ ] **系统统计端点**：CPU/内存 + 用户分状态计数 + 在线用户数（24h）+ 实时带宽
+- [ ] **用户查询过滤**：`/users` 支持 `username/search/status/admin/sort/offset/limit` 参数
+- [ ] **用户在线状态追踪**：`online_at`（最后在线）+ `last_status_change` 字段
+- [ ] **订阅撤销**：`/user/{username}/revoke_sub`；独立订阅令牌（非用户 ID）；`sub_updated_at` / `sub_last_user_agent` / `sub_revoked_at` 字段
+- [ ] **通知提醒去重**：`NotificationReminder` 表；支持 `expiration_date` / `data_usage` 类型 + 阈值（如 80% 流量）
+- [ ] **节点日志 WebSocket 流式转发**：`/node/{id}/logs`
+- [ ] **Core 管理端点**：`/core/config`（读写）、`/core/restart`、`/core/logs`（WebSocket）
+- [ ] **节点更新接口** + 节点状态持久化 + 节点历史使用量统计
+
+### P3：锦上添花
+
+- [ ] **高级订阅格式**：Clash / ClashMeta / Sing-box / V2Ray JSON / Outline；User-Agent 自适应；HTML 订阅页
+- [ ] **高级代理配置**：ALPN、TLS Fingerprint、Fragment、Noise、XTLS flow、REALITY
+- [ ] **Telegram Bot 通知**：管理员绑定 `telegram_id`，接收用户操作事件
+- [ ] **Discord Webhook 通知**
+- [ ] **Admin 使用量追踪**：`users_usage` 字段 + `/admin/usage` 端点 + `AdminUsageLogs` 历史
+- [ ] **分享链接与二维码生成**
+- [ ] **登录审计日志**：记录登录事件（成功/失败 + IP）
+- [ ] **数据导入导出与备份恢复**
+- [ ] **多语言与完整前端面板**
 
 ## 暂缓事项
 

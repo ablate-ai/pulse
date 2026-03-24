@@ -3,185 +3,238 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Pulse Control</title>
+  <title>Pulse</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <main class="shell">
-    <aside class="sidebar">
-      <div class="brand">
-        <p class="eyebrow">Pulse</p>
-        <h1>Control</h1>
-        <p class="sub">把概览、节点和用户拆成独立视图，避免所有操作堆在一个页面。</p>
+
+<div class="shell">
+  <!-- ─── Sidebar ───────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-icon">◈</span>
+      <span class="brand-name">Pulse</span>
+    </div>
+
+    <nav id="app-nav" class="nav" hidden>
+      <a href="/overview" data-route="/overview" class="nav-item">
+        <span class="nav-icon">⬡</span> Overview
+      </a>
+      <a href="/nodes" data-route="/nodes" class="nav-item">
+        <span class="nav-icon">⬡</span> Nodes
+      </a>
+      <a href="/users" data-route="/users" class="nav-item">
+        <span class="nav-icon">⬡</span> Users
+      </a>
+    </nav>
+
+    <div id="auth-panel" class="sidebar-section">
+      <p class="section-label">管理员登录</p>
+      <form id="login-form" class="form-stack">
+        <input id="login-username" placeholder="用户名" autocomplete="username" required>
+        <input id="login-password" type="password" placeholder="密码" autocomplete="current-password" required>
+        <button type="submit" class="btn btn-primary">登录</button>
+      </form>
+    </div>
+
+    <div id="quick-panel" class="sidebar-section" hidden>
+      <p class="section-label">快捷操作</p>
+      <div class="btn-stack">
+        <button id="sync-usage" class="btn btn-ghost btn-sm">↻ 同步使用量</button>
+        <button id="refresh-system" class="btn btn-ghost btn-sm">↻ 刷新概览</button>
+        <button id="refresh-nodes" class="btn btn-ghost btn-sm">↻ 刷新节点</button>
+        <button id="refresh-users" class="btn btn-ghost btn-sm">↻ 刷新用户</button>
+        <button id="logout" class="btn btn-ghost btn-sm btn-danger">退出登录</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ─── Content ──────────────────────────────────────── -->
+  <main class="content">
+    <header class="topbar">
+      <h1 id="page-title" class="page-title">Overview</h1>
+      <div id="status" class="status-bar">初始化中...</div>
+    </header>
+
+    <div id="app-panel" hidden>
+
+      <!-- Overview ──────────────────────────────────────── -->
+      <section id="route-overview" class="route">
+        <div class="stats-grid" id="system-info">
+          <div class="stat-card skeleton"></div>
+          <div class="stat-card skeleton"></div>
+          <div class="stat-card skeleton"></div>
+          <div class="stat-card skeleton"></div>
+        </div>
+
+        <div class="card mt-4">
+          <div class="card-head">
+            <h3 class="card-title">安装 Node</h3>
+            <p class="card-sub">快速部署命令和 mTLS 信任证书</p>
+          </div>
+          <div id="node-install-info" class="install-grid">
+            <div class="install-item skeleton"></div>
+            <div class="install-item skeleton"></div>
+            <div class="install-item skeleton install-item-wide"></div>
+            <div class="install-item skeleton install-item-wide"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Nodes ─────────────────────────────────────────── -->
+      <section id="route-nodes" class="route" hidden>
+        <div class="card">
+          <div class="card-head">
+            <h3 class="card-title">添加节点</h3>
+          </div>
+          <form id="node-form" class="form-row">
+            <input id="node-name" placeholder="节点名称" required>
+            <input id="node-url" placeholder="https://127.0.0.1:8081" required>
+            <button type="submit" class="btn btn-primary btn-nowrap">保存</button>
+          </form>
+        </div>
+
+        <div id="nodes" class="node-grid mt-4 empty-state">暂无节点</div>
+      </section>
+
+      <!-- Users ─────────────────────────────────────────── -->
+      <section id="route-users" class="route" hidden>
+        <div class="users-layout">
+          <!-- Create Panel -->
+          <div class="card create-panel">
+            <div class="card-head">
+              <h3 class="card-title">添加用户</h3>
+            </div>
+            <form id="user-form" class="form-stack">
+              <input id="user-name" placeholder="用户名" required>
+
+              <select id="user-protocol" required>
+                <option value="vless">VLESS</option>
+                <option value="vmess">VMess</option>
+                <option value="trojan">Trojan</option>
+                <option value="shadowsocks">Shadowsocks</option>
+              </select>
+
+              <input id="user-secret" placeholder="密钥（可留空自动生成）">
+
+              <div id="user-method-wrap">
+                <input id="user-method" placeholder="加密方式（如 aes-128-gcm）">
+              </div>
+
+              <div class="form-row-2">
+                <input id="user-domain" placeholder="example.com" required>
+                <input id="user-port" placeholder="443" type="number" min="1" max="65535" required>
+              </div>
+
+              <input id="user-traffic-limit" placeholder="流量上限（字节，0=不限）" type="number" min="0">
+
+              <select id="user-reset-strategy">
+                <option value="no_reset">流量不重置</option>
+                <option value="day">每天重置</option>
+                <option value="week">每周重置</option>
+                <option value="month">每月重置</option>
+                <option value="year">每年重置</option>
+              </select>
+
+              <div class="field-group">
+                <label class="field-label" for="user-expire-at">过期时间（可选）</label>
+                <input id="user-expire-at" type="datetime-local">
+              </div>
+
+              <select id="user-node" required>
+                <option value="">选择节点</option>
+              </select>
+
+              <button type="submit" class="btn btn-primary">创建用户</button>
+            </form>
+          </div>
+
+          <!-- User List -->
+          <div>
+            <div class="list-toolbar">
+              <input id="user-search" placeholder="搜索用户名 / 节点 / 域名" class="search-input">
+              <select id="user-filter-protocol" class="filter-select">
+                <option value="">全部协议</option>
+                <option value="vless">VLESS</option>
+                <option value="vmess">VMess</option>
+                <option value="trojan">Trojan</option>
+                <option value="shadowsocks">Shadowsocks</option>
+              </select>
+              <select id="user-filter-status" class="filter-select">
+                <option value="">全部状态</option>
+                <option value="active">Active</option>
+                <option value="disabled">Disabled</option>
+                <option value="limited">Limited</option>
+                <option value="expired">Expired</option>
+                <option value="on_hold">On Hold</option>
+              </select>
+            </div>
+            <div id="users" class="user-list empty-state">暂无用户</div>
+          </div>
+        </div>
+      </section>
+
+    </div><!-- /app-panel -->
+  </main>
+</div><!-- /shell -->
+
+<!-- ─── Edit User Modal ────────────────────────────────── -->
+<dialog id="edit-modal" class="modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3 class="modal-title">编辑用户</h3>
+      <button id="edit-modal-close" type="button" class="btn-icon">✕</button>
+    </div>
+    <form id="edit-form" class="form-stack">
+      <input type="hidden" id="edit-user-id">
+
+      <div class="field-group">
+        <label class="field-label">状态</label>
+        <select id="edit-status">
+          <option value="active">Active（活跃）</option>
+          <option value="disabled">Disabled（手动停用）</option>
+          <option value="on_hold">On Hold（暂停）</option>
+        </select>
       </div>
 
-      <nav id="app-nav" class="nav" hidden>
-        <a href="/overview" data-route="/overview" class="nav-link">Overview</a>
-        <a href="/nodes" data-route="/nodes" class="nav-link">Nodes</a>
-        <a href="/users" data-route="/users" class="nav-link">Users</a>
-      </nav>
+      <div class="field-group">
+        <label class="field-label">流量上限（字节，0 = 不限）</label>
+        <input id="edit-traffic-limit" type="number" min="0">
+      </div>
 
-      <section id="auth-panel" class="auth-card">
-        <div class="section-head">
-          <h2>管理员登录</h2>
-        </div>
-        <form id="login-form" class="stack">
-          <input id="login-username" placeholder="admin" required>
-          <input id="login-password" type="password" placeholder="admin" required>
-          <button type="submit">登录</button>
-        </form>
-        <p class="meta">默认账号密码由 `PULSE_ADMIN_USERNAME` / `PULSE_ADMIN_PASSWORD` 控制。</p>
-      </section>
+      <div class="field-group">
+        <label class="field-label">流量重置策略</label>
+        <select id="edit-reset-strategy">
+          <option value="no_reset">不重置</option>
+          <option value="day">每天</option>
+          <option value="week">每周</option>
+          <option value="month">每月</option>
+          <option value="year">每年</option>
+        </select>
+      </div>
 
-      <section id="quick-panel" class="auth-card" hidden>
-        <div class="section-head">
-          <h2>快捷操作</h2>
-          <button id="logout" type="button" class="ghost">退出</button>
-        </div>
-        <div class="stack">
-          <button id="refresh-system" type="button" class="ghost stretch">刷新概览</button>
-          <button id="sync-usage" type="button" class="ghost stretch">同步使用量</button>
-          <button id="refresh-nodes" type="button" class="ghost stretch">刷新节点</button>
-          <button id="refresh-users" type="button" class="ghost stretch">刷新用户</button>
-        </div>
-      </section>
-    </aside>
+      <div class="field-group">
+        <label class="field-label">过期时间（留空 = 永不过期）</label>
+        <input id="edit-expire-at" type="datetime-local">
+      </div>
 
-    <section class="content">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">Pulse Control</p>
-          <h2 id="page-title">Overview</h2>
-        </div>
-        <div id="status" class="status">页面初始化中...</div>
-      </header>
+      <div class="modal-actions">
+        <button type="button" id="edit-modal-cancel" class="btn btn-ghost">取消</button>
+        <button type="submit" class="btn btn-primary">保存修改</button>
+      </div>
+    </form>
+  </div>
+</dialog>
 
-      <section id="app-panel" hidden>
-        <section id="route-overview" class="route-screen">
-          <div class="section-head">
-            <div>
-              <h3>系统概览</h3>
-              <p class="meta">状态、协议分布、最近一次下发和同步结果。</p>
-            </div>
-          </div>
-          <div id="system-info" class="stats-grid empty">暂无统计</div>
-          <section class="panel install-panel">
-            <div class="section-head">
-              <div>
-                <h4>安装 Node</h4>
-                <p class="meta">在页面里查看控制面地址、当前 Bearer Token、证书 PEM 和安装命令。</p>
-              </div>
-            </div>
-            <div id="node-install-info" class="install-grid empty">加载中...</div>
-          </section>
-          <div class="overview-links">
-            <article class="panel overview-panel">
-              <p class="eyebrow">Nodes</p>
-              <h4>节点视图</h4>
-              <p class="meta">集中处理节点新增、Runtime、Logs 和运行状态。</p>
-              <a href="/nodes" data-route="/nodes" class="inline-link">进入节点页</a>
-            </article>
-            <article class="panel overview-panel">
-              <p class="eyebrow">Users</p>
-              <h4>用户视图</h4>
-              <p class="meta">集中处理用户创建、筛选、订阅、配置预览和下发。</p>
-              <a href="/users" data-route="/users" class="inline-link">进入用户页</a>
-            </article>
-          </div>
-        </section>
-
-        <section id="route-nodes" class="route-screen" hidden>
-          <div class="section-head">
-            <div>
-              <h3>节点管理</h3>
-              <p class="meta">节点创建、运行时状态、日志和删除操作集中在这里。</p>
-            </div>
-          </div>
-          <section class="panel node-compose">
-            <div class="section-head">
-              <div>
-                <h4>新增节点</h4>
-                <p class="meta">基础设施对象单独编排，避免和用户操作混在一起。</p>
-              </div>
-            </div>
-            <form id="node-form" class="node-form-grid">
-              <input id="node-name" placeholder="节点名称" required>
-              <input id="node-url" placeholder="https://127.0.0.1:8081" required>
-              <button type="submit">保存节点</button>
-            </form>
-          </section>
-          <section class="panel resource-panel">
-            <div class="section-head">
-              <h4>节点列表</h4>
-              <p class="meta">查看 runtime、日志和节点基础信息。</p>
-            </div>
-            <div id="nodes" class="node-grid empty">暂无节点</div>
-          </section>
-        </section>
-
-        <section id="route-users" class="route-screen" hidden>
-          <div class="section-head">
-            <div>
-              <h3>用户管理</h3>
-              <p class="meta">用户创建、筛选、订阅、配置预览和下发操作集中在这里。</p>
-            </div>
-          </div>
-          <div class="users-layout">
-            <section class="panel create-panel">
-              <div class="section-head">
-                <h4>新增用户</h4>
-              </div>
-              <form id="user-form" class="stack">
-                <input id="user-name" placeholder="alice" required>
-                <select id="user-protocol" required>
-                  <option value="vless">VLESS</option>
-                  <option value="trojan">Trojan</option>
-                  <option value="shadowsocks">Shadowsocks</option>
-                </select>
-                <input id="user-secret" placeholder="密码/密钥，可留空自动生成">
-                <input id="user-method" placeholder="Shadowsocks 加密，如 aes-128-gcm">
-                <input id="user-domain" placeholder="example.com" required>
-                <input id="user-port" placeholder="443" type="number" required>
-                <input id="user-traffic-limit" placeholder="流量上限字节，0 表示不限" type="number" min="0">
-                <select id="user-node" required>
-                  <option value="">先选择节点</option>
-                </select>
-                <button type="submit">创建用户</button>
-              </form>
-            </section>
-            <section class="panel resource-panel">
-              <div class="section-head">
-                <div>
-                  <h4>用户列表</h4>
-                  <p class="meta">支持关键字和协议筛选。</p>
-                </div>
-              </div>
-              <div class="filters">
-                <input id="user-search" placeholder="按用户名 / 节点 / 域名筛选">
-                <select id="user-filter-protocol">
-                  <option value="">全部协议</option>
-                  <option value="vless">VLESS</option>
-                  <option value="trojan">Trojan</option>
-                  <option value="shadowsocks">Shadowsocks</option>
-                </select>
-              </div>
-              <div id="users" class="resource-list empty">暂无用户</div>
-            </section>
-          </div>
-        </section>
-      </section>
-    </section>
-  </main>
-
-  <script src="/wasm_exec.js"></script>
-  <script>
-    const go = new Go();
-    WebAssembly.instantiateStreaming(fetch("/app.wasm"), go.importObject).then((result) => {
-      go.run(result.instance);
-    }).catch((error) => {
+<script src="/wasm_exec.js"></script>
+<script>
+  const go = new Go();
+  WebAssembly.instantiateStreaming(fetch("/app.wasm"), go.importObject)
+    .then(result => go.run(result.instance))
+    .catch(err => {
       const el = document.getElementById("status");
-      if (el) el.textContent = "Wasm 加载失败: " + error;
+      if (el) el.textContent = "WASM 加载失败: " + err;
     });
-  </script>
+</script>
 </body>
 </html>

@@ -5,6 +5,7 @@ package main
 import "syscall/js"
 
 func (a *app) bind() {
+	// 登录 / 退出
 	a.byID("login-form").Call("addEventListener", "submit", js.FuncOf(func(this js.Value, args []js.Value) any {
 		args[0].Call("preventDefault")
 		go a.login()
@@ -16,18 +17,38 @@ func (a *app) bind() {
 		return nil
 	}))
 
+	// 节点表单
 	a.byID("node-form").Call("addEventListener", "submit", js.FuncOf(func(this js.Value, args []js.Value) any {
 		args[0].Call("preventDefault")
 		go a.createNode()
 		return nil
 	}))
 
+	// 用户表单
 	a.byID("user-form").Call("addEventListener", "submit", js.FuncOf(func(this js.Value, args []js.Value) any {
 		args[0].Call("preventDefault")
 		go a.createUser()
 		return nil
 	}))
 
+	// 编辑 Modal 表单
+	a.byID("edit-form").Call("addEventListener", "submit", js.FuncOf(func(this js.Value, args []js.Value) any {
+		args[0].Call("preventDefault")
+		go a.submitEditUser()
+		return nil
+	}))
+
+	a.byID("edit-modal-close").Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
+		a.byID("edit-modal").Call("close")
+		return nil
+	}))
+
+	a.byID("edit-modal-cancel").Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
+		a.byID("edit-modal").Call("close")
+		return nil
+	}))
+
+	// 快捷操作
 	a.byID("refresh-nodes").Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
 		go a.loadNodes()
 		return nil
@@ -48,24 +69,28 @@ func (a *app) bind() {
 		return nil
 	}))
 
+	// 协议切换
 	a.byID("user-protocol").Call("addEventListener", "change", js.FuncOf(func(this js.Value, args []js.Value) any {
 		a.syncProtocolFields()
 		return nil
 	}))
 
-	a.byID("user-search").Call("addEventListener", "input", js.FuncOf(func(this js.Value, args []js.Value) any {
-		a.renderUsers()
-		return nil
-	}))
+	// 用户列表过滤
+	for _, id := range []string{"user-search", "user-filter-protocol", "user-filter-status"} {
+		id := id
+		a.byID(id).Call("addEventListener", "input", js.FuncOf(func(this js.Value, args []js.Value) any {
+			a.renderUsers()
+			return nil
+		}))
+		a.byID(id).Call("addEventListener", "change", js.FuncOf(func(this js.Value, args []js.Value) any {
+			a.renderUsers()
+			return nil
+		}))
+	}
 
-	a.byID("user-filter-protocol").Call("addEventListener", "change", js.FuncOf(func(this js.Value, args []js.Value) any {
-		a.renderUsers()
-		return nil
-	}))
-
+	// 路由导航
 	links := a.document.Call("querySelectorAll", "[data-route]")
-	linkCount := links.Get("length").Int()
-	for i := 0; i < linkCount; i++ {
+	for i := 0; i < links.Get("length").Int(); i++ {
 		link := links.Index(i)
 		link.Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
 			args[0].Call("preventDefault")

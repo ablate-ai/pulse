@@ -54,7 +54,7 @@ func (a *app) loadSystemInfo() {
 		</article>
 		<article class="stat-card">
 			<p class="meta">总流量</p>
-			<strong>%dB</strong>
+			<strong>%s</strong>
 		</article>
 		<article class="stat-card wide">
 			<p class="meta">系统</p>
@@ -69,7 +69,7 @@ func (a *app) loadSystemInfo() {
 		resp.NodesCount,
 		resp.UsersCount,
 		resp.TotalApplyCount,
-		resp.TotalUsedBytes,
+		formatBytes(resp.TotalUsedBytes),
 		escape(resp.Name),
 		escape(resp.Description),
 		escape(strings.Join(parts, " · ")),
