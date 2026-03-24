@@ -116,12 +116,8 @@ func (a *API) handleStop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.manager.Stop(); err != nil {
-		status := http.StatusBadRequest
-		if err == singbox.ErrNotRunning {
-			status = http.StatusConflict
-		}
-		writeJSON(w, status, map[string]any{"error": err.Error()})
+	if err := a.manager.Stop(); err != nil && err != singbox.ErrNotRunning {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
 
