@@ -14,33 +14,19 @@ usage() {
   PULSE_INSTALL_LIB   systemd 安装目录，默认 /etc/systemd/system
   PULSE_STATE_DIR     工作目录，默认 /var/lib/pulse
   PULSE_ADMIN_USERNAME server 安装时写入管理员用户名，默认 admin
-  PULSE_ADMIN_PASSWORD server 安装时写入管理员密码，默认 change-me
+  PULSE_ADMIN_PASSWORD server 安装时写入管理员密码，不指定则随机生成
+  PULSE_SERVER_ADDR    server 监听地址，不指定则随机端口（格式 :端口）
   PULSE_SERVER_NODE_CLIENT_CERT_FILE server 访问节点时使用的客户端证书路径
   PULSE_SERVER_NODE_CLIENT_KEY_FILE  server 访问节点时使用的客户端私钥路径
   PULSE_NODE_TLS_CERT_FILE           node 服务端证书路径
   PULSE_NODE_TLS_KEY_FILE            node 服务端私钥路径
-  PULSE_NODE_TLS_CLIENT_CERT_FILE    node 信任的 server 客户端证书路径
-  PULSE_NODE_TLS_CLIENT_CERT_PEM     node 信任的 server 客户端证书内容，传入后会自动写入证书文件
-  PULSE_SERVER_URL                   node 安装时用于获取证书的控制面地址，例如 https://panel.example.com
-  PULSE_NODE_SETTINGS_TOKEN          node 安装时用于请求控制面 `/v1/node/settings.pem` 的 Bearer Token
-  PULSE_SERVER_INSECURE              设为 1 时，node 安装拉取证书会对控制面使用 curl -k
 
 示例:
   curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
     PULSE_ADMIN_PASSWORD='strong-password' sh -s -- server
 
-  curl -H "Authorization: Bearer <admin-token>" \
-    https://panel.example.com/v1/node/settings
-
   curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
-    PULSE_NODE_TLS_CLIENT_CERT_FILE='/etc/pulse/server_client_cert.pem' sh -s -- node
-
-  curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
-    PULSE_NODE_TLS_CLIENT_CERT_PEM="$(cat server_client_cert.pem)" sh -s -- node
-
-  curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
-    PULSE_SERVER_URL='https://panel.example.com' \
-    PULSE_NODE_SETTINGS_TOKEN='<admin-token>' sh -s -- node
+    sh -s -- node
 EOF
 }
 
@@ -51,7 +37,7 @@ tty_available() {
 prompt_node_client_cert_pem() {
   target_file="$1"
   if ! tty_available; then
-    echo "缺少 PULSE_NODE_TLS_CLIENT_CERT_FILE 或 PULSE_NODE_TLS_CLIENT_CERT_PEM，且当前无法交互输入证书" >&2
+    echo "无法交互输入证书，请确保在终端中运行安装脚本" >&2
     exit 1
   fi
 
@@ -76,44 +62,16 @@ prompt_node_client_cert_pem() {
   rm -f "$cert_tmp"
 }
 
-fetch_node_client_cert_pem() {
-  target_file="$1"
-  settings_url="${PULSE_NODE_SETTINGS_URL:-}"
-  if [ -z "$settings_url" ]; then
-    server_url="${PULSE_SERVER_URL:-}"
-    if [ -z "$server_url" ]; then
-      return 1
-    fi
-    settings_url="${server_url%/}/v1/node/settings.pem"
+random_password() {
+  if command -v openssl >/dev/null 2>&1; then
+    openssl rand -base64 18 | tr -d '/+=' | head -c 24
+  else
+    tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 24
   fi
+}
 
-  token="${PULSE_NODE_SETTINGS_TOKEN:-}"
-  if [ -z "$token" ]; then
-    return 1
-  fi
-
-  cert_tmp="$(mktemp)"
-  curl_opts="-fsSL"
-  if [ "${PULSE_SERVER_INSECURE:-}" = "1" ]; then
-    curl_opts="$curl_opts -k"
-  fi
-
-  if ! sh -c "curl $curl_opts -H 'Authorization: Bearer $token' '$settings_url' -o '$cert_tmp'"; then
-    rm -f "$cert_tmp"
-    echo "从控制面获取 node 客户端证书失败: $settings_url" >&2
-    exit 1
-  fi
-
-  if [ ! -s "$cert_tmp" ]; then
-    rm -f "$cert_tmp"
-    echo "从控制面获取到的证书内容为空" >&2
-    exit 1
-  fi
-
-  run_as_root mkdir -p "$(dirname "$target_file")"
-  run_as_root install -m 0644 "$cert_tmp" "$target_file"
-  rm -f "$cert_tmp"
-  return 0
+random_port() {
+  awk 'BEGIN{srand(); print int(rand()*55535)+10000}'
 }
 
 need_cmd() {
@@ -235,14 +193,27 @@ if [ "$component" = "server" ]; then
   run_as_root rm -rf "${share_dir}/web/panel"
   run_as_root cp -R "${package_dir}/share/pulse/web/panel" "${share_dir}/web/panel"
   env_target="${etc_dir}/pulse-server.env"
+  is_new_install=0
   if [ ! -f "$env_target" ]; then
+    is_new_install=1
     run_as_root install -m 0644 "${package_dir}/etc/pulse/pulse-server.env.example" "$env_target"
+  fi
+  if [ "$is_new_install" = "1" ]; then
+    if [ "${PULSE_ADMIN_PASSWORD+x}" != "x" ]; then
+      PULSE_ADMIN_PASSWORD="$(random_password)"
+    fi
+    if [ "${PULSE_SERVER_ADDR+x}" != "x" ]; then
+      PULSE_SERVER_ADDR=":$(random_port)"
+    fi
   fi
   if [ "${PULSE_ADMIN_USERNAME+x}" = "x" ]; then
     set_env_file_value "$env_target" "PULSE_ADMIN_USERNAME" "$PULSE_ADMIN_USERNAME"
   fi
   if [ "${PULSE_ADMIN_PASSWORD+x}" = "x" ]; then
     set_env_file_value "$env_target" "PULSE_ADMIN_PASSWORD" "$PULSE_ADMIN_PASSWORD"
+  fi
+  if [ "${PULSE_SERVER_ADDR+x}" = "x" ]; then
+    set_env_file_value "$env_target" "PULSE_SERVER_ADDR" "$PULSE_SERVER_ADDR"
   fi
   if [ "${PULSE_SERVER_NODE_CLIENT_CERT_FILE+x}" = "x" ]; then
     set_env_file_value "$env_target" "PULSE_SERVER_NODE_CLIENT_CERT_FILE" "$PULSE_SERVER_NODE_CLIENT_CERT_FILE"
@@ -260,30 +231,14 @@ else
   if [ ! -f "$env_target" ]; then
     run_as_root install -m 0644 "${package_dir}/etc/pulse/pulse-node.env.example" "$env_target"
   fi
-  cert_target="${PULSE_NODE_TLS_CLIENT_CERT_FILE:-${etc_dir}/server_client_cert.pem}"
-  if [ "${PULSE_NODE_TLS_CLIENT_CERT_PEM+x}" = "x" ]; then
-    cert_tmp="$(mktemp)"
-    printf "%s\n" "$PULSE_NODE_TLS_CLIENT_CERT_PEM" > "$cert_tmp"
-    run_as_root mkdir -p "$(dirname "$cert_target")"
-    run_as_root install -m 0644 "$cert_tmp" "$cert_target"
-    rm -f "$cert_tmp"
-    PULSE_NODE_TLS_CLIENT_CERT_FILE="$cert_target"
-  elif [ "${PULSE_NODE_TLS_CLIENT_CERT_FILE+x}" != "x" ]; then
-    if fetch_node_client_cert_pem "$cert_target"; then
-      PULSE_NODE_TLS_CLIENT_CERT_FILE="$cert_target"
-    else
-      prompt_node_client_cert_pem "$cert_target"
-      PULSE_NODE_TLS_CLIENT_CERT_FILE="$cert_target"
-    fi
-  fi
+  cert_target="${etc_dir}/server_client_cert.pem"
+  prompt_node_client_cert_pem "$cert_target"
+  set_env_file_value "$env_target" "PULSE_NODE_TLS_CLIENT_CERT_FILE" "$cert_target"
   if [ "${PULSE_NODE_TLS_CERT_FILE+x}" = "x" ]; then
     set_env_file_value "$env_target" "PULSE_NODE_TLS_CERT_FILE" "$PULSE_NODE_TLS_CERT_FILE"
   fi
   if [ "${PULSE_NODE_TLS_KEY_FILE+x}" = "x" ]; then
     set_env_file_value "$env_target" "PULSE_NODE_TLS_KEY_FILE" "$PULSE_NODE_TLS_KEY_FILE"
-  fi
-  if [ "${PULSE_NODE_TLS_CLIENT_CERT_FILE+x}" = "x" ]; then
-    set_env_file_value "$env_target" "PULSE_NODE_TLS_CLIENT_CERT_FILE" "$PULSE_NODE_TLS_CLIENT_CERT_FILE"
   fi
   run_as_root install -m 0644 "${package_dir}/lib/systemd/system/pulse-node.service" "${lib_dir}/pulse-node.service"
   if command -v systemctl >/dev/null 2>&1; then
@@ -292,6 +247,15 @@ else
   fi
 fi
 
+echo ""
 echo "安装完成: pulse-${component}"
 echo "配置文件: ${env_target}"
 echo "工作目录: ${state_dir}"
+if [ "$component" = "server" ] && [ "${is_new_install:-0}" = "1" ]; then
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "  面板地址: http://<IP>${PULSE_SERVER_ADDR}"
+  echo "  管理员:   ${PULSE_ADMIN_USERNAME:-admin}"
+  echo "  密码:     ${PULSE_ADMIN_PASSWORD}"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+fi
