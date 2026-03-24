@@ -6,7 +6,7 @@ TARGET_ARCH ?= $(shell go env GOARCH)
 DIST_DIR ?= dist
 LDFLAGS = -s -w -X pulse/internal/buildinfo.Version=$(VERSION) -X pulse/internal/buildinfo.Commit=$(COMMIT) -X pulse/internal/buildinfo.BuildDate=$(BUILD_DATE)
 
-.PHONY: build build-server build-node build-cli wasm test package-server package-node checksums clean clean-dev run-server run-node
+.PHONY: build build-server build-node build-cli wasm test package-server package-node checksums clean clean-dev dev-certs run-server run-node
 
 build: wasm build-cli build-server build-node
 
@@ -56,21 +56,46 @@ clean:
 	rm -rf $(DIST_DIR)
 
 clean-dev:
-	rm -rf dev-data
+	rm -rf dev-data dev-certs
+
+# 获取开发用证书（需要先启动 server）
+dev-certs:
+	@echo "Fetching development certificates from server..."
+	@mkdir -p dev-certs
+	@curl -s http://localhost:8080/v1/node/settings | grep -o '"certificate":"[^"]*' | cut -d'"' -f4 > dev-certs/server_client_cert.pem
+	@if [ ! -s dev-certs/server_client_cert.pem ]; then \
+		echo "Failed to fetch certificate. Make sure server is running on http://localhost:8080"; \
+		rm -f dev-certs/server_client_cert.pem; \
+		exit 1; \
+	fi
+	@echo "Certificates saved to dev-certs/server_client_cert.pem"
 
 # 开发模式运行 server
 run-server: build-server
 	@echo "Starting development server..."
-	@mkdir -p dev-data
+	@mkdir -p dev-data dev-certs
 	@PULSE_SERVER_ADDR=:8080 \
 	 PULSE_ADMIN_USERNAME=admin \
 	 PULSE_ADMIN_PASSWORD=admin123 \
 	 PULSE_DB_PATH=./dev-data/pulse.db \
 	 PULSE_WEB_DIR=./web/mvp \
+	 PULSE_SERVER_NODE_CLIENT_CERT_FILE=./dev-certs/server_client_cert.pem \
+	 PULSE_SERVER_NODE_CLIENT_KEY_FILE=./dev-certs/server_client_key.pem \
 	 ./dist/pulse-server
 
-# 开发模式运行 node
+# 开发模式运行 node（需要先运行 make dev-certs）
 run-node: build-node
 	@echo "Starting development node..."
-	@echo "Make sure to set PULSE_NODE_* environment variables"
-	@./dist/pulse-node
+	@if [ ! -f dev-certs/server_client_cert.pem ]; then \
+		echo "Error: dev-certs/server_client_cert.pem not found"; \
+		echo "Please run 'make dev-certs' first (server must be running)"; \
+		exit 1; \
+	fi
+	@mkdir -p dev-data
+	@PULSE_NODE_ADDR=:8081 \
+	 PULSE_NODE_SERVER_URL=http://localhost:8080 \
+	 PULSE_NODE_NAME=dev-node \
+	 PULSE_NODE_TLS_CERT_FILE=./dev-certs/node_cert.pem \
+	 PULSE_NODE_TLS_KEY_FILE=./dev-certs/node_key.pem \
+	 PULSE_NODE_TLS_CLIENT_CERT_FILE=./dev-certs/server_client_cert.pem \
+	 ./dist/pulse-node
