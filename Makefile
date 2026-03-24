@@ -97,12 +97,12 @@ run-server: build-server
 	 PULSE_SERVER_NODE_CLIENT_KEY_FILE=./dev-data/server/server_client_key.pem \
 	 ./dist/pulse-server
 
-# 开发模式运行 node（需要先运行 make dev-certs）
+# 开发模式运行 node
 run-node: build-node
 	@echo "Starting development node..."
-	@if [ ! -f dev-data/node/server_client_cert.pem ]; then \
-		echo "Error: dev-data/node/server_client_cert.pem not found"; \
-		echo "Please run 'make dev-certs' first (server must be running)"; \
+	@if [ ! -f dev-data/server/server_client_cert.pem ]; then \
+		echo "Error: dev-data/server/server_client_cert.pem not found"; \
+		echo "Please run 'make run-server' first"; \
 		exit 1; \
 	fi
 	@mkdir -p dev-data/node
@@ -111,5 +111,6 @@ run-node: build-node
 	 PULSE_NODE_NAME=dev-node \
 	 PULSE_NODE_TLS_CERT_FILE=./dev-data/node/node_cert.pem \
 	 PULSE_NODE_TLS_KEY_FILE=./dev-data/node/node_key.pem \
-	 PULSE_NODE_TLS_CLIENT_CERT_FILE=./dev-data/node/server_client_cert.pem \
+	 PULSE_NODE_TLS_CLIENT_CERT_FILE=./dev-data/server/server_client_cert.pem \
 	 ./dist/pulse-node
+
