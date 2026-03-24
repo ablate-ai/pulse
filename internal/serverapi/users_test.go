@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"pulse/internal/jobs"
 	"pulse/internal/nodes"
 	"pulse/internal/users"
 )
@@ -225,12 +226,12 @@ func TestSyncUsageDisablesLimitedUserAndReloadsNode(t *testing.T) {
 	}
 
 	userStore := users.NewMemoryStore()
-	_, _ = userStore.Upsert(users.User{ID: "u1", Username: "alice", Enabled: true, NodeID: "node-1", Domain: "example.com", Port: 443, Protocol: "vless", TrafficLimit: 100})
-	_, _ = userStore.Upsert(users.User{ID: "u2", Username: "bob", Enabled: true, NodeID: "node-1", Domain: "example.com", Port: 443, Protocol: "vless"})
+	_, _ = userStore.Upsert(users.User{ID: "u1", Username: "alice", Status: users.StatusActive, NodeID: "node-1", Domain: "example.com", Port: 443, Protocol: "vless", TrafficLimit: 100})
+	_, _ = userStore.Upsert(users.User{ID: "u2", Username: "bob", Status: users.StatusActive, NodeID: "node-1", Domain: "example.com", Port: 443, Protocol: "vless"})
 
-	result, err := syncUsage(t.Context(), userStore, nodeStore, baseAPI)
+	result, err := jobs.SyncUsage(t.Context(), userStore, nodeStore, baseAPI.Dial)
 	if err != nil {
-		t.Fatalf("syncUsage() error = %v", err)
+		t.Fatalf("SyncUsage() error = %v", err)
 	}
 	if result.NodesReloaded != 1 {
 		t.Fatalf("expected 1 node reload, got %#v", result)
@@ -240,7 +241,7 @@ func TestSyncUsageDisablesLimitedUserAndReloadsNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get(alice) error = %v", err)
 	}
-	if alice.Enabled {
+	if alice.EffectiveEnabled() {
 		t.Fatalf("expected alice disabled after exceeding limit: %#v", alice)
 	}
 	if alice.UsedBytes != 120 {
@@ -251,7 +252,7 @@ func TestSyncUsageDisablesLimitedUserAndReloadsNode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get(bob) error = %v", err)
 	}
-	if !bob.Enabled {
+	if !bob.EffectiveEnabled() {
 		t.Fatalf("expected bob to remain enabled")
 	}
 	if !strings.Contains(capturedConfig, "\"name\": \"bob\"") || strings.Contains(capturedConfig, "\"name\": \"alice\"") {

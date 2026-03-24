@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,17 +24,29 @@ type userAPI struct {
 	base  *API
 }
 
-type upsertUserRequest struct {
-	ID           string `json:"id"`
-	Username     string `json:"username"`
-	UUID         string `json:"uuid"`
-	Protocol     string `json:"protocol"`
-	Secret       string `json:"secret"`
-	Method       string `json:"method"`
-	NodeID       string `json:"node_id"`
-	Domain       string `json:"domain"`
-	Port         int    `json:"port"`
-	TrafficLimit int64  `json:"traffic_limit_bytes"`
+type createUserRequest struct {
+	ID                     string     `json:"id"`
+	Username               string     `json:"username"`
+	UUID                   string     `json:"uuid"`
+	Protocol               string     `json:"protocol"`
+	Secret                 string     `json:"secret"`
+	Method                 string     `json:"method"`
+	NodeID                 string     `json:"node_id"`
+	Domain                 string     `json:"domain"`
+	Port                   int        `json:"port"`
+	TrafficLimit           int64      `json:"traffic_limit_bytes"`
+	ExpireAt               *time.Time `json:"expire_at,omitempty"`
+	DataLimitResetStrategy string     `json:"data_limit_reset_strategy"`
+}
+
+type updateUserRequest struct {
+	Status                 string     `json:"status"`
+	ExpireAt               *time.Time `json:"expire_at,omitempty"`
+	DataLimitResetStrategy string     `json:"data_limit_reset_strategy"`
+	TrafficLimit           int64      `json:"traffic_limit_bytes"`
+	NodeID                 string     `json:"node_id"`
+	Domain                 string     `json:"domain"`
+	Port                   int        `json:"port"`
 }
 
 func newUserAPI(usersStore users.Store, nodesStore nodes.Store, base *API) *userAPI {
@@ -57,9 +70,10 @@ func (a *userAPI) handleUsers(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"users": items})
+		items = filterUsersByQuery(items, r)
+		writeJSON(w, http.StatusOK, map[string]any{"users": items, "total": len(items)})
 	case http.MethodPost:
-		var req upsertUserRequest
+		var req createUserRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 			return
@@ -92,18 +106,23 @@ func (a *userAPI) handleUsers(w http.ResponseWriter, r *http.Request) {
 		if req.Method == "" {
 			req.Method = "aes-128-gcm"
 		}
+		if req.DataLimitResetStrategy == "" {
+			req.DataLimitResetStrategy = users.ResetStrategyNoReset
+		}
 		user, err := a.users.Upsert(users.User{
-			ID:           req.ID,
-			Username:     req.Username,
-			UUID:         req.UUID,
-			Protocol:     protocol,
-			Secret:       req.Secret,
-			Method:       req.Method,
-			Enabled:      true,
-			NodeID:       req.NodeID,
-			Domain:       req.Domain,
-			Port:         req.Port,
-			TrafficLimit: req.TrafficLimit,
+			ID:                     req.ID,
+			Username:               req.Username,
+			UUID:                   req.UUID,
+			Protocol:               protocol,
+			Secret:                 req.Secret,
+			Method:                 req.Method,
+			Status:                 users.StatusActive,
+			ExpireAt:               req.ExpireAt,
+			DataLimitResetStrategy: req.DataLimitResetStrategy,
+			NodeID:                 req.NodeID,
+			Domain:                 req.Domain,
+			Port:                   req.Port,
+			TrafficLimit:           req.TrafficLimit,
 		})
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
@@ -148,6 +167,8 @@ func (a *userAPI) handleUser(w http.ResponseWriter, r *http.Request, userID stri
 			return
 		}
 		writeJSON(w, http.StatusOK, user)
+	case http.MethodPut:
+		a.handleUpdateUser(w, r, userID)
 	case http.MethodDelete:
 		if err := a.users.Delete(userID); err != nil {
 			writeUserError(w, err)
@@ -155,8 +176,64 @@ func (a *userAPI) handleUser(w http.ResponseWriter, r *http.Request, userID stri
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
 	default:
-		writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodDelete)
+		writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodPut+", "+http.MethodDelete)
 	}
+}
+
+func (a *userAPI) handleUpdateUser(w http.ResponseWriter, r *http.Request, userID string) {
+	user, err := a.users.Get(userID)
+	if err != nil {
+		writeUserError(w, err)
+		return
+	}
+
+	var req updateUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
+		return
+	}
+
+	if req.Status != "" {
+		if !validStatus(req.Status) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid status"})
+			return
+		}
+		user.Status = req.Status
+	}
+	// expire_at：显式传 null 清除，传具体值则更新
+	if req.ExpireAt != nil {
+		user.ExpireAt = req.ExpireAt
+	}
+	if req.DataLimitResetStrategy != "" {
+		if !validResetStrategy(req.DataLimitResetStrategy) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid data_limit_reset_strategy"})
+			return
+		}
+		user.DataLimitResetStrategy = req.DataLimitResetStrategy
+	}
+	if req.TrafficLimit >= 0 && req.TrafficLimit != user.TrafficLimit {
+		user.TrafficLimit = req.TrafficLimit
+	}
+	if req.NodeID != "" {
+		if _, err := a.nodes.Get(req.NodeID); err != nil {
+			writeNodeError(w, err)
+			return
+		}
+		user.NodeID = req.NodeID
+	}
+	if req.Domain != "" {
+		user.Domain = req.Domain
+	}
+	if req.Port > 0 {
+		user.Port = req.Port
+	}
+
+	updated, err := a.users.Upsert(user)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, updated)
 }
 
 func (a *userAPI) handleSubscription(w http.ResponseWriter, r *http.Request, userID string) {
@@ -247,11 +324,79 @@ func randomToken(size int) string {
 
 func supportedProtocol(value string) bool {
 	switch value {
-	case "vless", "trojan", "shadowsocks":
+	case "vless", "vmess", "trojan", "shadowsocks":
 		return true
 	default:
 		return false
 	}
+}
+
+func validStatus(value string) bool {
+	switch value {
+	case users.StatusActive, users.StatusDisabled, users.StatusOnHold:
+		return true
+	default:
+		// limited/expired 由系统自动判断，不允许手动设置
+		return false
+	}
+}
+
+func validResetStrategy(value string) bool {
+	switch value {
+	case users.ResetStrategyNoReset, users.ResetStrategyDay, users.ResetStrategyWeek,
+		users.ResetStrategyMonth, users.ResetStrategyYear:
+		return true
+	default:
+		return false
+	}
+}
+
+// filterUsersByQuery 根据 URL 查询参数过滤用户列表。
+// 支持 search / status / protocol / offset / limit 参数。
+func filterUsersByQuery(items []users.User, r *http.Request) []users.User {
+	q := r.URL.Query()
+	search := strings.ToLower(strings.TrimSpace(q.Get("search")))
+	statusFilter := strings.ToLower(strings.TrimSpace(q.Get("status")))
+	protoFilter := strings.ToLower(strings.TrimSpace(q.Get("protocol")))
+
+	out := make([]users.User, 0, len(items))
+	for _, u := range items {
+		if protoFilter != "" && strings.ToLower(u.Protocol) != protoFilter {
+			continue
+		}
+		if statusFilter != "" && u.EffectiveStatus() != statusFilter {
+			continue
+		}
+		if search != "" {
+			hay := strings.ToLower(u.Username + " " + u.Domain + " " + u.NodeID)
+			if !strings.Contains(hay, search) {
+				continue
+			}
+		}
+		out = append(out, u)
+	}
+
+	// 分页
+	offset := 0
+	limit := 0
+	if v := q.Get("offset"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			offset = n
+		}
+	}
+	if v := q.Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	if offset >= len(out) {
+		return []users.User{}
+	}
+	out = out[offset:]
+	if limit > 0 && limit < len(out) {
+		out = out[:limit]
+	}
+	return out
 }
 
 func filterEnabledUsers(items []users.User) []users.User {
@@ -270,7 +415,7 @@ func applyNodeUsers(ctx context.Context, client *nodes.Client, nodeUsers []users
 		status, err := client.Stop(ctx)
 		return status, "", err
 	}
-	config, err := proxycfg.BuildVLESSSingboxConfig(activeUsers)
+	config, err := proxycfg.BuildSingboxConfig(activeUsers)
 	if err != nil {
 		return nodes.Status{}, "", err
 	}

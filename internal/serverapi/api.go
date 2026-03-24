@@ -9,12 +9,14 @@ import (
 	"time"
 
 	"pulse/internal/idgen"
+	"pulse/internal/jobs"
 	"pulse/internal/nodes"
 	"pulse/internal/users"
 )
 
 type API struct {
 	store         nodes.Store
+	usersStore    users.Store
 	clientOptions nodes.ClientOptions
 	clientFactory func(node nodes.Node) *nodes.Client
 }
@@ -37,6 +39,12 @@ func New(store nodes.Store, clientOptions nodes.ClientOptions) *API {
 			return nodes.NewClient(node, clientOptions)
 		},
 	}
+}
+
+func NewWithUsers(nodesStore nodes.Store, usersStore users.Store, clientOptions nodes.ClientOptions) *API {
+	api := New(nodesStore, clientOptions)
+	api.usersStore = usersStore
+	return api
 }
 
 func RegisterUsersAPI(mux *http.ServeMux, usersStore users.Store, nodesStore nodes.Store, clientOptions nodes.ClientOptions) {
@@ -115,6 +123,8 @@ func (a *API) handleNodeRoutes(w http.ResponseWriter, r *http.Request) {
 		a.handleNodeStop(w, r, nodeID)
 	case "runtime/restart":
 		a.handleNodeRestart(w, r, nodeID)
+	case "runtime/apply":
+		a.handleNodeApply(w, r, nodeID)
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "route not found"})
 	}
@@ -288,12 +298,46 @@ func (a *API) handleNodeRestart(w http.ResponseWriter, r *http.Request, nodeID s
 	writeJSON(w, http.StatusOK, out)
 }
 
+func (a *API) handleNodeApply(w http.ResponseWriter, r *http.Request, nodeID string) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+	if a.usersStore == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "users store not configured"})
+		return
+	}
+	client, err := a.clientFor(nodeID)
+	if err != nil {
+		writeNodeError(w, err)
+		return
+	}
+	nodeUsers, err := a.usersStore.ListByNode(nodeID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	status, _, err := jobs.ApplyNodeUsers(ctx, client, nodeUsers)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
 func (a *API) clientFor(nodeID string) (*nodes.Client, error) {
 	node, err := a.store.Get(nodeID)
 	if err != nil {
 		return nil, err
 	}
 	return a.clientFactory(node), nil
+}
+
+// Dial 根据节点 ID 返回 RPC 客户端，可用于 jobs.NodeDialer。
+func (a *API) Dial(nodeID string) (*nodes.Client, error) {
+	return a.clientFor(nodeID)
 }
 
 func decodeConfigRequest(w http.ResponseWriter, r *http.Request) (singboxConfigRequest, bool) {

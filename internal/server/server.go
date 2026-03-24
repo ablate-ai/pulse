@@ -11,6 +11,8 @@ import (
 	"pulse/internal/buildinfo"
 	"pulse/internal/cert"
 	"pulse/internal/config"
+	"pulse/internal/inbounds"
+	"pulse/internal/jobs"
 	"pulse/internal/nodes"
 	"pulse/internal/serverapi"
 	sqliteStore "pulse/internal/store/sqlite"
@@ -31,11 +33,36 @@ func Run() error {
 
 	var store nodes.Store = db.NodeStore()
 	var userStore users.Store = db.UserStore()
+	var inboundStore inbounds.InboundStore = db.InboundStore()
 	authManager := auth.NewManager(cfg.AdminUsername, cfg.AdminPassword)
 	clientOptions := nodes.ClientOptions{
 		ClientCertFile: cfg.ServerNodeClientCertFile,
 		ClientKeyFile:  cfg.ServerNodeClientKeyFile,
 	}
+
+	// 启动调度器
+	nodeAPI := serverapi.NewWithUsers(store, userStore, clientOptions)
+	scheduler := jobs.NewScheduler(nil)
+	scheduler.Add(jobs.Job{
+		Name:     "sync-usage",
+		Interval: 1 * time.Minute,
+		Fn: func(ctx context.Context) error {
+			_, err := jobs.SyncUsage(ctx, userStore, store, nodeAPI.Dial)
+			return err
+		},
+	})
+	scheduler.Add(jobs.Job{
+		Name:     "reset-traffic",
+		Interval: 1 * time.Minute,
+		Fn: func(ctx context.Context) error {
+			_, err := jobs.ResetTraffic(ctx, userStore, store, nodeAPI.Dial)
+			return err
+		},
+	})
+
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	defer cancelCtx()
+	scheduler.Start(ctx)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -75,9 +102,10 @@ func Run() error {
 		})
 	})
 	registerWeb(mux, cfg.WebDir)
-	serverapi.New(store, clientOptions).Register(protectedV1)
+	serverapi.NewWithUsers(store, userStore, clientOptions).Register(protectedV1)
 	serverapi.RegisterUsersAPI(protectedV1, userStore, store, clientOptions)
 	serverapi.RegisterSystemAPI(protectedV1, userStore, store, clientOptions)
+	serverapi.RegisterInboundsAPI(protectedV1, inboundStore)
 	mux.Handle("/v1/node/settings", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/node/settings.pem", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/system/info", authManager.Middleware(protectedV1))
@@ -86,6 +114,10 @@ func Run() error {
 	mux.Handle("/v1/nodes/", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/users", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/users/", authManager.Middleware(protectedV1))
+	mux.Handle("/v1/inbounds", authManager.Middleware(protectedV1))
+	mux.Handle("/v1/inbounds/", authManager.Middleware(protectedV1))
+	mux.Handle("/v1/hosts", authManager.Middleware(protectedV1))
+	mux.Handle("/v1/hosts/", authManager.Middleware(protectedV1))
 
 	srv := &http.Server{
 		Addr:              cfg.ServerAddr,
