@@ -21,7 +21,7 @@ build-node:
 	CGO_ENABLED=0 GOOS=$(TARGET_OS) GOARCH=$(TARGET_ARCH) go build -tags "$(SINGBOX_TAGS)" -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/pulse-node ./cmd/pulse-node
 
 wasm:
-	GOOS=js GOARCH=wasm go build -ldflags "$(LDFLAGS)" -o web/mvp/app.wasm ./web/mvp
+	GOOS=js GOARCH=wasm go build -ldflags "$(LDFLAGS)" -o web/panel/app.wasm ./web/panel
 
 test:
 	go test ./...
@@ -35,7 +35,7 @@ package-server: wasm build-server
 	cp $(DIST_DIR)/pulse-server $(DIST_DIR)/package/pulse-server-$(TARGET_OS)-$(TARGET_ARCH)/bin/pulse-server
 	cp deploy/env/pulse-server.env.example $(DIST_DIR)/package/pulse-server-$(TARGET_OS)-$(TARGET_ARCH)/etc/pulse/pulse-server.env.example
 	cp deploy/systemd/pulse-server.service $(DIST_DIR)/package/pulse-server-$(TARGET_OS)-$(TARGET_ARCH)/lib/systemd/system/pulse-server.service
-	cp -R web/mvp $(DIST_DIR)/package/pulse-server-$(TARGET_OS)-$(TARGET_ARCH)/share/pulse/web/
+	cp -R web/panel $(DIST_DIR)/package/pulse-server-$(TARGET_OS)-$(TARGET_ARCH)/share/pulse/web/
 	mkdir -p $(DIST_DIR)/release
 	tar -C $(DIST_DIR)/package -czf $(DIST_DIR)/release/pulse-server-$(TARGET_OS)-$(TARGET_ARCH).tar.gz pulse-server-$(TARGET_OS)-$(TARGET_ARCH)
 
@@ -93,7 +93,7 @@ run-server: build-server
 	 PULSE_ADMIN_USERNAME=admin \
 	 PULSE_ADMIN_PASSWORD=admin123 \
 	 PULSE_DB_PATH=./dev-data/pulse.db \
-	 PULSE_WEB_DIR=./web/mvp \
+	 PULSE_WEB_DIR=./web/panel \
 	 PULSE_SERVER_NODE_CLIENT_CERT_FILE=./dev-data/server/server_client_cert.pem \
 	 PULSE_SERVER_NODE_CLIENT_KEY_FILE=./dev-data/server/server_client_key.pem \
 	 ./dist/pulse-server

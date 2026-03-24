@@ -16,11 +16,12 @@ func registerWeb(mux *http.ServeMux, configuredDir string) {
 	indexPath := filepath.Join(webDir, "index.html")
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/" {
+		switch r.URL.Path {
+		case "/", "/overview", "/nodes", "/users":
+			http.ServeFile(w, r, indexPath)
+		default:
 			http.NotFound(w, r)
-			return
 		}
-		http.ServeFile(w, r, indexPath)
 	})
 
 	mux.Handle("/app.wasm", fileServer)
@@ -33,10 +34,10 @@ func resolveWebDir(configuredDir string) string {
 	if configuredDir != "" {
 		candidates = append(candidates, configuredDir)
 	}
-	candidates = append(candidates, "web/mvp")
+	candidates = append(candidates, "web/panel")
 	if exePath, err := os.Executable(); err == nil {
 		exeDir := filepath.Dir(exePath)
-		candidates = append(candidates, filepath.Clean(filepath.Join(exeDir, "../share/pulse/web/mvp")))
+		candidates = append(candidates, filepath.Clean(filepath.Join(exeDir, "../share/pulse/web/panel")))
 	}
 
 	for _, candidate := range candidates {
