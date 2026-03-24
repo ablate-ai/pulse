@@ -2,6 +2,8 @@
 
 目标：在一个 Go 单仓里重写 `Marzban` 和 `Marzban-node`。
 
+状态说明：本文件已按当前仓库实现，并参照 `Marzban` 官方 README 与 `app/routers/*` 能力集重新核对。
+
 说明：
 
 - `[x]` 已完成
@@ -30,18 +32,18 @@
 - [x] 验证 `go build ./cmd/pulse ./cmd/pulse-server ./cmd/pulse-node`
 - [ ] 建立统一日志组件
 - [ ] 建立配置加载与校验机制
-- [ ] 建立 Makefile 或任务脚本
+- [x] 建立 Makefile 或任务脚本
 - [ ] 建立本地开发用 docker compose
-- [ ] 建立基础 CI
+- [x] 建立基础 CI
 
 ## Phase 1: 节点面最小闭环
 
 - [x] 建立 `internal/singbox`
 - [x] 建立 `internal/nodeapi`
 - [x] 建立 `internal/nodeauth`
-- [ ] 建立 `internal/cert`
+- [x] 建立 `internal/cert`
 - [x] 节点启动时加载配置
-- [ ] 节点支持证书生成或加载
+- [x] 节点支持证书生成或加载
 - [x] 节点支持受控鉴权
 - [x] 定义 server -> node 第一版控制协议
 - [x] 支持下发 sing-box 配置
@@ -75,7 +77,7 @@
 - [x] 确定数据库方案
 - [ ] 确定 migration 方案
 - [ ] 建立 `internal/domain`
-- [ ] 建立 `internal/store`
+- [x] 建立 `internal/store`
 - [ ] 建立 `internal/repository`
 - [ ] 建立 `internal/migrate`
 - [ ] 定义管理员领域模型
@@ -86,7 +88,7 @@
 - [ ] 定义系统配置领域模型
 - [ ] 定义订阅状态模型
 - [ ] 定义使用量与在线状态模型
-- [ ] 建立初始表结构
+- [x] 建立初始表结构
 - [ ] 建立 migration 执行入口
 - [ ] 完成管理员 CRUD
 - [ ] 完成节点 CRUD
@@ -102,10 +104,10 @@
 - [ ] 支持更新用户
 - [x] 支持删除用户
 - [ ] 支持用户状态管理
-- [ ] 支持流量限制
+- [x] 支持流量限制
 - [ ] 支持到期时间限制
 - [ ] 支持周期流量重置规则
-- [x] 支持单用户多协议配置
+- [ ] 支持单用户多协议配置
 - [ ] 支持 Vmess
 - [x] 支持 VLESS
 - [x] 支持 Trojan
@@ -138,7 +140,8 @@
 - [ ] 如果兼容现有面板，整理兼容 API 清单
 - [ ] 如果兼容现有面板，实现最小兼容接口集
 - [ ] 如果重做前端，确定技术栈和目录结构
-- [ ] 完成登录页
+- [x] 完成最小 MVP 面板（登录/节点新增/用户新增/系统概览）
+- [x] 完成登录页
 - [ ] 完成用户管理页
 - [ ] 完成节点管理页
 - [ ] 完成系统配置页
@@ -151,9 +154,9 @@
 - [ ] 支持数据导入导出
 - [ ] 构建 `pulse-server` Docker 镜像
 - [ ] 构建 `pulse-node` Docker 镜像
-- [ ] 提供 systemd 服务文件
-- [ ] 注入版本信息
-- [ ] 提供部署文档
+- [x] 提供 systemd 服务文件
+- [x] 注入版本信息
+- [x] 提供部署文档
 - [ ] 提供升级文档
 - [ ] 提供回滚文档
 
@@ -167,6 +170,29 @@
 - [x] 完成管理员认证
 - [x] 完成节点管理接口
 - [x] 完成用户与订阅最小闭环
+
+## 对照 Marzban 当前差距
+
+- [ ] 多管理员与权限模型
+- [ ] 用户模板 CRUD、模板应用与批量开通
+- [ ] 用户高级状态机：`active` / `disabled` / `limited` / `expired` / `on_hold`
+- [ ] 到期时间、按周期流量重置、手动重置流量、订阅撤销与轮换
+- [ ] 单用户多协议
+- [ ] Vmess 支持
+- [ ] Clash / ClashMeta / Sing-box / V2Ray JSON / Outline 订阅输出
+- [ ] 分享链接与二维码生成
+- [ ] 入站、出站、host、fallback 与系统核心配置的读取和编辑
+- [ ] TLS / REALITY / 多入站同端口等高级配置管理
+- [ ] 节点更新、重连、状态持久化、节点使用量统计
+- [ ] 节点日志 WebSocket 流式转发
+- [ ] 用户历史用量、节点历史用量、在线用户统计
+- [ ] 定时任务体系：usage record / review users / expired cleanup / reset
+- [ ] Webhook 通知
+- [ ] Telegram Bot
+- [ ] Discord 集成
+- [ ] 管理 CLI（admin / user / subscription）
+- [ ] 数据导入导出与备份恢复
+- [ ] 多语言与完整前端面板
 
 ## 暂缓事项
 
