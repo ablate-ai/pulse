@@ -20,20 +20,32 @@ func (s *UserStore) Upsert(user users.User) (users.User, error) {
 	if user.Protocol == "" {
 		user.Protocol = "vless"
 	}
-	if !user.Enabled && user.TrafficLimit == 0 && user.UploadBytes == 0 && user.DownloadBytes == 0 && user.UsedBytes == 0 && user.SyncedUploadBytes == 0 && user.SyncedDownloadBytes == 0 {
-		user.Enabled = true
+	if user.Status == "" {
+		user.Status = users.StatusActive
+	}
+	if user.DataLimitResetStrategy == "" {
+		user.DataLimitResetStrategy = users.ResetStrategyNoReset
 	}
 	user.UsedBytes = user.UploadBytes + user.DownloadBytes
+
 	_, err := s.db.Exec(`
-		INSERT INTO users (id, username, uuid, protocol, secret, method, enabled, node_id, domain, port, inbound_tag, traffic_limit_bytes, upload_bytes, download_bytes, used_bytes, synced_upload_bytes, synced_download_bytes, apply_count, last_applied_at, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO users (
+			id, username, uuid, protocol, secret, method,
+			status, expire_at, data_limit_reset_strategy,
+			node_id, domain, port, inbound_tag,
+			traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
+			synced_upload_bytes, synced_download_bytes,
+			apply_count, last_applied_at, last_traffic_reset_at, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			username = excluded.username,
 			uuid = excluded.uuid,
 			protocol = excluded.protocol,
 			secret = excluded.secret,
 			method = excluded.method,
-			enabled = excluded.enabled,
+			status = excluded.status,
+			expire_at = excluded.expire_at,
+			data_limit_reset_strategy = excluded.data_limit_reset_strategy,
 			node_id = excluded.node_id,
 			domain = excluded.domain,
 			port = excluded.port,
@@ -46,8 +58,16 @@ func (s *UserStore) Upsert(user users.User) (users.User, error) {
 			synced_download_bytes = excluded.synced_download_bytes,
 			apply_count = excluded.apply_count,
 			last_applied_at = excluded.last_applied_at,
+			last_traffic_reset_at = excluded.last_traffic_reset_at,
 			created_at = excluded.created_at
-	`, user.ID, user.Username, user.UUID, user.Protocol, user.Secret, user.Method, boolToInt(user.Enabled), user.NodeID, user.Domain, user.Port, user.InboundTag, user.TrafficLimit, user.UploadBytes, user.DownloadBytes, user.UsedBytes, user.SyncedUploadBytes, user.SyncedDownloadBytes, user.ApplyCount, formatTime(user.LastAppliedAt), user.CreatedAt.Format(time.RFC3339Nano))
+	`,
+		user.ID, user.Username, user.UUID, user.Protocol, user.Secret, user.Method,
+		user.Status, formatTimePtr(user.ExpireAt), user.DataLimitResetStrategy,
+		user.NodeID, user.Domain, user.Port, user.InboundTag,
+		user.TrafficLimit, user.UploadBytes, user.DownloadBytes, user.UsedBytes,
+		user.SyncedUploadBytes, user.SyncedDownloadBytes,
+		user.ApplyCount, formatTime(user.LastAppliedAt), formatTimePtr(user.LastTrafficResetAt), user.CreatedAt.Format(time.RFC3339Nano),
+	)
 	if err != nil {
 		return users.User{}, fmt.Errorf("upsert user: %w", err)
 	}
@@ -56,7 +76,12 @@ func (s *UserStore) Upsert(user users.User) (users.User, error) {
 
 func (s *UserStore) Get(id string) (users.User, error) {
 	row := s.db.QueryRow(`
-		SELECT id, username, uuid, protocol, secret, method, enabled, node_id, domain, port, inbound_tag, traffic_limit_bytes, upload_bytes, download_bytes, used_bytes, synced_upload_bytes, synced_download_bytes, apply_count, last_applied_at, created_at
+		SELECT id, username, uuid, protocol, secret, method,
+		       status, expire_at, data_limit_reset_strategy,
+		       node_id, domain, port, inbound_tag,
+		       traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
+		       synced_upload_bytes, synced_download_bytes,
+		       apply_count, last_applied_at, last_traffic_reset_at, created_at
 		FROM users WHERE id = ?
 	`, id)
 	return scanUser(row)
@@ -64,7 +89,12 @@ func (s *UserStore) Get(id string) (users.User, error) {
 
 func (s *UserStore) List() ([]users.User, error) {
 	rows, err := s.db.Query(`
-		SELECT id, username, uuid, protocol, secret, method, enabled, node_id, domain, port, inbound_tag, traffic_limit_bytes, upload_bytes, download_bytes, used_bytes, synced_upload_bytes, synced_download_bytes, apply_count, last_applied_at, created_at
+		SELECT id, username, uuid, protocol, secret, method,
+		       status, expire_at, data_limit_reset_strategy,
+		       node_id, domain, port, inbound_tag,
+		       traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
+		       synced_upload_bytes, synced_download_bytes,
+		       apply_count, last_applied_at, last_traffic_reset_at, created_at
 		FROM users ORDER BY id
 	`)
 	if err != nil {
@@ -76,7 +106,12 @@ func (s *UserStore) List() ([]users.User, error) {
 
 func (s *UserStore) ListByNode(nodeID string) ([]users.User, error) {
 	rows, err := s.db.Query(`
-		SELECT id, username, uuid, protocol, secret, method, enabled, node_id, domain, port, inbound_tag, traffic_limit_bytes, upload_bytes, download_bytes, used_bytes, synced_upload_bytes, synced_download_bytes, apply_count, last_applied_at, created_at
+		SELECT id, username, uuid, protocol, secret, method,
+		       status, expire_at, data_limit_reset_strategy,
+		       node_id, domain, port, inbound_tag,
+		       traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
+		       synced_upload_bytes, synced_download_bytes,
+		       apply_count, last_applied_at, last_traffic_reset_at, created_at
 		FROM users WHERE node_id = ? ORDER BY id
 	`, nodeID)
 	if err != nil {
@@ -119,42 +154,65 @@ type scanner interface {
 
 func scanUser(row scanner) (users.User, error) {
 	var user users.User
-	var enabled int
+	var expireAt sql.NullString
 	var lastAppliedAt string
+	var lastTrafficResetAt sql.NullString
 	var createdAt string
-	err := row.Scan(&user.ID, &user.Username, &user.UUID, &user.Protocol, &user.Secret, &user.Method, &enabled, &user.NodeID, &user.Domain, &user.Port, &user.InboundTag, &user.TrafficLimit, &user.UploadBytes, &user.DownloadBytes, &user.UsedBytes, &user.SyncedUploadBytes, &user.SyncedDownloadBytes, &user.ApplyCount, &lastAppliedAt, &createdAt)
+
+	err := row.Scan(
+		&user.ID, &user.Username, &user.UUID, &user.Protocol, &user.Secret, &user.Method,
+		&user.Status, &expireAt, &user.DataLimitResetStrategy,
+		&user.NodeID, &user.Domain, &user.Port, &user.InboundTag,
+		&user.TrafficLimit, &user.UploadBytes, &user.DownloadBytes, &user.UsedBytes,
+		&user.SyncedUploadBytes, &user.SyncedDownloadBytes,
+		&user.ApplyCount, &lastAppliedAt, &lastTrafficResetAt, &createdAt,
+	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return users.User{}, users.ErrUserNotFound
 	}
 	if err != nil {
 		return users.User{}, fmt.Errorf("scan user: %w", err)
 	}
-	user.Enabled = enabled != 0
+
 	if user.UsedBytes == 0 {
 		user.UsedBytes = user.UploadBytes + user.DownloadBytes
 	}
+	if user.Status == "" {
+		user.Status = users.StatusActive
+	}
+	if user.DataLimitResetStrategy == "" {
+		user.DataLimitResetStrategy = users.ResetStrategyNoReset
+	}
+
+	if expireAt.Valid && expireAt.String != "" {
+		t, err := time.Parse(time.RFC3339Nano, expireAt.String)
+		if err != nil {
+			return users.User{}, fmt.Errorf("parse user expire_at: %w", err)
+		}
+		user.ExpireAt = &t
+	}
+	if lastTrafficResetAt.Valid && lastTrafficResetAt.String != "" {
+		t, err := time.Parse(time.RFC3339Nano, lastTrafficResetAt.String)
+		if err != nil {
+			return users.User{}, fmt.Errorf("parse user last_traffic_reset_at: %w", err)
+		}
+		user.LastTrafficResetAt = &t
+	}
 	if createdAt != "" {
-		parsed, err := time.Parse(time.RFC3339Nano, createdAt)
+		t, err := time.Parse(time.RFC3339Nano, createdAt)
 		if err != nil {
 			return users.User{}, fmt.Errorf("parse user created_at: %w", err)
 		}
-		user.CreatedAt = parsed
+		user.CreatedAt = t
 	}
 	if lastAppliedAt != "" {
-		parsed, err := time.Parse(time.RFC3339Nano, lastAppliedAt)
+		t, err := time.Parse(time.RFC3339Nano, lastAppliedAt)
 		if err != nil {
 			return users.User{}, fmt.Errorf("parse user last_applied_at: %w", err)
 		}
-		user.LastAppliedAt = parsed
+		user.LastAppliedAt = t
 	}
 	return user, nil
-}
-
-func boolToInt(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
 }
 
 func formatTime(value time.Time) string {
@@ -162,4 +220,11 @@ func formatTime(value time.Time) string {
 		return ""
 	}
 	return value.Format(time.RFC3339Nano)
+}
+
+func formatTimePtr(value *time.Time) sql.NullString {
+	if value == nil || value.IsZero() {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: value.Format(time.RFC3339Nano), Valid: true}
 }

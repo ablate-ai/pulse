@@ -38,8 +38,31 @@ func (db *DB) UserStore() *UserStore {
 	return &UserStore{db: db.conn}
 }
 
+
 func (db *DB) init() error {
 	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS inbounds (
+			id       TEXT PRIMARY KEY,
+			node_id  TEXT NOT NULL,
+			protocol TEXT NOT NULL,
+			tag      TEXT NOT NULL,
+			port     INTEGER NOT NULL
+		);`,
+		`CREATE TABLE IF NOT EXISTS hosts (
+			id             TEXT PRIMARY KEY,
+			inbound_id     TEXT NOT NULL,
+			remark         TEXT NOT NULL DEFAULT '',
+			address        TEXT NOT NULL DEFAULT '',
+			port           INTEGER NOT NULL DEFAULT 0,
+			sni            TEXT NOT NULL DEFAULT '',
+			host           TEXT NOT NULL DEFAULT '',
+			path           TEXT NOT NULL DEFAULT '',
+			security       TEXT NOT NULL DEFAULT 'none',
+			alpn           TEXT NOT NULL DEFAULT '',
+			fingerprint    TEXT NOT NULL DEFAULT '',
+			allow_insecure INTEGER NOT NULL DEFAULT 0,
+			mux_enable     INTEGER NOT NULL DEFAULT 0
+		);`,
 		`CREATE TABLE IF NOT EXISTS nodes (
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
@@ -50,22 +73,25 @@ func (db *DB) init() error {
 			id TEXT PRIMARY KEY,
 			username TEXT NOT NULL,
 			uuid TEXT NOT NULL,
-			protocol TEXT NOT NULL,
-			secret TEXT NOT NULL,
-			method TEXT NOT NULL,
-			enabled INTEGER NOT NULL,
+			protocol TEXT NOT NULL DEFAULT 'vless',
+			secret TEXT NOT NULL DEFAULT '',
+			method TEXT NOT NULL DEFAULT 'aes-128-gcm',
+			status TEXT NOT NULL DEFAULT 'active',
+			expire_at TEXT,
+			data_limit_reset_strategy TEXT NOT NULL DEFAULT 'no_reset',
 			node_id TEXT NOT NULL,
 			domain TEXT NOT NULL,
 			port INTEGER NOT NULL,
 			inbound_tag TEXT NOT NULL,
-			traffic_limit_bytes INTEGER NOT NULL,
-			upload_bytes INTEGER NOT NULL,
-			download_bytes INTEGER NOT NULL,
-			used_bytes INTEGER NOT NULL,
-			synced_upload_bytes INTEGER NOT NULL,
-			synced_download_bytes INTEGER NOT NULL,
-			apply_count INTEGER NOT NULL,
-			last_applied_at TEXT NOT NULL,
+			traffic_limit_bytes INTEGER NOT NULL DEFAULT 0,
+			upload_bytes INTEGER NOT NULL DEFAULT 0,
+			download_bytes INTEGER NOT NULL DEFAULT 0,
+			used_bytes INTEGER NOT NULL DEFAULT 0,
+			synced_upload_bytes INTEGER NOT NULL DEFAULT 0,
+			synced_download_bytes INTEGER NOT NULL DEFAULT 0,
+			apply_count INTEGER NOT NULL DEFAULT 0,
+			last_applied_at TEXT NOT NULL DEFAULT '',
+			last_traffic_reset_at TEXT,
 			created_at TEXT NOT NULL
 		);`,
 	}
@@ -114,8 +140,15 @@ func (db *DB) migrateUsersTable() error {
 	if _, ok := columns["method"]; !ok {
 		ddl = append(ddl, `ALTER TABLE users ADD COLUMN method TEXT NOT NULL DEFAULT 'aes-128-gcm'`)
 	}
-	if _, ok := columns["enabled"]; !ok {
-		ddl = append(ddl, `ALTER TABLE users ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`)
+	// 新增 status 列，从旧 enabled 列迁移数据
+	if _, ok := columns["status"]; !ok {
+		ddl = append(ddl, `ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`)
+	}
+	if _, ok := columns["expire_at"]; !ok {
+		ddl = append(ddl, `ALTER TABLE users ADD COLUMN expire_at TEXT`)
+	}
+	if _, ok := columns["data_limit_reset_strategy"]; !ok {
+		ddl = append(ddl, `ALTER TABLE users ADD COLUMN data_limit_reset_strategy TEXT NOT NULL DEFAULT 'no_reset'`)
 	}
 	if _, ok := columns["traffic_limit_bytes"]; !ok {
 		ddl = append(ddl, `ALTER TABLE users ADD COLUMN traffic_limit_bytes INTEGER NOT NULL DEFAULT 0`)
@@ -141,12 +174,26 @@ func (db *DB) migrateUsersTable() error {
 	if _, ok := columns["last_applied_at"]; !ok {
 		ddl = append(ddl, `ALTER TABLE users ADD COLUMN last_applied_at TEXT NOT NULL DEFAULT ''`)
 	}
+	if _, ok := columns["last_traffic_reset_at"]; !ok {
+		ddl = append(ddl, `ALTER TABLE users ADD COLUMN last_traffic_reset_at TEXT`)
+	}
 
 	for _, stmt := range ddl {
 		if _, err := db.conn.Exec(stmt); err != nil {
 			return fmt.Errorf("migrate users table: %w", err)
 		}
 	}
+
+	// 将旧 enabled 列数据迁移到 status 列
+	if _, hasEnabled := columns["enabled"]; hasEnabled {
+		if _, err := db.conn.Exec(`
+			UPDATE users SET status = CASE WHEN enabled = 0 THEN 'disabled' ELSE 'active' END
+			WHERE status = 'active' AND enabled = 0
+		`); err != nil {
+			return fmt.Errorf("migrate users enabled→status: %w", err)
+		}
+	}
+
 	return nil
 }
 
