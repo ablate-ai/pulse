@@ -103,6 +103,28 @@ func TestNodeLifecycleAndProxyEndpoints(t *testing.T) {
 	}
 }
 
+func TestCreateNodeAutoGeneratesID(t *testing.T) {
+	store := nodes.NewMemoryStore()
+	api := New(store, nodes.ClientOptions{})
+	mux := http.NewServeMux()
+	api.Register(mux)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/nodes", bytes.NewReader([]byte(`{"name":"node 1","base_url":"http://node.test"}`)))
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create node status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var out nodes.Node
+	if err := json.NewDecoder(rec.Body).Decode(&out); err != nil {
+		t.Fatalf("decode node: %v", err)
+	}
+	if out.ID == "" {
+		t.Fatal("expected generated node id")
+	}
+}
+
 type roundTripperFunc func(req *http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"pulse/internal/idgen"
 	"pulse/internal/nodes"
 	"pulse/internal/users"
 )
@@ -63,9 +64,12 @@ func (a *API) handleNodes(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 			return
 		}
-		if req.ID == "" || req.Name == "" || req.BaseURL == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "id, name and base_url are required"})
+		if req.Name == "" || req.BaseURL == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "name and base_url are required"})
 			return
+		}
+		if strings.TrimSpace(req.ID) == "" {
+			req.ID = idgen.NextString()
 		}
 		node, err := a.store.Upsert(nodes.Node{
 			ID:      req.ID,

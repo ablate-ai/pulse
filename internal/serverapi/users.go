@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"pulse/internal/idgen"
 	"pulse/internal/nodes"
 	"pulse/internal/proxycfg"
 	"pulse/internal/subscription"
@@ -63,9 +64,12 @@ func (a *userAPI) handleUsers(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 			return
 		}
-		if req.ID == "" || req.Username == "" || req.NodeID == "" || req.Domain == "" || req.Port == 0 {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "id, username, node_id, domain and port are required"})
+		if req.Username == "" || req.NodeID == "" || req.Domain == "" || req.Port == 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "username, node_id, domain and port are required"})
 			return
+		}
+		if strings.TrimSpace(req.ID) == "" {
+			req.ID = idgen.NextString()
 		}
 		if _, err := a.nodes.Get(req.NodeID); err != nil {
 			writeNodeError(w, err)

@@ -96,6 +96,36 @@ func TestUserSubscriptionAndApplyFlow(t *testing.T) {
 	}
 }
 
+func TestCreateUserAutoGeneratesID(t *testing.T) {
+	nodeStore := nodes.NewMemoryStore()
+	_, _ = nodeStore.Upsert(nodes.Node{
+		ID:      "node-1",
+		Name:    "node 1",
+		BaseURL: "http://node.test",
+	})
+
+	baseAPI := New(nodeStore, nodes.ClientOptions{})
+	userAPI := newUserAPI(users.NewMemoryStore(), nodeStore, baseAPI)
+	mux := http.NewServeMux()
+	userAPI.Register(mux)
+
+	body := []byte(`{"username":"alice","node_id":"node-1","domain":"example.com","port":443}`)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/users", bytes.NewReader(body))
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create user status = %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var out users.User
+	if err := json.NewDecoder(rec.Body).Decode(&out); err != nil {
+		t.Fatalf("decode user: %v", err)
+	}
+	if out.ID == "" {
+		t.Fatal("expected generated user id")
+	}
+}
+
 func TestUserSupportsMultipleProtocols(t *testing.T) {
 	nodeStore := nodes.NewMemoryStore()
 	_, _ = nodeStore.Upsert(nodes.Node{
