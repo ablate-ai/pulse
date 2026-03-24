@@ -4,6 +4,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
 )
@@ -48,6 +49,39 @@ func formatLimit(b int64) string {
 		return "∞"
 	}
 	return formatBytes(b)
+}
+
+const gbBytes = 1024 * 1024 * 1024
+
+// randomPort 生成 10000-60000 范围内的随机端口。
+func randomPort() string {
+	return strconv.Itoa(10000 + rand.Intn(50000))
+}
+
+
+// gbToBytes 将 GB 字符串转换为字节数（支持小数）。
+func gbToBytes(value string) int64 {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "0" {
+		return 0
+	}
+	f, err := strconv.ParseFloat(value, 64)
+	if err != nil || f <= 0 {
+		return 0
+	}
+	return int64(f * gbBytes)
+}
+
+// bytesToGBString 将字节数转换为 GB 字符串（用于回填输入框）。
+func bytesToGBString(b int64) string {
+	if b == 0 {
+		return "0"
+	}
+	gb := float64(b) / gbBytes
+	if gb == float64(int64(gb)) {
+		return fmt.Sprintf("%d", int64(gb))
+	}
+	return strconv.FormatFloat(gb, 'f', 2, 64)
 }
 
 // parseInt64 安全解析 int64。

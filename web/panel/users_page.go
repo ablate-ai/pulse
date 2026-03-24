@@ -50,7 +50,7 @@ func (a *app) createUser() {
 		"node_id":                   a.value("user-node"),
 		"domain":                    a.value("user-domain"),
 		"port":                      port,
-		"traffic_limit_bytes":       parseInt64(a.value("user-traffic-limit")),
+		"traffic_limit_bytes":       gbToBytes(a.value("user-traffic-limit")),
 		"data_limit_reset_strategy": a.value("user-reset-strategy"),
 	}
 
@@ -65,6 +65,7 @@ func (a *app) createUser() {
 	}
 	a.setStatus("用户已创建")
 	a.reset("user-form")
+	a.byID("user-port").Set("value", randomPort())
 	a.syncProtocolFields()
 	a.loadUsers()
 }
@@ -174,7 +175,7 @@ func (a *app) openEditModal(userID string) {
 		}
 		a.editingUserID = userID
 		a.byID("edit-user-id").Set("value", u.ID)
-		a.byID("edit-traffic-limit").Set("value", fmt.Sprintf("%d", u.TrafficLimit))
+		a.byID("edit-traffic-limit").Set("value", bytesToGBString(u.TrafficLimit))
 		a.byID("edit-expire-at").Set("value", datetimeLocalValue(u.ExpireAt))
 
 		// 设置 status select
@@ -200,7 +201,7 @@ func (a *app) submitEditUser() {
 
 	payload := map[string]any{
 		"status":                    a.value("edit-status"),
-		"traffic_limit_bytes":       parseInt64(a.value("edit-traffic-limit")),
+		"traffic_limit_bytes":       gbToBytes(a.value("edit-traffic-limit")),
 		"data_limit_reset_strategy": a.value("edit-reset-strategy"),
 		"expire_at":                 datetimeToRFC3339(a.value("edit-expire-at")),
 	}
