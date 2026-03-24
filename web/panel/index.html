@@ -37,15 +37,8 @@
       </form>
     </div>
 
-    <div id="quick-panel" class="sidebar-section" hidden>
-      <p class="section-label">快捷操作</p>
-      <div class="btn-stack">
-        <button id="sync-usage" class="btn btn-ghost btn-sm">↻ 同步使用量</button>
-        <button id="refresh-system" class="btn btn-ghost btn-sm">↻ 刷新概览</button>
-        <button id="refresh-nodes" class="btn btn-ghost btn-sm">↻ 刷新节点</button>
-        <button id="refresh-users" class="btn btn-ghost btn-sm">↻ 刷新用户</button>
-        <button id="logout" class="btn btn-ghost btn-sm btn-danger">退出登录</button>
-      </div>
+    <div id="quick-panel" class="sidebar-footer" hidden>
+      <button id="logout" class="btn btn-ghost btn-sm btn-block btn-danger">退出登录</button>
     </div>
   </aside>
 
@@ -70,13 +63,10 @@
         <div class="card mt-4">
           <div class="card-head">
             <h3 class="card-title">安装 Node</h3>
-            <p class="card-sub">快速部署命令和 mTLS 信任证书</p>
           </div>
           <div id="node-install-info" class="install-grid">
-            <div class="install-item skeleton"></div>
-            <div class="install-item skeleton"></div>
-            <div class="install-item skeleton install-item-wide"></div>
-            <div class="install-item skeleton install-item-wide"></div>
+            <div class="install-col skeleton" style="height:120px"></div>
+            <div class="install-col skeleton" style="height:120px"></div>
           </div>
         </div>
       </section>
@@ -126,7 +116,7 @@
                 <input id="user-port" placeholder="443" type="number" min="1" max="65535" required>
               </div>
 
-              <input id="user-traffic-limit" placeholder="流量上限（字节，0=不限）" type="number" min="0">
+              <input id="user-traffic-limit" placeholder="流量上限 GB（0=不限）" type="number" min="0" step="0.1">
 
               <select id="user-reset-strategy">
                 <option value="no_reset">流量不重置</option>
@@ -198,8 +188,8 @@
       </div>
 
       <div class="field-group">
-        <label class="field-label">流量上限（字节，0 = 不限）</label>
-        <input id="edit-traffic-limit" type="number" min="0">
+        <label class="field-label">流量上限 GB（0 = 不限）</label>
+        <input id="edit-traffic-limit" type="number" min="0" step="0.1">
       </div>
 
       <div class="field-group">
@@ -226,6 +216,8 @@
   </div>
 </dialog>
 
+<div id="toast" class="toast" aria-live="polite"></div>
+
 <script src="/wasm_exec.js"></script>
 <script>
   const go = new Go();
@@ -235,6 +227,17 @@
       const el = document.getElementById("status");
       if (el) el.textContent = "WASM 加载失败: " + err;
     });
+
+  let _toastTimer;
+  function copyText(text) {
+    navigator.clipboard.writeText(text).then(() => {
+      const t = document.getElementById("toast");
+      t.textContent = "已复制";
+      t.classList.add("toast-show");
+      clearTimeout(_toastTimer);
+      _toastTimer = setTimeout(() => t.classList.remove("toast-show"), 1800);
+    });
+  }
 </script>
 </body>
 </html>
