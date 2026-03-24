@@ -16,9 +16,9 @@ func TestBuild(t *testing.T) {
 	_, _ = nodeStore.Upsert(nodes.Node{ID: "node-2", Name: "node-2", BaseURL: "http://127.0.0.1:8082"})
 
 	lastApplied := time.Now().UTC().Truncate(time.Second)
-	_, _ = userStore.Upsert(users.User{ID: "u1", Username: "alice", Enabled: true, NodeID: "node-1", Domain: "example.com", Port: 443, Protocol: "vless", ApplyCount: 2, UploadBytes: 10, DownloadBytes: 20})
-	_, _ = userStore.Upsert(users.User{ID: "u2", Username: "bob", Enabled: true, NodeID: "node-1", Domain: "example.com", Port: 8443, Protocol: "trojan", ApplyCount: 1, LastAppliedAt: lastApplied, TrafficLimit: 100, UploadBytes: 30, DownloadBytes: 40})
-	_, _ = userStore.Upsert(users.User{ID: "u3", Username: "carol", Enabled: false, NodeID: "node-2", Domain: "example.com", Port: 9443, Protocol: "shadowsocks", TrafficLimit: 50, UploadBytes: 30, DownloadBytes: 30})
+	_, _ = userStore.Upsert(users.User{ID: "u1", Username: "alice", Status: users.StatusActive, NodeID: "node-1", Domain: "example.com", Port: 443, Protocol: "vless", ApplyCount: 2, UploadBytes: 10, DownloadBytes: 20})
+	_, _ = userStore.Upsert(users.User{ID: "u2", Username: "bob", Status: users.StatusActive, NodeID: "node-1", Domain: "example.com", Port: 8443, Protocol: "trojan", ApplyCount: 1, LastAppliedAt: lastApplied, TrafficLimit: 100, UploadBytes: 30, DownloadBytes: 40})
+	_, _ = userStore.Upsert(users.User{ID: "u3", Username: "carol", Status: users.StatusDisabled, NodeID: "node-2", Domain: "example.com", Port: 9443, Protocol: "shadowsocks", TrafficLimit: 50, UploadBytes: 30, DownloadBytes: 30})
 
 	summary, err := Build(nodeStore, userStore)
 	if err != nil {

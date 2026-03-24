@@ -26,8 +26,11 @@ func (s *MemoryStore) Upsert(user User) (User, error) {
 	if user.Protocol == "" {
 		user.Protocol = "vless"
 	}
-	if !user.Enabled && user.TrafficLimit == 0 && user.UploadBytes == 0 && user.DownloadBytes == 0 && user.UsedBytes == 0 && user.SyncedUploadBytes == 0 && user.SyncedDownloadBytes == 0 {
-		user.Enabled = true
+	if user.Status == "" {
+		user.Status = StatusActive
+	}
+	if user.DataLimitResetStrategy == "" {
+		user.DataLimitResetStrategy = ResetStrategyNoReset
 	}
 	user.UsedBytes = user.UploadBytes + user.DownloadBytes
 	s.users[user.ID] = user
