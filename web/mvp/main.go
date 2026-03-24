@@ -333,10 +333,12 @@ func (a *app) loadUsers() {
 				<p class="meta">累计下发: %d · 最近下发: %s</p>
 				<div class="actions">
 					<button data-action="subscription" data-id="%s">订阅</button>
+					<button data-action="config" data-id="%s">查看 Config</button>
 					<button data-action="apply" data-id="%s">Apply</button>
 					<button data-action="delete-user" data-id="%s" class="ghost">删除</button>
 				</div>
 				<div id="subscription-%s" class="subscription" hidden></div>
+				<div id="config-%s" class="detail-box" hidden></div>
 			 </article>`,
 			escape(u.Username),
 			escape(strings.ToUpper(u.Protocol)),
@@ -348,6 +350,8 @@ func (a *app) loadUsers() {
 			escape(formatLimit(u.TrafficLimit)),
 			u.ApplyCount,
 			escape(displayTime(u.LastAppliedAt)),
+			escape(u.ID),
+			escape(u.ID),
 			escape(u.ID),
 			escape(u.ID),
 			escape(u.ID),
@@ -432,7 +436,7 @@ func (a *app) bindNodeButtons() {
 }
 
 func (a *app) bindUserButtons() {
-	buttons := a.document.Call("querySelectorAll", "[data-action='subscription'], [data-action='apply'], [data-action='delete-user']")
+	buttons := a.document.Call("querySelectorAll", "[data-action='subscription'], [data-action='config'], [data-action='apply'], [data-action='delete-user']")
 	length := buttons.Get("length").Int()
 	for i := 0; i < length; i++ {
 		button := buttons.Index(i)
@@ -454,6 +458,29 @@ func (a *app) bindUserButtons() {
 					box.Set("hidden", false)
 					box.Set("textContent", resp.Link)
 					a.setStatus("已加载订阅: " + id)
+				case "config":
+					var resp struct {
+						NodeConfig json.RawMessage `json:"node_config"`
+					}
+					if err := postJSON("/v1/users/"+id+"/apply", nil, &resp, a.token); err != nil {
+						a.handleAuthError(err)
+						a.setStatus("读取配置失败: " + err.Error())
+						return
+					}
+					box := a.byID("config-" + id)
+					box.Set("hidden", false)
+					if len(resp.NodeConfig) == 0 {
+						box.Set("textContent", "当前没有下发配置")
+						a.setStatus("当前没有可展示的节点配置: " + id)
+						return
+					}
+					var pretty bytes.Buffer
+					if err := json.Indent(&pretty, resp.NodeConfig, "", "  "); err != nil {
+						box.Set("textContent", string(resp.NodeConfig))
+					} else {
+						box.Set("textContent", pretty.String())
+					}
+					a.setStatus("已加载节点配置: " + id)
 				case "apply":
 					var resp struct {
 						NodeStatus struct {
