@@ -1,149 +1,85 @@
 # pulse
 
-`pulse` 的目标是在一个 Go 仓库里重写 `Marzban` 与 `Marzban-node`。
-
-当前阶段先完成基础骨架拆分，把控制面和节点面放进统一代码库，后续再逐步迁移用户管理、订阅、sing-box 配置生成、节点控制、统计与后台任务。
+Go 重写版 Marzban + Marzban-node，控制面与节点统一在单一仓库。
 
 ## 目录结构
 
 ```text
 .
-├── cmd/pulse         # 总控 CLI，统一启动 server/node
-├── cmd/pulse-server  # 控制面服务入口，对应 Marzban
-├── cmd/pulse-node    # 节点服务入口，对应 Marzban-node
-├── internal/app      # CLI 分发
-├── internal/config   # 共享配置
-├── internal/server   # 控制面骨架
-├── internal/node     # 节点面骨架
-├── Marzban           # 上游参考实现
-├── Marzban-node      # 上游参考实现
-├── go.mod
-└── README.md
+├── cmd/pulse-server      # 控制面入口
+├── cmd/pulse-node        # 节点入口
+├── internal/server       # 控制面 HTTP 服务
+├── internal/serverapi    # 控制面 REST API
+├── internal/nodes        # 节点 store 与 RPC client
+├── internal/users        # 用户模型与 store
+├── internal/inbounds     # inbound / host 模型与 store
+├── internal/jobs         # 后台调度任务
+├── internal/proxycfg     # sing-box 配置生成
+├── internal/subscription # 订阅 URL 生成
+├── internal/store/sqlite # SQLite 持久化
+├── web/panel             # 前端静态资源（WASM）
+└── scripts/install.sh    # 生产安装脚本
 ```
 
-## 开发环境
-
-### 本地运行
+## 开发
 
 ```bash
-go run ./cmd/pulse help
-go run ./cmd/pulse server
-go run ./cmd/pulse node
+# 编译前端 WASM
+make wasm
+
+# 启动控制面（自动编译 wasm + server）
+make run-server
+
+# 启动节点
+make run-node
+
+# 运行测试
+make test
 ```
 
-默认控制面前端可通过下面这些路径访问：
+默认控制面访问地址：`http://localhost:8080`（账号 `admin` / `admin123`）
 
-- `/overview`
-- `/nodes`
-- `/users`
-
-### 本地构建
+## 发布新版本
 
 ```bash
-go build ./cmd/pulse
-go build ./cmd/pulse-server
-go build ./cmd/pulse-node
+make release
 ```
 
-### 前端目录
-
-前端静态资源目录已经改为 `web/panel`。
-
-- 本地开发默认使用 `./web/panel`
-- 发布包默认安装到 `/usr/local/share/pulse/web/panel`
-- `PULSE_WEB_DIR` 默认指向 `/usr/local/share/pulse/web/panel`
-
-## 发布
-
-### GitHub Release
-
-默认不需要手动在本地打包。
-
-推送形如 `v*` 的 Git tag 后，GitHub Actions 会自动：
-
-- 构建 `pulse-server` 与 `pulse-node`
-- 生成 Linux `amd64` / `arm64` 发布包
-- 生成 `checksums.txt`
-- 发布到 GitHub Release
-
-如果只是本地验证打包流程，再手动执行：
-
-```bash
-make package-server TARGET_OS=linux TARGET_ARCH=amd64 VERSION=v0.1.0
-make package-node TARGET_OS=linux TARGET_ARCH=amd64 VERSION=v0.1.0
-make checksums
-```
-
-本地产物会输出到 `dist/release/`。
+交互式选择 patch / minor / major，脚本会自动打 tag 并推送，GitHub Actions 触发构建。
 
 ## 生产安装
 
-安装脚本在 `scripts/install.sh`。
-
-推荐按下面的固定顺序安装：
-
-### 1. 安装 `server`
+### 1. 安装 server
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
-  PULSE_ADMIN_PASSWORD='strong-password' sh -s -- server
+  PULSE_ADMIN_PASSWORD='your-password' sh -s -- server
 ```
 
-### 2. 在控制面页面里查看并复制安装 `node` 所需信息
+安装完成后服务自动启动，面板地址：`http://<IP>:8080`
 
-当前推荐在控制面页面中直接查看：
-
-- 控制面地址
-- 安装 `node` 用的 Bearer Token
-- node 需要信任的证书内容
-
-### 3. 在 `node` 机器上安装 `node`
-
-推荐方式：把页面里提供的控制面地址和 Token 直接传给安装脚本，由脚本从控制面拉取证书
+如需修改端口或其他配置：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
-  PULSE_SERVER_URL='https://panel.example.com' \
-  PULSE_NODE_SETTINGS_TOKEN='<admin-token>' sh -s -- node
+vim /etc/pulse/pulse-server.env
+systemctl restart pulse-server
 ```
 
-备选方式 A：安装时交互粘贴证书内容
+### 2. 获取 node 所需证书
+
+登录控制面 → Overview 页面，复制「安装 Node」区块中的 server 客户端证书（PEM 格式）。
+
+### 3. 在 node 机器上安装 node
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | sh -s -- node
 ```
 
-执行命令后，直接把整段 PEM 粘贴到终端，脚本会在读取到 `-----END CERTIFICATE-----` 后自动继续。
+执行后脚本会提示粘贴证书，把第 2 步复制的 PEM 内容粘贴进去，读到 `-----END CERTIFICATE-----` 后自动继续。
 
-备选方式 B：直接传 PEM 内容
+### 安装脚本做了什么
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
-  PULSE_NODE_TLS_CLIENT_CERT_PEM="$(cat server_client_cert.pem)" sh -s -- node
-```
-
-备选方式 C：传证书文件路径
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
-  PULSE_NODE_TLS_CLIENT_CERT_FILE='/etc/pulse/server_client_cert.pem' sh -s -- node
-```
-
-### 安装脚本会做什么
-
-- 下载 GitHub Release 对应平台的 `tar.gz`
+- 从 GitHub Release 下载对应平台（linux/amd64 或 linux/arm64）的 tar.gz
 - 安装二进制到 `/usr/local/bin`
-- 安装示例配置到 `/etc/pulse`
-- `server` 首次启动时自动生成用于访问节点的客户端证书与私钥
-- 管理员可通过控制面 `/v1/node/settings` 或 `/v1/node/settings.pem` 获取 node 需要信任的 server 客户端证书
-- `node` 安装时支持四种方式：从控制面自动拉取、交互粘贴证书、直接传 PEM 内容、传证书文件路径
-- 将安装时提供的管理员密码或 TLS 证书路径写入 `/etc/pulse/*.env`
-- 安装 `systemd` 服务
-- 自动执行 `systemctl enable --now`
-
-## 建议的迁移顺序
-
-1. 先迁移 `Marzban-node` 的 sing-box 运行时控制与安全通信。
-2. 再迁移 `Marzban` 的控制面 API、节点管理和系统设置。
-3. 然后补用户、订阅、模板、统计任务。
-4. 最后再决定是否重写前端，或先保留现有前端通过新 API 运行。
+- 首次安装时写入示例配置到 `/etc/pulse/*.env`（已有配置不覆盖）
+- 注册并启动 systemd 服务（`systemctl enable --now`）
