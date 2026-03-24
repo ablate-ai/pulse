@@ -52,8 +52,6 @@ jobs:
         run: |
           mkdir -p dist/release
           find dist/artifacts -name '*.tar.gz' -exec cp {} dist/release/ \;
-          cp scripts/install.sh dist/release/install.sh
-          chmod +x dist/release/install.sh
           cd dist/release
           sha256sum *.tar.gz > checksums.txt
 
@@ -63,4 +61,3 @@ jobs:
           files: |
             dist/release/*.tar.gz
             dist/release/checksums.txt
-            dist/release/install.sh
