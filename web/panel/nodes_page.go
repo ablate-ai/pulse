@@ -294,10 +294,12 @@ func (a *app) renderNodeInboundsList(nodeID string) {
 		}
 		buf.WriteString(fmt.Sprintf(
 			`<div class="inbound-row">
-  <span class="inbound-info">%s <span class="text-muted">:%d</span>%s <span class="text-muted tag">%s</span></span>
-  <div class="inbound-actions">
-    <button class="btn btn-ghost btn-sm btn-danger" data-action="del-node-inbound" data-id="%s" data-node="%s">删除</button>
+  <div class="inbound-meta">
+    <span class="proto-badge">%s</span>
+    <span class="inbound-port">:%d</span>%s
+    <span class="inbound-tag">%s</span>
   </div>
+  <button class="btn btn-ghost btn-sm btn-danger" data-action="del-node-inbound" data-id="%s" data-node="%s">删除</button>
 </div>`,
 			escape(strings.ToUpper(ib.Protocol)), ib.Port, secTag, escape(ib.Tag),
 			escape(ib.ID), escape(nodeID),

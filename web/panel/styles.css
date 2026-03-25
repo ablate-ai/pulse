@@ -355,7 +355,7 @@ a:hover { text-decoration: underline; }
 .node-card-usage { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; min-height: 16px; }
 .node-stat { display: flex; align-items: center; }
 .logs-content { background: var(--bg-elevated); border-radius: var(--radius); padding: 12px; font-size: 12px; font-family: var(--font-mono); overflow-y: auto; white-space: pre-wrap; word-break: break-all; margin: 0; color: var(--text); flex: 1; min-height: 0; }
-.modal-box-lg { max-width: 700px; width: 90vw; max-height: 85vh; display: flex; flex-direction: column; }
+.modal-box-lg { max-width: 700px; width: 90vw; max-height: 85vh; display: flex; flex-direction: column; overflow-y: auto; }
 .node-badge { display: flex; align-items: center; }
 .node-url { font-size: 12px; color: var(--text-muted); font-family: var(--font-mono); margin-bottom: 12px; }
 .node-id-tag {
@@ -714,13 +714,14 @@ dialog::backdrop {
   backdrop-filter: blur(2px);
 }
 
-.modal { width: 100%; max-width: 480px; }
+.modal { width: fit-content; max-width: 90vw; }
 
 .modal-box {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 24px;
+  width: min(480px, 90vw);
 }
 
 .modal-head {
@@ -783,27 +784,37 @@ dialog::backdrop {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  flex-wrap: wrap;
-  padding: 8px 10px;
+  padding: 8px 12px;
   background: var(--bg-elevated);
   border-radius: var(--radius);
+  min-width: 0;
 }
 
-.inbound-info {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
+.inbound-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+.inbound-port {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--text);
   white-space: nowrap;
 }
 
-.inbound-actions {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
+.inbound-tag {
+  font-size: 11px;
+  color: var(--text-subtle);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .detail-link {
