@@ -95,8 +95,27 @@
             <div class="card-head">
               <h3 class="card-title">添加用户</h3>
             </div>
+            <p class="field-label" style="margin-bottom:4px">步骤：先填写用户基本信息和首条入站配置，提交后可在用户卡片中管理更多入站。</p>
             <form id="user-form" class="form-stack">
               <input id="user-name" placeholder="用户名" required>
+
+              <input id="user-traffic-limit" placeholder="流量上限 GB（用户总量，0=不限）" type="number" min="0" step="0.1">
+
+              <select id="user-reset-strategy">
+                <option value="no_reset">流量不重置</option>
+                <option value="day">每天重置</option>
+                <option value="week">每周重置</option>
+                <option value="month">每月重置</option>
+                <option value="year">每年重置</option>
+              </select>
+
+              <div class="field-group">
+                <label class="field-label" for="user-expire-at">过期时间（可选）</label>
+                <input id="user-expire-at" type="datetime-local">
+              </div>
+
+              <hr style="border-color:var(--border-muted);margin:4px 0">
+              <p class="field-label" style="margin-bottom:4px">首条入站配置</p>
 
               <select id="user-protocol" required>
                 <option value="vless">VLESS</option>
@@ -127,21 +146,6 @@
                 <input id="user-port" placeholder="443" type="number" min="1" max="65535" required>
               </div>
 
-              <input id="user-traffic-limit" placeholder="流量上限 GB（0=不限）" type="number" min="0" step="0.1">
-
-              <select id="user-reset-strategy">
-                <option value="no_reset">流量不重置</option>
-                <option value="day">每天重置</option>
-                <option value="week">每周重置</option>
-                <option value="month">每月重置</option>
-                <option value="year">每年重置</option>
-              </select>
-
-              <div class="field-group">
-                <label class="field-label" for="user-expire-at">过期时间（可选）</label>
-                <input id="user-expire-at" type="datetime-local">
-              </div>
-
               <select id="user-node" required>
                 <option value="">选择节点</option>
               </select>
@@ -153,14 +157,7 @@
           <!-- User List -->
           <div>
             <div class="list-toolbar">
-              <input id="user-search" placeholder="搜索用户名 / 节点 / 域名" class="search-input">
-              <select id="user-filter-protocol" class="filter-select">
-                <option value="">全部协议</option>
-                <option value="vless">VLESS</option>
-                <option value="vmess">VMess</option>
-                <option value="trojan">Trojan</option>
-                <option value="shadowsocks">Shadowsocks</option>
-              </select>
+              <input id="user-search" placeholder="搜索用户名 / ID" class="search-input">
               <select id="user-filter-status" class="filter-select">
                 <option value="">全部状态</option>
                 <option value="active">Active</option>
@@ -269,6 +266,54 @@
       <div class="modal-actions">
         <button type="button" id="edit-modal-cancel" class="btn btn-ghost">取消</button>
         <button type="submit" class="btn btn-primary">保存修改</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<!-- ─── Add Inbound Modal ─────────────────────────────── -->
+<dialog id="inbound-add-modal" class="modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3 class="modal-title">添加入站</h3>
+      <button id="inbound-add-modal-close" type="button" class="btn-icon">✕</button>
+    </div>
+    <form id="inbound-add-form" class="form-stack">
+      <select id="add-ib-node" required>
+        <option value="">选择节点</option>
+      </select>
+
+      <select id="add-ib-protocol" required>
+        <option value="vless">VLESS</option>
+        <option value="vmess">VMess</option>
+        <option value="trojan">Trojan</option>
+        <option value="shadowsocks">Shadowsocks</option>
+      </select>
+
+      <input id="add-ib-secret" placeholder="密钥（可留空自动生成）">
+
+      <div id="add-ib-method-wrap">
+        <input id="add-ib-method" placeholder="加密方式（如 aes-128-gcm）">
+      </div>
+
+      <div id="add-ib-reality-wrap" hidden>
+        <div class="form-row">
+          <input id="add-ib-reality-sni" placeholder="目标域名，如 www.google.com" style="flex:1">
+          <button type="button" id="btn-gen-keypair-add" class="btn btn-ghost btn-sm">一键生成</button>
+        </div>
+        <input id="add-ib-reality-pubkey" placeholder="公钥">
+        <input id="add-ib-reality-privkey" placeholder="私钥（服务端）">
+        <input id="add-ib-reality-shortid" placeholder="Short ID">
+      </div>
+
+      <div class="form-row-2">
+        <input id="add-ib-domain" placeholder="example.com" required>
+        <input id="add-ib-port" placeholder="443" type="number" min="1" max="65535" required>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" id="inbound-add-modal-cancel" class="btn btn-ghost">取消</button>
+        <button type="submit" class="btn btn-primary">添加</button>
       </div>
     </form>
   </div>

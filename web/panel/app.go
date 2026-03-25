@@ -12,55 +12,66 @@ type node struct {
 	BaseURL string `json:"base_url"`
 }
 
+// user 代表纯身份实体，不含协议/节点配置。
 type user struct {
 	ID                     string `json:"id"`
 	Username               string `json:"username"`
-	UUID                   string `json:"uuid"`
-	Protocol               string `json:"protocol"`
-	Secret                 string `json:"secret"`
-	Method                 string `json:"method"`
-	Security               string `json:"security"`
-	Flow                   string `json:"flow"`
-	SNI                    string `json:"sni"`
-	Fingerprint            string `json:"fingerprint"`
-	RealityPublicKey       string `json:"reality_public_key"`
-	RealityShortID         string `json:"reality_short_id"`
-	RealitySpiderX         string `json:"reality_spider_x"`
-	RealityPrivateKey      string `json:"reality_private_key"`
-	RealityHandshakeAddr   string `json:"reality_handshake_addr"`
 	Status                 string `json:"status"`
 	ExpireAt               string `json:"expire_at"`
 	DataLimitResetStrategy string `json:"data_limit_reset_strategy"`
-	NodeID                 string `json:"node_id"`
-	Domain                 string `json:"domain"`
-	Port                   int    `json:"port"`
-	InboundTag             string `json:"inbound_tag"`
 	TrafficLimit           int64  `json:"traffic_limit_bytes"`
 	UploadBytes            int64  `json:"upload_bytes"`
 	DownloadBytes          int64  `json:"download_bytes"`
 	UsedBytes              int64  `json:"used_bytes"`
-	ApplyCount             int    `json:"apply_count"`
-	LastAppliedAt          string `json:"last_applied_at"`
 	LastTrafficResetAt     string `json:"last_traffic_reset_at"`
 	CreatedAt              string `json:"created_at"`
 }
 
+// userInbound 代表用户与节点+协议的绑定关系。
+type userInbound struct {
+	ID                   string `json:"id"`
+	UserID               string `json:"user_id"`
+	NodeID               string `json:"node_id"`
+	Protocol             string `json:"protocol"`
+	UUID                 string `json:"uuid"`
+	Secret               string `json:"secret"`
+	Method               string `json:"method"`
+	Security             string `json:"security"`
+	Flow                 string `json:"flow"`
+	SNI                  string `json:"sni"`
+	Fingerprint          string `json:"fingerprint"`
+	RealityPublicKey     string `json:"reality_public_key"`
+	RealityShortID       string `json:"reality_short_id"`
+	RealitySpiderX       string `json:"reality_spider_x"`
+	RealityPrivateKey    string `json:"reality_private_key"`
+	RealityHandshakeAddr string `json:"reality_handshake_addr"`
+	Domain               string `json:"domain"`
+	Port                 int    `json:"port"`
+	InboundTag           string `json:"inbound_tag"`
+	ApplyCount           int    `json:"apply_count"`
+	LastAppliedAt        string `json:"last_applied_at"`
+	CreatedAt            string `json:"created_at"`
+}
+
 type app struct {
-	document      js.Value
-	storage       js.Value
-	window        js.Value
-	token         string
-	route         string
-	nodes         []node
-	users         []user
-	editingUserID string
+	document             js.Value
+	storage              js.Value
+	window               js.Value
+	token                string
+	route                string
+	nodes                []node
+	users                []user
+	editingUserID        string
+	editingInboundUserID string                // 正在为哪个用户添加 inbound
+	userInbounds         map[string][]userInbound // 懒加载，key = userID
 }
 
 func main() {
 	a := &app{
-		document: js.Global().Get("document"),
-		storage:  js.Global().Get("localStorage"),
-		window:   js.Global().Get("window"),
+		document:     js.Global().Get("document"),
+		storage:      js.Global().Get("localStorage"),
+		window:       js.Global().Get("window"),
+		userInbounds: make(map[string][]userInbound),
 	}
 	a.bind()
 	a.bootstrap()
