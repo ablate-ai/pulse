@@ -17,9 +17,10 @@ type systemAPI struct {
 	nodes             nodes.Store
 	base              *API
 	nodeClientCertPEM string
+	applyOpts         jobs.ApplyOptions
 }
 
-func RegisterSystemAPI(mux *http.ServeMux, usersStore users.Store, nodesStore nodes.Store, clientOptions nodes.ClientOptions) {
+func RegisterSystemAPI(mux *http.ServeMux, usersStore users.Store, nodesStore nodes.Store, clientOptions nodes.ClientOptions, applyOpts jobs.ApplyOptions) {
 	cfg := config.Load()
 	clientCertPEM, _ := cert.ReadCertificatePEM(cfg.ServerNodeClientCertFile)
 	base := New(nodesStore, clientOptions)
@@ -28,6 +29,7 @@ func RegisterSystemAPI(mux *http.ServeMux, usersStore users.Store, nodesStore no
 		nodes:             nodesStore,
 		base:              base,
 		nodeClientCertPEM: clientCertPEM,
+		applyOpts:         applyOpts,
 	}
 	mux.HandleFunc("/v1/node/settings", api.handleNodeSettings)
 	mux.HandleFunc("/v1/node/settings.pem", api.handleNodeSettingsPEM)
@@ -63,7 +65,7 @@ func (a *systemAPI) handleSyncUsage(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 
-	result, err := jobs.SyncUsage(ctx, a.users, a.nodes, a.base.Dial)
+	result, err := jobs.SyncUsage(ctx, a.users, a.nodes, a.base.Dial, a.applyOpts)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return

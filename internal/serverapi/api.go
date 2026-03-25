@@ -19,6 +19,7 @@ type API struct {
 	usersStore    users.Store
 	clientOptions nodes.ClientOptions
 	clientFactory func(node nodes.Node) *nodes.Client
+	applyOpts     jobs.ApplyOptions
 }
 
 type upsertNodeRequest struct {
@@ -41,15 +42,16 @@ func New(store nodes.Store, clientOptions nodes.ClientOptions) *API {
 	}
 }
 
-func NewWithUsers(nodesStore nodes.Store, usersStore users.Store, clientOptions nodes.ClientOptions) *API {
+func NewWithUsers(nodesStore nodes.Store, usersStore users.Store, clientOptions nodes.ClientOptions, applyOpts jobs.ApplyOptions) *API {
 	api := New(nodesStore, clientOptions)
 	api.usersStore = usersStore
+	api.applyOpts = applyOpts
 	return api
 }
 
-func RegisterUsersAPI(mux *http.ServeMux, usersStore users.Store, nodesStore nodes.Store, clientOptions nodes.ClientOptions) {
+func RegisterUsersAPI(mux *http.ServeMux, usersStore users.Store, nodesStore nodes.Store, clientOptions nodes.ClientOptions, applyOpts jobs.ApplyOptions) {
 	base := New(nodesStore, clientOptions)
-	newUserAPI(usersStore, nodesStore, base).Register(mux)
+	newUserAPI(usersStore, nodesStore, base, applyOpts).Register(mux)
 }
 
 func (a *API) Register(mux *http.ServeMux) {
@@ -319,7 +321,7 @@ func (a *API) handleNodeApply(w http.ResponseWriter, r *http.Request, nodeID str
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	status, _, err := jobs.ApplyNodeUsers(ctx, client, nodeUsers)
+	status, _, err := jobs.ApplyNodeUsers(ctx, client, nodeUsers, a.applyOpts)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return

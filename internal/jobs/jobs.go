@@ -26,7 +26,7 @@ type SyncUsageResult struct {
 
 // SyncUsage 从各节点拉取流量统计，更新用户字节数，
 // 若某节点上的用户启用状态发生变化则重新下发配置。
-func SyncUsage(ctx context.Context, userStore users.Store, nodeStore nodes.Store, dial NodeDialer) (SyncUsageResult, error) {
+func SyncUsage(ctx context.Context, userStore users.Store, nodeStore nodes.Store, dial NodeDialer, applyOpts ApplyOptions) (SyncUsageResult, error) {
 	nodesList, err := nodeStore.List()
 	if err != nil {
 		return SyncUsageResult{}, err
@@ -85,7 +85,7 @@ func SyncUsage(ctx context.Context, userStore users.Store, nodeStore nodes.Store
 		if !reloadNeeded {
 			continue
 		}
-		status, _, err := ApplyNodeUsers(ctx, client,updatedUsers)
+		status, _, err := ApplyNodeUsers(ctx, client, updatedUsers, applyOpts)
 		if err != nil {
 			result.Errors = append(result.Errors, node.ID+": reload: "+err.Error())
 			continue
@@ -110,7 +110,7 @@ type ResetTrafficResult struct {
 }
 
 // ResetTraffic 检查所有用户的流量重置策略，到期则清零并重新下发节点配置。
-func ResetTraffic(ctx context.Context, userStore users.Store, nodeStore nodes.Store, dial NodeDialer) (ResetTrafficResult, error) {
+func ResetTraffic(ctx context.Context, userStore users.Store, nodeStore nodes.Store, dial NodeDialer, applyOpts ApplyOptions) (ResetTrafficResult, error) {
 	allUsers, err := userStore.List()
 	if err != nil {
 		return ResetTrafficResult{}, err
@@ -156,7 +156,7 @@ func ResetTraffic(ctx context.Context, userStore users.Store, nodeStore nodes.St
 			result.Errors = append(result.Errors, nodeID+": "+err.Error())
 			continue
 		}
-		status, _, err := ApplyNodeUsers(ctx, client,nodeUsers)
+		status, _, err := ApplyNodeUsers(ctx, client, nodeUsers, applyOpts)
 		if err != nil {
 			result.Errors = append(result.Errors, nodeID+": reload: "+err.Error())
 			continue
@@ -202,35 +202,42 @@ func ShouldResetTraffic(strategy string, createdAt time.Time, lastResetAt *time.
 
 // ─── 内部工具 ─────────────────────────────────────────────────────────────────
 
+// ApplyOptions 控制 ApplyNodeUsers 的行为。
+type ApplyOptions struct {
+	TLSProxyMode  bool   // 启用 TLS proxy 模式（Trojan 改 WS 本地端口）
+	PanelDomain   string // 面板域名，用于生成 TLS proxy 路由
+	PanelBackend  string // 面板后端地址
+}
+
 // ApplyNodeUsers 根据节点用户列表生成配置并下发到节点。
-func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeUsers []users.User) (nodes.Status, string, error) {
+func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeUsers []users.User, applyOpts ApplyOptions) (nodes.Status, string, error) {
 	active := filterEnabled(nodeUsers)
 	if len(active) == 0 {
 		status, err := client.Stop(ctx)
 		return status, "", err
 	}
-	// Trojan 用户需要先确保证书存在
-	certsByDomain := make(map[string]nodes.CertPaths)
-	for i, u := range active {
-		if u.Protocol != "trojan" {
-			continue
-		}
-		if _, ok := certsByDomain[u.Domain]; !ok {
-			paths, err := client.EnsureCert(ctx, u.Domain)
-			if err != nil {
-				return nodes.Status{}, "", fmt.Errorf("ensure cert for %s: %w", u.Domain, err)
-			}
-			certsByDomain[u.Domain] = paths
-		}
-		active[i].TLSCertPath = certsByDomain[u.Domain].CertPath
-		active[i].TLSKeyPath = certsByDomain[u.Domain].KeyPath
-	}
-	config, err := proxycfg.BuildSingboxConfig(active)
+
+	cfg, err := proxycfg.BuildSingboxConfig(active, proxycfg.BuildOptions{
+		TLSProxyMode: applyOpts.TLSProxyMode,
+	})
 	if err != nil {
 		return nodes.Status{}, "", err
 	}
-	status, err := client.Restart(ctx, nodes.ConfigRequest{Config: config})
-	return status, config, err
+
+	// TLS proxy 模式下，更新节点路由表
+	if applyOpts.TLSProxyMode {
+		tlsRoutes := proxycfg.BuildTLSRoutes(active, applyOpts.PanelDomain, applyOpts.PanelBackend)
+		entries := make([]nodes.TLSRouteEntry, len(tlsRoutes))
+		for i, r := range tlsRoutes {
+			entries[i] = nodes.TLSRouteEntry{Host: r.Host, Backend: r.Backend}
+		}
+		if err := client.UpdateTLSRoutes(ctx, entries); err != nil {
+			return nodes.Status{}, "", fmt.Errorf("update tls routes: %w", err)
+		}
+	}
+
+	status, err := client.Restart(ctx, nodes.ConfigRequest{Config: cfg})
+	return status, cfg, err
 }
 
 func filterEnabled(items []users.User) []users.User {

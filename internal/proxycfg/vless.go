@@ -28,7 +28,20 @@ type inbound struct {
 	Password   string           `json:"password,omitempty"`
 }
 
-func BuildSingboxConfig(nodeUsers []users.User) (string, error) {
+// BuildOptions 控制 BuildSingboxConfig 的可选行为。
+type BuildOptions struct {
+	// TLSProxyMode 为 true 时，Trojan inbound 改为 WebSocket 模式并监听本地端口，
+	// 由外部 TLS proxy 统一终止 TLS 并反代过来。
+	TLSProxyMode bool
+}
+
+// TLSRoute 描述 TLS proxy 的一条路由规则。
+type TLSRoute struct {
+	Host    string // 客户端域名
+	Backend string // 后端地址 127.0.0.1:port
+}
+
+func BuildSingboxConfig(nodeUsers []users.User, opts BuildOptions) (string, error) {
 	if len(nodeUsers) == 0 {
 		return "", fmt.Errorf("at least one user is required")
 	}
@@ -53,14 +66,15 @@ func BuildSingboxConfig(nodeUsers []users.User) (string, error) {
 
 		index, ok := inboundIndex[key]
 		if !ok {
+			listen, listenPort := listenAddrFor(user, opts)
 			inbounds = append(inbounds, inbound{
 				Type:       key.Protocol,
 				Tag:        key.Tag,
-				Listen:     "::",
-				ListenPort: user.Port,
+				Listen:     listen,
+				ListenPort: listenPort,
 				Users:      make([]map[string]any, 0, 1),
-				Transport:  transportFor(key.Protocol),
-				TLS:        tlsFor(user),
+				Transport:  transportFor(key.Protocol, opts),
+				TLS:        tlsFor(user, opts),
 				Method:     key.Method,
 				Password:   inboundPasswordFor(key.Protocol, key.Method),
 			})
@@ -122,7 +136,51 @@ func methodOf(user users.User) string {
 	return "aes-128-gcm"
 }
 
-func transportFor(protocol string) map[string]any {
+// localPortFor 将外部端口映射为 sing-box 本地 WS 监听端口（+20000，避免冲突）。
+func localPortFor(externalPort int) int {
+	return 20000 + externalPort%20000
+}
+
+// listenAddrFor 返回 inbound 的监听地址和端口。
+// TLSProxyMode 下 Trojan 监听在本地，其余协议不变。
+func listenAddrFor(user users.User, opts BuildOptions) (listen string, port int) {
+	if opts.TLSProxyMode && protocolOf(user) == "trojan" {
+		return "127.0.0.1", localPortFor(user.Port)
+	}
+	return "::", user.Port
+}
+
+// BuildTLSRoutes 根据用户列表生成 TLS proxy 路由表。
+// 每个 Trojan 用户的域名映射到对应的本地 WS 端口。
+// 若 panelDomain/panelBackend 非空，面板域名也加入路由。
+func BuildTLSRoutes(nodeUsers []users.User, panelDomain, panelBackend string) []TLSRoute {
+	seen := make(map[string]bool)
+	routes := make([]TLSRoute, 0)
+
+	for _, u := range nodeUsers {
+		if protocolOf(u) != "trojan" || u.Domain == "" {
+			continue
+		}
+		if seen[u.Domain] {
+			continue
+		}
+		seen[u.Domain] = true
+		routes = append(routes, TLSRoute{
+			Host:    u.Domain,
+			Backend: fmt.Sprintf("127.0.0.1:%d", localPortFor(u.Port)),
+		})
+	}
+
+	if panelDomain != "" && panelBackend != "" {
+		routes = append(routes, TLSRoute{Host: panelDomain, Backend: panelBackend})
+	}
+	return routes
+}
+
+func transportFor(protocol string, opts BuildOptions) map[string]any {
+	if opts.TLSProxyMode && protocol == "trojan" {
+		return map[string]any{"type": "ws", "path": "/ws"}
+	}
 	return nil
 }
 
@@ -135,16 +193,19 @@ func inboundPasswordFor(protocol, method string) string {
 	}
 }
 
-// tlsFor 根据协议和 security 选择合适的 TLS 配置。
-func tlsFor(user users.User) map[string]any {
+// tlsFor 根据协议、security 和选项选择 TLS 配置。
+// TLSProxyMode 下 Trojan 的 TLS 由外部代理处理，inbound 本身不需要 TLS。
+func tlsFor(user users.User, opts BuildOptions) map[string]any {
 	if protocolOf(user) == "trojan" {
+		if opts.TLSProxyMode {
+			return nil // TLS 由 TLS proxy 终止
+		}
 		return trojanTLSFor(user)
 	}
 	return realityTLSFor(user)
 }
 
-// trojanTLSFor 生成 Trojan inbound 的标准 TLS 配置。
-// 需要 user.TLSCertPath 和 user.TLSKeyPath 在 apply 前由节点填充。
+// trojanTLSFor 生成 Trojan inbound 的标准 TLS 配置（非 TLSProxyMode 时使用）。
 func trojanTLSFor(user users.User) map[string]any {
 	if user.TLSCertPath == "" || user.TLSKeyPath == "" {
 		return nil
@@ -193,6 +254,7 @@ func realityTLSFor(user users.User) map[string]any {
 		},
 	}
 }
+
 
 func inboundUser(user users.User) []map[string]any {
 	switch protocolOf(user) {

@@ -45,7 +45,7 @@ func TestUserSubscriptionAndApplyFlow(t *testing.T) {
 		})
 	}
 
-	userAPI := newUserAPI(users.NewMemoryStore(), nodeStore, baseAPI)
+	userAPI := newUserAPI(users.NewMemoryStore(), nodeStore, baseAPI, jobs.ApplyOptions{})
 	mux := http.NewServeMux()
 	userAPI.Register(mux)
 
@@ -106,7 +106,7 @@ func TestCreateUserAutoGeneratesID(t *testing.T) {
 	})
 
 	baseAPI := New(nodeStore, nodes.ClientOptions{})
-	userAPI := newUserAPI(users.NewMemoryStore(), nodeStore, baseAPI)
+	userAPI := newUserAPI(users.NewMemoryStore(), nodeStore, baseAPI, jobs.ApplyOptions{})
 	mux := http.NewServeMux()
 	userAPI.Register(mux)
 
@@ -150,7 +150,7 @@ func TestUserSupportsMultipleProtocols(t *testing.T) {
 		})
 	}
 
-	userAPI := newUserAPI(users.NewMemoryStore(), nodeStore, baseAPI)
+	userAPI := newUserAPI(users.NewMemoryStore(), nodeStore, baseAPI, jobs.ApplyOptions{})
 	mux := http.NewServeMux()
 	userAPI.Register(mux)
 
@@ -229,7 +229,7 @@ func TestSyncUsageDisablesLimitedUserAndReloadsNode(t *testing.T) {
 	_, _ = userStore.Upsert(users.User{ID: "u1", Username: "alice", Status: users.StatusActive, NodeID: "node-1", Domain: "example.com", Port: 443, Protocol: "vless", TrafficLimit: 100})
 	_, _ = userStore.Upsert(users.User{ID: "u2", Username: "bob", Status: users.StatusActive, NodeID: "node-1", Domain: "example.com", Port: 443, Protocol: "vless"})
 
-	result, err := jobs.SyncUsage(t.Context(), userStore, nodeStore, baseAPI.Dial)
+	result, err := jobs.SyncUsage(t.Context(), userStore, nodeStore, baseAPI.Dial, jobs.ApplyOptions{})
 	if err != nil {
 		t.Fatalf("SyncUsage() error = %v", err)
 	}

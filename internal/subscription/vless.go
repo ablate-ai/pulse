@@ -59,7 +59,8 @@ func vlessLink(user users.User) string {
 
 func trojanLink(user users.User) string {
 	query := url.Values{}
-	query.Set("type", "tcp")
+	query.Set("type", "ws")
+	query.Set("path", "/ws")
 	query.Set("security", "tls")
 	sni := user.SNI
 	if sni == "" {

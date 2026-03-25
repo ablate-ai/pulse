@@ -12,16 +12,17 @@ import (
 	"time"
 
 	"pulse/internal/idgen"
+	"pulse/internal/jobs"
 	"pulse/internal/nodes"
-	"pulse/internal/proxycfg"
 	"pulse/internal/subscription"
 	"pulse/internal/users"
 )
 
 type userAPI struct {
-	users users.Store
-	nodes nodes.Store
-	base  *API
+	users     users.Store
+	nodes     nodes.Store
+	base      *API
+	applyOpts jobs.ApplyOptions
 }
 
 type createUserRequest struct {
@@ -67,11 +68,12 @@ type updateUserRequest struct {
 	RealityHandshakeAddr   string     `json:"reality_handshake_addr"`
 }
 
-func newUserAPI(usersStore users.Store, nodesStore nodes.Store, base *API) *userAPI {
+func newUserAPI(usersStore users.Store, nodesStore nodes.Store, base *API, applyOpts jobs.ApplyOptions) *userAPI {
 	return &userAPI{
-		users: usersStore,
-		nodes: nodesStore,
-		base:  base,
+		users:     usersStore,
+		nodes:     nodesStore,
+		base:      base,
+		applyOpts: applyOpts,
 	}
 }
 
@@ -328,7 +330,7 @@ func (a *userAPI) handleApply(w http.ResponseWriter, r *http.Request, userID str
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	status, config, err := applyNodeUsers(ctx, client, nodeUsers)
+	status, config, err := jobs.ApplyNodeUsers(ctx, client, nodeUsers, a.applyOpts)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
@@ -463,41 +465,3 @@ func filterEnabledUsers(items []users.User) []users.User {
 	return out
 }
 
-func applyNodeUsers(ctx context.Context, client *nodes.Client, nodeUsers []users.User) (nodes.Status, string, error) {
-	activeUsers := filterEnabledUsers(nodeUsers)
-	if len(activeUsers) == 0 {
-		status, err := client.Stop(ctx)
-		return status, "", err
-	}
-	// 为 Trojan 用户申请/确认 TLS 证书，将路径回填到 user 中
-	if err := ensureTrojanCerts(ctx, client, activeUsers); err != nil {
-		return nodes.Status{}, "", err
-	}
-	config, err := proxycfg.BuildSingboxConfig(activeUsers)
-	if err != nil {
-		return nodes.Status{}, "", err
-	}
-	status, err := client.Restart(ctx, nodes.ConfigRequest{Config: config})
-	return status, config, err
-}
-
-// ensureTrojanCerts 对 Trojan 用户按域名去重调用节点 EnsureCert，并回填证书路径。
-func ensureTrojanCerts(ctx context.Context, client *nodes.Client, activeUsers []users.User) error {
-	certsByDomain := make(map[string]nodes.CertPaths)
-	for i, u := range activeUsers {
-		if u.Protocol != "trojan" {
-			continue
-		}
-		domain := u.Domain
-		if _, ok := certsByDomain[domain]; !ok {
-			paths, err := client.EnsureCert(ctx, domain)
-			if err != nil {
-				return fmt.Errorf("ensure cert for %s: %w", domain, err)
-			}
-			certsByDomain[domain] = paths
-		}
-		activeUsers[i].TLSCertPath = certsByDomain[domain].CertPath
-		activeUsers[i].TLSKeyPath = certsByDomain[domain].KeyPath
-	}
-	return nil
-}

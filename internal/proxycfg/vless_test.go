@@ -17,7 +17,7 @@ func TestBuildSingboxConfigOmitsUnsupportedFieldsForVLESS(t *testing.T) {
 		NodeID:   "node-1",
 		Domain:   "example.com",
 		Port:     39001,
-	}})
+	}}, BuildOptions{})
 	if err != nil {
 		t.Fatalf("BuildSingboxConfig() error = %v", err)
 	}
@@ -47,7 +47,7 @@ func TestBuildSingboxConfigRealityTLS(t *testing.T) {
 		NodeID:               "node-1",
 		Domain:               "1.2.3.4",
 		Port:                 443,
-	}})
+	}}, BuildOptions{})
 	if err != nil {
 		t.Fatalf("BuildSingboxConfig() error = %v", err)
 	}
@@ -69,7 +69,7 @@ func TestBuildSingboxConfigKeepsShadowsocksMethod(t *testing.T) {
 		NodeID:   "node-1",
 		Domain:   "example.com",
 		Port:     39002,
-	}})
+	}}, BuildOptions{})
 	if err != nil {
 		t.Fatalf("BuildSingboxConfig() error = %v", err)
 	}

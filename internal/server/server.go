@@ -41,13 +41,18 @@ func Run() error {
 	}
 
 	// 启动调度器
-	nodeAPI := serverapi.NewWithUsers(store, userStore, clientOptions)
+	applyOpts := jobs.ApplyOptions{
+		TLSProxyMode: true,
+		PanelDomain:  cfg.PanelDomain,
+		PanelBackend: cfg.PanelFallbackAddr,
+	}
+	nodeAPI := serverapi.NewWithUsers(store, userStore, clientOptions, applyOpts)
 	scheduler := jobs.NewScheduler(nil)
 	scheduler.Add(jobs.Job{
 		Name:     "sync-usage",
 		Interval: 1 * time.Minute,
 		Fn: func(ctx context.Context) error {
-			_, err := jobs.SyncUsage(ctx, userStore, store, nodeAPI.Dial)
+			_, err := jobs.SyncUsage(ctx, userStore, store, nodeAPI.Dial, applyOpts)
 			return err
 		},
 	})
@@ -55,7 +60,7 @@ func Run() error {
 		Name:     "reset-traffic",
 		Interval: 1 * time.Minute,
 		Fn: func(ctx context.Context) error {
-			_, err := jobs.ResetTraffic(ctx, userStore, store, nodeAPI.Dial)
+			_, err := jobs.ResetTraffic(ctx, userStore, store, nodeAPI.Dial, applyOpts)
 			return err
 		},
 	})
@@ -102,9 +107,9 @@ func Run() error {
 		})
 	})
 	registerWeb(mux, cfg.WebDir)
-	serverapi.NewWithUsers(store, userStore, clientOptions).Register(protectedV1)
-	serverapi.RegisterUsersAPI(protectedV1, userStore, store, clientOptions)
-	serverapi.RegisterSystemAPI(protectedV1, userStore, store, clientOptions)
+	serverapi.NewWithUsers(store, userStore, clientOptions, applyOpts).Register(protectedV1)
+	serverapi.RegisterUsersAPI(protectedV1, userStore, store, clientOptions, applyOpts)
+	serverapi.RegisterSystemAPI(protectedV1, userStore, store, clientOptions, applyOpts)
 	serverapi.RegisterInboundsAPI(protectedV1, inboundStore)
 	serverapi.RegisterToolsAPI(protectedV1)
 	mux.Handle("/v1/tools/", authManager.Middleware(protectedV1))

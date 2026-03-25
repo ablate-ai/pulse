@@ -16,6 +16,7 @@ import (
 	"pulse/internal/config"
 	"pulse/internal/nodeapi"
 	"pulse/internal/singbox"
+	"pulse/internal/tlsproxy"
 )
 
 func Run() error {
@@ -24,6 +25,7 @@ func Run() error {
 	runtimeInfo := manager.RuntimeInfo(context.Background())
 
 	cm := certmgr.New(cfg.CertDir, cfg.ACMEEmail)
+	tlsProxy := tlsproxy.New(cm, cfg.TLSProxyAddr)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +50,7 @@ func Run() error {
 		})
 	})
 
-	nodeapi.New(manager, cm).Register(mux)
+	nodeapi.New(manager, cm, tlsProxy).Register(mux)
 
 	tlsConfig, err := buildTLSConfig(cfg)
 	if err != nil {
@@ -61,6 +63,15 @@ func Run() error {
 		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
+
+	// 启动 TLS proxy（context 取消时优雅退出）
+	proxyCtx, cancelProxy := context.WithCancel(context.Background())
+	defer cancelProxy()
+	go func() {
+		if err := tlsProxy.Start(proxyCtx); err != nil {
+			log.Printf("tls-proxy error: %v", err)
+		}
+	}()
 
 	if runtimeInfo.Available {
 		log.Printf("pulse-node sing-box module: %s", runtimeInfo.Module)

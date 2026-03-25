@@ -11,7 +11,7 @@ import (
 
 func TestRuntimeEndpointRequiresAuthAndReturnsInfo(t *testing.T) {
 	manager := singbox.NewManager()
-	api := New(manager, nil)
+	api := New(manager, nil, nil)
 
 	mux := http.NewServeMux()
 	api.Register(mux)
@@ -46,7 +46,7 @@ func TestRuntimeEndpointRequiresAuthAndReturnsInfo(t *testing.T) {
 
 func TestUsageEndpointRequiresAuthAndReturnsStats(t *testing.T) {
 	manager := singbox.NewManager()
-	api := New(manager, nil)
+	api := New(manager, nil, nil)
 
 	mux := http.NewServeMux()
 	api.Register(mux)

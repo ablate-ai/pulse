@@ -8,22 +8,25 @@ import (
 
 	"pulse/internal/certmgr"
 	"pulse/internal/singbox"
+	"pulse/internal/tlsproxy"
 )
 
 type API struct {
-	manager *singbox.Manager
-	certs   *certmgr.Manager
+	manager  *singbox.Manager
+	certs    *certmgr.Manager
+	tlsProxy *tlsproxy.Proxy
 }
 
 type singboxConfigRequest struct {
 	Config string `json:"config"`
 }
 
-func New(manager *singbox.Manager, certs *certmgr.Manager) *API {
-	return &API{manager: manager, certs: certs}
+func New(manager *singbox.Manager, certs *certmgr.Manager, proxy *tlsproxy.Proxy) *API {
+	return &API{manager: manager, certs: certs, tlsProxy: proxy}
 }
 
 func (a *API) Register(mux *http.ServeMux) {
+	mux.HandleFunc("/v1/node/tls-proxy/routes", a.handleTLSProxyRoutes)
 	mux.HandleFunc("/v1/node/cert/ensure", a.handleCertEnsure)
 	mux.HandleFunc("/v1/node/runtime", a.handleRuntime)
 	mux.HandleFunc("/v1/node/runtime/status", a.handleStatus)
@@ -167,6 +170,24 @@ func (a *API) handleCertEnsure(w http.ResponseWriter, r *http.Request) {
 		"cert_path": a.certs.CertPath(req.Domain),
 		"key_path":  a.certs.KeyPath(req.Domain),
 	})
+}
+
+func (a *API) handleTLSProxyRoutes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+	var req struct {
+		Routes []tlsproxy.Route `json:"routes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
+		return
+	}
+	if a.tlsProxy != nil {
+		a.tlsProxy.SetRoutes(req.Routes)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"routes": len(req.Routes)})
 }
 
 func decodeConfigRequest(w http.ResponseWriter, r *http.Request) (singboxConfigRequest, bool) {
