@@ -43,13 +43,13 @@ read_panel_port() {
   info "面板端口: $PANEL_PORT（来自 $PULSE_ENV_FILE）"
 }
 
-# ── 获取面板域名 ───────────────────────────────────────────────────────────────
+# ── 获取面板域名（可选，agent 节点可跳过）────────────────────────────────────
 prompt_panel_domain() {
   [ -n "${PANEL_DOMAIN:-}" ] && return
-  tty_available || error "未设置 PANEL_DOMAIN，请通过环境变量传入"
-  printf '面板域名（例如 panel.example.com）: '
+  tty_available || return  # 非交互环境直接跳过，PANEL_DOMAIN 留空
+  printf '面板域名（无面板直接回车跳过）: '
   read -r PANEL_DOMAIN </dev/tty
-  [ -n "$PANEL_DOMAIN" ] || error "域名不能为空"
+  PANEL_DOMAIN="${PANEL_DOMAIN:-}"
 }
 
 # ── 检查 Caddy 是否安装 ────────────────────────────────────────────────────────
@@ -115,11 +115,13 @@ write_caddyfile() {
     : > "$CADDYFILE"
   fi
 
-  # 面板块
-  printf '# 面板 HTTPS\n' >> "$CADDYFILE"
-  printf '%s {\n' "$PANEL_DOMAIN" >> "$CADDYFILE"
-  printf '\thandle {\n\t\treverse_proxy 127.0.0.1:%s\n\t}\n' "$PANEL_PORT" >> "$CADDYFILE"
-  printf '}\n\n' >> "$CADDYFILE"
+  # 面板块（仅 server 节点）
+  if [ -n "${PANEL_DOMAIN:-}" ]; then
+    printf '# 面板 HTTPS\n' >> "$CADDYFILE"
+    printf '%s {\n' "$PANEL_DOMAIN" >> "$CADDYFILE"
+    printf '\thandle {\n\t\treverse_proxy 127.0.0.1:%s\n\t}\n' "$PANEL_PORT" >> "$CADDYFILE"
+    printf '}\n\n' >> "$CADDYFILE"
+  fi
 
   # Trojan 域名由 pulse-server 动态写入 pulse.d/
   printf '# Trojan inbound 域名（由 pulse-server 自动管理）\n' >> "$CADDYFILE"
@@ -164,11 +166,11 @@ main() {
   printf '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
   printf '  Caddy 配置完成\n'
   printf '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
-  printf '  面板地址:  https://%s\n' "$PANEL_DOMAIN"
+  [ -n "${PANEL_DOMAIN:-}" ] && printf '  面板地址:  https://%s\n' "$PANEL_DOMAIN"
   printf '  Caddyfile: %s\n' "$CADDYFILE"
   printf '  Trojan 路由目录: %s/pulse.d/\n' "$(dirname "$CADDYFILE")"
   printf '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
-  printf '  提示: 确认 DNS 已将 %s 指向本机 IP\n' "$PANEL_DOMAIN"
+  [ -n "${PANEL_DOMAIN:-}" ] && printf '  提示: 确认 DNS 已将 %s 指向本机 IP\n' "$PANEL_DOMAIN"
   printf '  Trojan inbound 创建后路由会自动同步，无需手动操作\n'
 }
 
