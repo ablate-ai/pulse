@@ -1,42 +1,73 @@
 #!/bin/sh
-# setup-caddy.sh — 为 pulse-server（A2 架构）自动配置 Caddy
+# setup-caddy.sh — 为 pulse（A2 架构）配置 Caddy 反代
 #
 # 架构说明：
-#   Caddy 监听 :443，同时反代：
-#     - HTTPS 面板  →  127.0.0.1:PANEL_PORT
-#     - Trojan WS   →  127.0.0.1:WS_PORT  (路径 /ws)
+#   Caddy 监听 :443，按需反代：
+#     - PANEL_DOMAIN  → 127.0.0.1:PANEL_PORT  （面板 HTTPS，可选）
+#     - TROJAN_DOMAIN → 127.0.0.1:WS_PORT /ws （Trojan WS，可选，可与面板同域）
+#   至少需要指定其中一个。
 #
 # 用法：
-#   PANEL_DOMAIN=panel.example.com PANEL_PORT=8080 WS_PORT=10443 sh setup-caddy.sh
-#   或直接运行，脚本会交互询问。
+#   # 仅面板 HTTPS
+#   PANEL_DOMAIN=panel.example.com sh setup-caddy.sh
+#
+#   # 仅 Trojan WS（添加新 inbound 时）
+#   TROJAN_DOMAIN=nc.example.com sh setup-caddy.sh
+#
+#   # 两者同域
+#   PANEL_DOMAIN=example.com TROJAN_DOMAIN=example.com sh setup-caddy.sh
+#
+#   # 两者不同域
+#   PANEL_DOMAIN=panel.example.com TROJAN_DOMAIN=nc.example.com sh setup-caddy.sh
 #
 # 环境变量：
-#   PANEL_DOMAIN   面板对外域名（必填）
-#   PANEL_PORT     pulse-server 监听端口，默认 8080
+#   PANEL_DOMAIN   面板对外域名（可选）
+#   TROJAN_DOMAIN  Trojan inbound 域名（可选，与 PANEL_DOMAIN 可相同可不同）
 #   WS_PORT        sing-box Trojan WS 本地端口（PULSE_SINGBOX_WS_PORT），默认 10443
+#   PANEL_PORT     pulse-server 监听端口，默认自动从配置文件读取，兜底 8080
 #   CADDYFILE      Caddyfile 路径，默认 /etc/caddy/Caddyfile
 #   ACME_EMAIL     Let's Encrypt 账号邮箱（可选）
 
 set -eu
 
 # ── 默认值 ─────────────────────────────────────────────────────────────────────
-PANEL_PORT="${PANEL_PORT:-8080}"
 WS_PORT="${WS_PORT:-10443}"
 CADDYFILE="${CADDYFILE:-/etc/caddy/Caddyfile}"
+PULSE_ENV_FILE="/etc/pulse/pulse-server.env"
 
 # ── 工具函数 ───────────────────────────────────────────────────────────────────
 info()  { printf '\033[32m[INFO]\033[0m  %s\n' "$*"; }
 warn()  { printf '\033[33m[WARN]\033[0m  %s\n' "$*"; }
 error() { printf '\033[31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
 
-tty_available() { [ -r /dev/tty ] && [ -w /dev/tty ]; }
+# ── 从 pulse-server.env 读取面板端口 ──────────────────────────────────────────
+read_panel_port() {
+  # 优先使用环境变量显式传入的值
+  if [ -n "${PANEL_PORT:-}" ]; then
+    return
+  fi
+  PANEL_PORT="8080"  # 兜底默认值
+  [ -f "$PULSE_ENV_FILE" ] || return
+  ADDR=$(grep '^PULSE_SERVER_ADDR=' "$PULSE_ENV_FILE" 2>/dev/null | cut -d= -f2 | tr -d '"' | tr -d "'")
+  [ -n "$ADDR" ] || return
+  # PULSE_SERVER_ADDR 格式为 :8080 或 0.0.0.0:8080
+  PORT=$(printf '%s' "$ADDR" | sed 's/.*://')
+  [ -n "$PORT" ] && [ "$PORT" != "$ADDR" ] && PANEL_PORT="$PORT"
+  info "面板端口: $PANEL_PORT（来自 $PULSE_ENV_FILE）"
+}
 
-prompt_panel_domain() {
-  [ "${PANEL_DOMAIN+x}" = "x" ] && return
-  tty_available || error "未设置 PANEL_DOMAIN，请通过环境变量传入"
-  printf '面板域名（例如 panel.example.com）: '
-  read -r PANEL_DOMAIN </dev/tty
-  [ -n "$PANEL_DOMAIN" ] || error "域名不能为空"
+# ── 参数校验 ───────────────────────────────────────────────────────────────────
+validate_args() {
+  [ -n "${PANEL_DOMAIN:-}" ] || [ -n "${TROJAN_DOMAIN:-}" ] || \
+    error "至少需要指定 PANEL_DOMAIN 或 TROJAN_DOMAIN"
+
+  # TROJAN_DOMAIN 存在时才需要 WS_PORT（始终有默认值，这里只做提示）
+  if [ -n "${TROJAN_DOMAIN:-}" ]; then
+    info "Trojan 域名: $TROJAN_DOMAIN → 127.0.0.1:$WS_PORT"
+  fi
+  if [ -n "${PANEL_DOMAIN:-}" ]; then
+    info "面板域名: $PANEL_DOMAIN → 127.0.0.1:$PANEL_PORT"
+  fi
 }
 
 # ── 检查 Caddy 是否安装 ────────────────────────────────────────────────────────
@@ -96,47 +127,51 @@ write_caddyfile() {
     warn "已备份原 Caddyfile 至 $BACKUP"
   fi
 
-  EMAIL_BLOCK=""
+  # 文件头
+  printf '# Pulse — 由 setup-caddy.sh 生成\n# 生成时间: %s\n\n' \
+    "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$CADDYFILE"
+
+  # 全局块（仅在有邮箱时写入）
   if [ -n "${ACME_EMAIL:-}" ]; then
-    EMAIL_BLOCK="	email ${ACME_EMAIL}"
+    printf '{\n\temail %s\n}\n\n' "$ACME_EMAIL" >> "$CADDYFILE"
   fi
 
-  cat >"$CADDYFILE" <<EOF
-# Pulse panel + Trojan WS — 由 setup-caddy.sh 生成
-# 生成时间: $(date -u '+%Y-%m-%dT%H:%M:%SZ')
+  # Trojan 独立域名块（TROJAN_DOMAIN 非空且与面板域名不同）
+  if [ -n "${TROJAN_DOMAIN:-}" ] && [ "${TROJAN_DOMAIN}" != "${PANEL_DOMAIN:-}" ]; then
+    printf '%s {\n' "$TROJAN_DOMAIN" >> "$CADDYFILE"
+    printf '\t# Trojan WebSocket — Caddy v2 自动处理 WS 升级\n' >> "$CADDYFILE"
+    printf '\thandle /ws {\n\t\treverse_proxy 127.0.0.1:%s\n\t}\n' "$WS_PORT" >> "$CADDYFILE"
+    printf '}\n\n' >> "$CADDYFILE"
+  fi
 
-{
-${EMAIL_BLOCK}
-}
+  # 面板域名块（PANEL_DOMAIN 非空）
+  if [ -n "${PANEL_DOMAIN:-}" ]; then
+    printf '%s {\n' "$PANEL_DOMAIN" >> "$CADDYFILE"
+    # 若 Trojan 与面板同域，在面板块内加 /ws 路由
+    if [ "${TROJAN_DOMAIN:-}" = "$PANEL_DOMAIN" ]; then
+      printf '\t# Trojan WebSocket — Caddy v2 自动处理 WS 升级\n' >> "$CADDYFILE"
+      printf '\thandle /ws {\n\t\treverse_proxy 127.0.0.1:%s\n\t}\n\n' "$WS_PORT" >> "$CADDYFILE"
+    fi
+    printf '\t# 面板 API 及前端\n' >> "$CADDYFILE"
+    printf '\thandle {\n\t\treverse_proxy 127.0.0.1:%s\n\t}\n' "$PANEL_PORT" >> "$CADDYFILE"
+    printf '}\n' >> "$CADDYFILE"
+  fi
 
-${PANEL_DOMAIN} {
-	# Trojan WebSocket 流量：路径 /ws 反代到 sing-box 本地端口
-	handle /ws {
-		# Caddy v2 自动处理 WebSocket 升级，无需手动转发 Connection/Upgrade
-		reverse_proxy 127.0.0.1:${WS_PORT}
-	}
-
-	# 面板 API 及前端
-	handle {
-		reverse_proxy 127.0.0.1:${PANEL_PORT}
-	}
-}
-EOF
   info "Caddyfile 已写入: $CADDYFILE"
 }
 
 # ── 更新 pulse-server 环境变量 ─────────────────────────────────────────────────
 update_pulse_env() {
-  ENV_FILE="/etc/pulse/pulse-server.env"
-  [ -f "$ENV_FILE" ] || return
+  # 只有配置了 Trojan 才需要写 PULSE_SINGBOX_WS_PORT
+  [ -n "${TROJAN_DOMAIN:-}" ] || return
+  [ -f "$PULSE_ENV_FILE" ] || return
 
-  # 写入或更新 PULSE_SINGBOX_WS_PORT
-  if grep -q '^PULSE_SINGBOX_WS_PORT=' "$ENV_FILE" 2>/dev/null; then
-    sed -i "s|^PULSE_SINGBOX_WS_PORT=.*|PULSE_SINGBOX_WS_PORT=${WS_PORT}|" "$ENV_FILE"
+  if grep -q '^PULSE_SINGBOX_WS_PORT=' "$PULSE_ENV_FILE" 2>/dev/null; then
+    sed -i "s|^PULSE_SINGBOX_WS_PORT=.*|PULSE_SINGBOX_WS_PORT=${WS_PORT}|" "$PULSE_ENV_FILE"
   else
-    printf '\nPULSE_SINGBOX_WS_PORT=%s\n' "$WS_PORT" >>"$ENV_FILE"
+    printf '\nPULSE_SINGBOX_WS_PORT=%s\n' "$WS_PORT" >> "$PULSE_ENV_FILE"
   fi
-  info "已设置 PULSE_SINGBOX_WS_PORT=${WS_PORT} 在 $ENV_FILE"
+  info "已设置 PULSE_SINGBOX_WS_PORT=${WS_PORT} 在 $PULSE_ENV_FILE"
 }
 
 # ── 启动/重载 Caddy ────────────────────────────────────────────────────────────
@@ -155,34 +190,45 @@ reload_caddy() {
 
 # ── 重启 pulse-server 使新端口变量生效 ─────────────────────────────────────────
 restart_pulse_server() {
+  # 只有更新了 env 文件才需要重启
+  [ -n "${TROJAN_DOMAIN:-}" ] || return
+  [ -f "$PULSE_ENV_FILE" ] || return
   systemctl is-active --quiet pulse-server 2>/dev/null || return
   systemctl restart pulse-server
   info "pulse-server 已重启"
+}
+
+# ── 打印完成摘要 ───────────────────────────────────────────────────────────────
+print_summary() {
+  printf '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+  printf '  Caddy 配置完成\n'
+  printf '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+  [ -n "${PANEL_DOMAIN:-}" ] && printf '  面板地址:   https://%s\n' "$PANEL_DOMAIN"
+  [ -n "${TROJAN_DOMAIN:-}" ] && printf '  Trojan WS:  wss://%s/ws  (本地 :%s)\n' "$TROJAN_DOMAIN" "$WS_PORT"
+  printf '  Caddyfile:  %s\n' "$CADDYFILE"
+  printf '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+  if [ -n "${PANEL_DOMAIN:-}" ] && [ -n "${TROJAN_DOMAIN:-}" ]; then
+    printf '  提示: 确认 DNS 已将上述域名分别指向本机 IP\n'
+  elif [ -n "${PANEL_DOMAIN:-}" ]; then
+    printf '  提示: 确认 DNS 已将 %s 指向本机 IP\n' "$PANEL_DOMAIN"
+  else
+    printf '  提示: 确认 DNS 已将 %s 指向本机 IP\n' "$TROJAN_DOMAIN"
+  fi
 }
 
 # ── 主流程 ─────────────────────────────────────────────────────────────────────
 main() {
   [ "$(id -u)" = "0" ] || error "请以 root 身份运行"
 
-  prompt_panel_domain
+  read_panel_port
+  validate_args
   check_caddy
   check_port_443
   write_caddyfile
   update_pulse_env
   reload_caddy
   restart_pulse_server
-
-  cat <<EOF
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Caddy 配置完成
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  面板地址:   https://${PANEL_DOMAIN}
-  Trojan WS:  wss://${PANEL_DOMAIN}/ws  (本地 :${WS_PORT})
-  Caddyfile:  ${CADDYFILE}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  提示: 确认 DNS 已将 ${PANEL_DOMAIN} 指向本机 IP
-EOF
+  print_summary
 }
 
 main "$@"

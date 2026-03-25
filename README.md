@@ -83,38 +83,46 @@ curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/instal
 pulse 默认以 HTTP 提供面板，如需 HTTPS 及 Trojan 在标准 443 端口运行，运行 Caddy 配置脚本：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/setup-caddy.sh | \
-  PANEL_DOMAIN=panel.example.com sh
+# 仅配置面板 HTTPS
+PANEL_DOMAIN=panel.example.com sh <(curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/setup-caddy.sh)
+
+# 添加 Trojan inbound 时，指定 Trojan 域名（与面板域名无关）
+TROJAN_DOMAIN=nc.example.com sh <(curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/setup-caddy.sh)
+
+# 两者同域
+PANEL_DOMAIN=example.com TROJAN_DOMAIN=example.com sh <(curl -fsSL ...)
 ```
+
+> `PANEL_DOMAIN` 和 `TROJAN_DOMAIN` 至少填一个，可相同可不同。
 
 **脚本做的事：**
 
-1. 检测 443 端口是否已被占用（如有则报错退出）
-2. 自动安装 Caddy（apt / dnf / yum，如已安装则跳过）
-3. 生成 `/etc/caddy/Caddyfile`：
-   - `https://<PANEL_DOMAIN>` → 反代到本机面板（`:PANEL_PORT`）
-   - `wss://<PANEL_DOMAIN>/ws` → 反代到 sing-box Trojan WS 端口（`:WS_PORT`）
-4. 在 `/etc/pulse/pulse-server.env` 写入 `PULSE_SINGBOX_WS_PORT`
-5. 热重载/启动 Caddy，重启 pulse-server 使配置生效
+1. 从 `/etc/pulse/pulse-server.env` 自动读取面板端口（`PULSE_SERVER_ADDR`）
+2. 校验参数，检测 443 端口是否已被占用
+3. 自动安装 Caddy（apt / dnf / yum，如已安装则跳过）
+4. 生成 `/etc/caddy/Caddyfile`，按域名分块：
+   - `PANEL_DOMAIN` → 反代到本机面板（`:PANEL_PORT`）
+   - `TROJAN_DOMAIN/ws` → 反代到 sing-box Trojan WS 端口（`:WS_PORT`）
+   - 同域时合并为一个 Caddy 块
+5. 若配置了 Trojan：在 `/etc/pulse/pulse-server.env` 写入 `PULSE_SINGBOX_WS_PORT` 并重启 pulse-server
 
 **可配置的环境变量：**
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `PANEL_DOMAIN` | 必填 | 面板对外域名，需已解析到本机 |
-| `PANEL_PORT` | `8080` | pulse-server 监听端口 |
+| `PANEL_DOMAIN` | 空 | 面板对外域名（与 TROJAN_DOMAIN 至少填一个） |
+| `TROJAN_DOMAIN` | 空 | Trojan inbound 域名（可与面板域名相同） |
+| `PANEL_PORT` | 自动读取配置，兜底 `8080` | pulse-server 监听端口 |
 | `WS_PORT` | `10443` | sing-box Trojan WS 本地端口 |
 | `ACME_EMAIL` | 空 | Let's Encrypt 账号邮箱（可选） |
 | `CADDYFILE` | `/etc/caddy/Caddyfile` | Caddyfile 路径 |
-
-> **注意**：运行前确保 DNS 已将 `PANEL_DOMAIN` 指向本机 IP，Caddy 会自动申请 TLS 证书。
 
 **架构示意：**
 
 ```
 客户端
-  ├── HTTPS → :443 (Caddy) → :PANEL_PORT (pulse-server 面板)
-  └── Trojan → wss://<domain>/ws → :443 (Caddy) → :WS_PORT (sing-box)
+  ├── HTTPS  → :443 (Caddy) → :PANEL_PORT  (pulse-server 面板)
+  └── Trojan → wss://<TROJAN_DOMAIN>/ws → :443 (Caddy) → :WS_PORT (sing-box)
 ```
 
 ---
