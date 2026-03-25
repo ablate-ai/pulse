@@ -223,17 +223,6 @@ func (c *Client) EnsureCert(ctx context.Context, domain string) (CertPaths, erro
 	return out, err
 }
 
-// TLSRouteEntry 描述一条 TLS proxy 路由规则。
-type TLSRouteEntry struct {
-	Host    string `json:"host"`
-	Backend string `json:"backend"`
-}
-
-// UpdateTLSRoutes 更新节点 TLS proxy 的路由表。
-func (c *Client) UpdateTLSRoutes(ctx context.Context, routes []TLSRouteEntry) error {
-	return c.do(ctx, http.MethodPost, "/v1/node/tls-proxy/routes", map[string]any{"routes": routes}, nil)
-}
-
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
 	if c.initErr != nil {
 		return fmt.Errorf("configure node client: %w", c.initErr)

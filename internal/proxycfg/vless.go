@@ -30,15 +30,9 @@ type inbound struct {
 
 // BuildOptions 控制 BuildSingboxConfig 的可选行为。
 type BuildOptions struct {
-	// TLSProxyMode 为 true 时，Trojan inbound 改为 WebSocket 模式并监听本地端口，
-	// 由外部 TLS proxy 统一终止 TLS 并反代过来。
-	TLSProxyMode bool
-}
-
-// TLSRoute 描述 TLS proxy 的一条路由规则。
-type TLSRoute struct {
-	Host    string // 客户端域名
-	Backend string // 后端地址 127.0.0.1:port
+	// SingboxWSLocalPort > 0 时，Trojan inbound 改为 WebSocket 模式并监听该本地端口，
+	// 由外部 Caddy 统一终止 TLS 并反代过来。0 = 直连模式（sing-box 自管 TLS）。
+	SingboxWSLocalPort int
 }
 
 func BuildSingboxConfig(nodeUsers []users.User, opts BuildOptions) (string, error) {
@@ -57,9 +51,16 @@ func BuildSingboxConfig(nodeUsers []users.User, opts BuildOptions) (string, erro
 	inbounds := make([]inbound, 0)
 
 	for _, user := range nodeUsers {
+		port := user.Port
+		tag := inboundTag(user)
+		// Caddy 模式下所有 Trojan 用户共用同一本地端口和 tag，合并为一个 inbound
+		if opts.SingboxWSLocalPort > 0 && protocolOf(user) == "trojan" {
+			port = opts.SingboxWSLocalPort
+			tag = "pulse-trojan-ws"
+		}
 		key := inboundKey{
-			Port:     user.Port,
-			Tag:      inboundTag(user),
+			Port:     port,
+			Tag:      tag,
 			Protocol: protocolOf(user),
 			Method:   methodOf(user),
 		}
@@ -136,49 +137,17 @@ func methodOf(user users.User) string {
 	return "aes-128-gcm"
 }
 
-// localPortFor 将外部端口映射为 sing-box 本地 WS 监听端口（+20000，避免冲突）。
-func localPortFor(externalPort int) int {
-	return 20000 + externalPort%20000
-}
-
 // listenAddrFor 返回 inbound 的监听地址和端口。
-// TLSProxyMode 下 Trojan 监听在本地，其余协议不变。
+// Caddy 模式下所有 Trojan inbound 共用同一本地 WS 端口，其余协议不变。
 func listenAddrFor(user users.User, opts BuildOptions) (listen string, port int) {
-	if opts.TLSProxyMode && protocolOf(user) == "trojan" {
-		return "127.0.0.1", localPortFor(user.Port)
+	if opts.SingboxWSLocalPort > 0 && protocolOf(user) == "trojan" {
+		return "127.0.0.1", opts.SingboxWSLocalPort
 	}
 	return "::", user.Port
 }
 
-// BuildTLSRoutes 根据用户列表生成 TLS proxy 路由表。
-// 每个 Trojan 用户的域名映射到对应的本地 WS 端口。
-// 若 panelDomain/panelBackend 非空，面板域名也加入路由。
-func BuildTLSRoutes(nodeUsers []users.User, panelDomain, panelBackend string) []TLSRoute {
-	seen := make(map[string]bool)
-	routes := make([]TLSRoute, 0)
-
-	for _, u := range nodeUsers {
-		if protocolOf(u) != "trojan" || u.Domain == "" {
-			continue
-		}
-		if seen[u.Domain] {
-			continue
-		}
-		seen[u.Domain] = true
-		routes = append(routes, TLSRoute{
-			Host:    u.Domain,
-			Backend: fmt.Sprintf("127.0.0.1:%d", localPortFor(u.Port)),
-		})
-	}
-
-	if panelDomain != "" && panelBackend != "" {
-		routes = append(routes, TLSRoute{Host: panelDomain, Backend: panelBackend})
-	}
-	return routes
-}
-
 func transportFor(protocol string, opts BuildOptions) map[string]any {
-	if opts.TLSProxyMode && protocol == "trojan" {
+	if opts.SingboxWSLocalPort > 0 && protocol == "trojan" {
 		return map[string]any{"type": "ws", "path": "/ws"}
 	}
 	return nil
@@ -194,11 +163,11 @@ func inboundPasswordFor(protocol, method string) string {
 }
 
 // tlsFor 根据协议、security 和选项选择 TLS 配置。
-// TLSProxyMode 下 Trojan 的 TLS 由外部代理处理，inbound 本身不需要 TLS。
+// Caddy WS 模式下 Trojan 的 TLS 由外部 Caddy 处理，inbound 本身不需要 TLS。
 func tlsFor(user users.User, opts BuildOptions) map[string]any {
 	if protocolOf(user) == "trojan" {
-		if opts.TLSProxyMode {
-			return nil // TLS 由 TLS proxy 终止
+		if opts.SingboxWSLocalPort > 0 {
+			return nil // TLS 由 Caddy 终止
 		}
 		return trojanTLSFor(user)
 	}

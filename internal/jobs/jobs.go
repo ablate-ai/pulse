@@ -2,7 +2,6 @@ package jobs
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"pulse/internal/nodes"
@@ -204,9 +203,9 @@ func ShouldResetTraffic(strategy string, createdAt time.Time, lastResetAt *time.
 
 // ApplyOptions 控制 ApplyNodeUsers 的行为。
 type ApplyOptions struct {
-	TLSProxyMode  bool   // 启用 TLS proxy 模式（Trojan 改 WS 本地端口）
-	PanelDomain   string // 面板域名，用于生成 TLS proxy 路由
-	PanelBackend  string // 面板后端地址
+	// SingboxWSLocalPort > 0 时，Trojan inbound 改为 WS 模式并监听该本地端口，
+	// 由外部 Caddy 终止 TLS。0 = 直连模式。
+	SingboxWSLocalPort int
 }
 
 // ApplyNodeUsers 根据节点用户列表生成配置并下发到节点。
@@ -218,22 +217,10 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeUsers []users
 	}
 
 	cfg, err := proxycfg.BuildSingboxConfig(active, proxycfg.BuildOptions{
-		TLSProxyMode: applyOpts.TLSProxyMode,
+		SingboxWSLocalPort: applyOpts.SingboxWSLocalPort,
 	})
 	if err != nil {
 		return nodes.Status{}, "", err
-	}
-
-	// TLS proxy 模式下，更新节点路由表
-	if applyOpts.TLSProxyMode {
-		tlsRoutes := proxycfg.BuildTLSRoutes(active, applyOpts.PanelDomain, applyOpts.PanelBackend)
-		entries := make([]nodes.TLSRouteEntry, len(tlsRoutes))
-		for i, r := range tlsRoutes {
-			entries[i] = nodes.TLSRouteEntry{Host: r.Host, Backend: r.Backend}
-		}
-		if err := client.UpdateTLSRoutes(ctx, entries); err != nil {
-			return nodes.Status{}, "", fmt.Errorf("update tls routes: %w", err)
-		}
 	}
 
 	status, err := client.Restart(ctx, nodes.ConfigRequest{Config: cfg})

@@ -42,9 +42,7 @@ func Run() error {
 
 	// 启动调度器
 	applyOpts := jobs.ApplyOptions{
-		TLSProxyMode: true,
-		PanelDomain:  cfg.PanelDomain,
-		PanelBackend: cfg.PanelFallbackAddr,
+		SingboxWSLocalPort: cfg.SingboxWSLocalPort,
 	}
 	nodeAPI := serverapi.NewWithUsers(store, userStore, clientOptions, applyOpts)
 	scheduler := jobs.NewScheduler(nil)

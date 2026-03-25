@@ -1,6 +1,9 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strconv"
+)
 
 type Config struct {
 	ServerAddr               string
@@ -14,13 +17,12 @@ type Config struct {
 	NodeTLSCertFile          string
 	NodeTLSKeyFile           string
 	NodeTLSClientCertFile    string
-	// TLS 证书管理（certmagic）
+	// TLS 证书管理（certmagic，用于 Trojan 直连模式）
 	CertDir   string // certmagic 证书存储目录
 	ACMEEmail string // ACME 账号邮箱（Let's Encrypt 要求）
-	// TLS 反向代理：统一持有 :443，按域名分发到面板或 sing-box
-	TLSProxyAddr      string // TLS proxy 监听地址，如 :443
-	PanelFallbackAddr string // 面板后端地址，如 127.0.0.1:8080
-	PanelDomain       string // 面板对外域名，如 panel.example.com（空则不路由面板）
+	// Caddy 集成：Trojan 改为本地 WS，由外部 Caddy 终止 TLS
+	// 0 = 直连模式（sing-box 自管 TLS），>0 = WS 模式（Caddy 反代）
+	SingboxWSLocalPort int // PULSE_SINGBOX_WS_PORT，如 10443
 }
 
 func Load() Config {
@@ -36,11 +38,9 @@ func Load() Config {
 		NodeTLSCertFile:          envOrDefault("PULSE_NODE_TLS_CERT_FILE", "./node_cert.pem"),
 		NodeTLSKeyFile:           envOrDefault("PULSE_NODE_TLS_KEY_FILE", "./node_key.pem"),
 		NodeTLSClientCertFile:    envOrDefault("PULSE_NODE_TLS_CLIENT_CERT_FILE", ""),
-		CertDir:           envOrDefault("PULSE_CERT_DIR", "./certs"),
-		ACMEEmail:         envOrDefault("PULSE_ACME_EMAIL", ""),
-		TLSProxyAddr:      envOrDefault("PULSE_TLS_PROXY_ADDR", ":443"),
-		PanelFallbackAddr: envOrDefault("PULSE_PANEL_FALLBACK_ADDR", "127.0.0.1:8080"),
-		PanelDomain:       envOrDefault("PULSE_PANEL_DOMAIN", ""),
+		CertDir:            envOrDefault("PULSE_CERT_DIR", "./certs"),
+		ACMEEmail:          envOrDefault("PULSE_ACME_EMAIL", ""),
+		SingboxWSLocalPort: envInt("PULSE_SINGBOX_WS_PORT", 0),
 	}
 }
 
@@ -48,6 +48,14 @@ func envOrDefault(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
 	}
+	return fallback
+}
 
+func envInt(key string, fallback int) int {
+	if value := os.Getenv(key); value != "" {
+		if n, err := strconv.Atoi(value); err == nil {
+			return n
+		}
+	}
 	return fallback
 }

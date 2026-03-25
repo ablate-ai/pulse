@@ -2,7 +2,6 @@ package certmgr
 
 import (
 	"context"
-	"crypto/tls"
 	"path/filepath"
 	"strings"
 
@@ -42,12 +41,6 @@ func (m *Manager) CertPath(domain string) string {
 // KeyPath 返回 certmagic FileStorage 存储该域名私钥的绝对路径。
 func (m *Manager) KeyPath(domain string) string {
 	return m.storagePath(certmagic.StorageKeys.SitePrivateKey(issuerKey(), domain))
-}
-
-// TLSConfig 返回带 certmagic 自动证书管理的 tls.Config。
-// 使用 TLS-ALPN-01 challenge，无需额外开放 :80 端口。
-func (m *Manager) TLSConfig() *tls.Config {
-	return m.cfg.TLSConfig()
 }
 
 // storagePath 将 certmagic 的存储键转为本地文件系统绝对路径。
