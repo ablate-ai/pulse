@@ -143,6 +143,12 @@ func (db *DB) migrateNodesTable() error {
 			return fmt.Errorf("migrate nodes table: %w", err)
 		}
 	}
+	// auth_token 是旧版字段，新版使用证书鉴权，删除该列避免 NOT NULL 约束冲突
+	if _, ok := columns["auth_token"]; ok {
+		if _, err := db.conn.Exec(`ALTER TABLE nodes DROP COLUMN auth_token`); err != nil {
+			return fmt.Errorf("migrate nodes drop auth_token: %w", err)
+		}
+	}
 	return nil
 }
 
