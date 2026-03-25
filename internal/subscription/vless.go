@@ -6,97 +6,119 @@ import (
 	"fmt"
 	"net/url"
 
+	"pulse/internal/inbounds"
 	"pulse/internal/users"
 )
 
-// Link 根据 UserInbound 和对应的 User 生成订阅链接。
-func Link(inbound users.UserInbound, user users.User) string {
-	switch inbound.Protocol {
+// Link 根据节点 inbound、客户端 host 模板、用户凭据和用户信息生成订阅链接。
+func Link(nodeInbound inbounds.Inbound, host inbounds.Host, access users.UserInbound, user users.User) string {
+	// 连接地址和端口
+	addr := host.Address
+	port := host.Port
+	if port == 0 {
+		port = nodeInbound.Port
+	}
+
+	switch nodeInbound.Protocol {
 	case "vmess":
-		return vmessLink(inbound, user.Username)
+		return vmessLink(nodeInbound, host, access, user.Username, addr, port)
 	case "trojan":
-		return trojanLink(inbound, user.Username)
+		return trojanLink(nodeInbound, host, access, user.Username, addr, port)
 	case "shadowsocks":
-		return shadowsocksLink(inbound, user.Username)
-	default:
-		return vlessLink(inbound, user.Username)
+		return shadowsocksLink(nodeInbound, host, access, user.Username, addr, port)
+	default: // vless
+		return vlessLink(nodeInbound, host, access, user.Username, addr, port)
 	}
 }
 
-func vlessLink(ib users.UserInbound, username string) string {
+func vlessLink(ib inbounds.Inbound, host inbounds.Host, acc users.UserInbound, username, addr string, port int) string {
 	query := url.Values{}
 	query.Set("type", "tcp")
 
-	if ib.Security == "reality" {
+	security := host.Security
+	if security == "" && ib.Security != "" {
+		security = ib.Security
+	}
+
+	if security == "reality" {
+		pubkey := host.RealityPublicKey
+		if pubkey == "" {
+			pubkey = ib.RealityPublicKey
+		}
+		shortID := host.RealityShortID
+		if shortID == "" {
+			shortID = ib.RealityShortID
+		}
+		spiderX := host.RealitySpiderX
+
 		query.Set("security", "reality")
-		query.Set("pbk", ib.RealityPublicKey)
-		query.Set("sid", ib.RealityShortID)
-		if ib.RealitySpiderX != "" {
-			query.Set("spx", ib.RealitySpiderX)
+		query.Set("pbk", pubkey)
+		query.Set("sid", shortID)
+		if spiderX != "" {
+			query.Set("spx", spiderX)
 		}
-		if ib.SNI != "" {
-			query.Set("sni", ib.SNI)
+		sni := host.SNI
+		if sni == "" {
+			sni = addr
 		}
-		if ib.Fingerprint != "" {
-			query.Set("fp", ib.Fingerprint)
+		query.Set("sni", sni)
+		fp := host.Fingerprint
+		if fp == "" {
+			fp = "chrome"
 		}
-		if ib.Flow != "" {
-			query.Set("flow", ib.Flow)
-		}
+		query.Set("fp", fp)
+		query.Set("flow", "xtls-rprx-vision")
 	} else {
 		query.Set("security", "none")
 	}
 
 	u := url.URL{
 		Scheme:   "vless",
-		User:     url.User(ib.UUID),
-		Host:     fmt.Sprintf("%s:%d", ib.Domain, ib.Port),
+		User:     url.User(acc.UUID),
+		Host:     fmt.Sprintf("%s:%d", addr, port),
 		RawQuery: query.Encode(),
 		Fragment: username,
 	}
-
 	return u.String()
 }
 
-func trojanLink(ib users.UserInbound, username string) string {
+func trojanLink(ib inbounds.Inbound, host inbounds.Host, acc users.UserInbound, username, addr string, port int) string {
 	query := url.Values{}
 	query.Set("type", "ws")
 	query.Set("path", "/ws")
 	query.Set("security", "tls")
-	sni := ib.SNI
+	sni := host.SNI
 	if sni == "" {
-		sni = ib.Domain
+		sni = addr
 	}
 	query.Set("sni", sni)
-	if ib.Fingerprint != "" {
-		query.Set("fp", ib.Fingerprint)
+	if host.Fingerprint != "" {
+		query.Set("fp", host.Fingerprint)
 	}
 
 	u := url.URL{
 		Scheme:   "trojan",
-		User:     url.User(ib.Secret),
-		Host:     fmt.Sprintf("%s:%d", ib.Domain, ib.Port),
+		User:     url.User(acc.Secret),
+		Host:     fmt.Sprintf("%s:%d", addr, port),
 		RawQuery: query.Encode(),
 		Fragment: username,
 	}
-
 	return u.String()
 }
 
-// vmessLink 生成标准 vmess:// 链接（v2 JSON base64 格式）。
-func vmessLink(ib users.UserInbound, username string) string {
+func vmessLink(ib inbounds.Inbound, host inbounds.Host, acc users.UserInbound, username, addr string, port int) string {
 	obj := map[string]any{
 		"v":    "2",
 		"ps":   username,
-		"add":  ib.Domain,
-		"port": fmt.Sprintf("%d", ib.Port),
-		"id":   ib.UUID,
+		"add":  addr,
+		"port": fmt.Sprintf("%d", port),
+		"id":   acc.UUID,
 		"aid":  "0",
 		"net":  "tcp",
 		"type": "none",
-		"host": "",
-		"path": "",
-		"tls":  "",
+		"host": host.Host,
+		"path": host.Path,
+		"tls":  host.Security,
 	}
 	data, err := json.Marshal(obj)
 	if err != nil {
@@ -105,8 +127,12 @@ func vmessLink(ib users.UserInbound, username string) string {
 	return "vmess://" + base64.StdEncoding.EncodeToString(data)
 }
 
-func shadowsocksLink(ib users.UserInbound, username string) string {
-	credentials := fmt.Sprintf("%s:%s", ib.Method, ib.Secret)
+func shadowsocksLink(ib inbounds.Inbound, host inbounds.Host, acc users.UserInbound, username, addr string, port int) string {
+	method := ib.Method
+	if method == "" {
+		method = "aes-128-gcm"
+	}
+	credentials := fmt.Sprintf("%s:%s", method, acc.Secret)
 	encoded := base64.RawURLEncoding.EncodeToString([]byte(credentials))
-	return fmt.Sprintf("ss://%s@%s:%d#%s", encoded, ib.Domain, ib.Port, url.QueryEscape(username))
+	return fmt.Sprintf("ss://%s@%s:%d#%s", encoded, addr, port, url.QueryEscape(username))
 }

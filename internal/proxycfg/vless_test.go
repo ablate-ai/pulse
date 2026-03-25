@@ -4,23 +4,37 @@ import (
 	"strings"
 	"testing"
 
+	"pulse/internal/inbounds"
 	"pulse/internal/users"
 )
 
-func TestBuildSingboxConfigOmitsUnsupportedFieldsForVLESS(t *testing.T) {
-	ib := users.UserInbound{
+func vlessInbound(nodeID string, port int) inbounds.Inbound {
+	return inbounds.Inbound{
 		ID:       "ib1",
-		UserID:   "u1",
-		NodeID:   "node-1",
+		NodeID:   nodeID,
 		Protocol: "vless",
-		UUID:     "11111111-1111-1111-1111-111111111111",
-		Domain:   "example.com",
-		Port:     39001,
+		Tag:      "pulse-vless-" + nodeID,
+		Port:     port,
 	}
+}
+
+func userAccess(userID string) users.UserInbound {
+	return users.UserInbound{
+		ID:     "acc1",
+		UserID: userID,
+		NodeID: "node-1",
+		UUID:   "11111111-1111-1111-1111-111111111111",
+		Secret: "test-secret",
+	}
+}
+
+func TestBuildSingboxConfigOmitsUnsupportedFieldsForVLESS(t *testing.T) {
+	ib := vlessInbound("node-1", 39001)
+	acc := userAccess("u1")
 	userMap := map[string]users.User{
 		"u1": {ID: "u1", Username: "alice", Status: users.StatusActive},
 	}
-	config, err := BuildSingboxConfig([]users.UserInbound{ib}, userMap, BuildOptions{})
+	config, err := BuildSingboxConfig([]inbounds.Inbound{ib}, []users.UserInbound{acc}, userMap, BuildOptions{})
 	if err != nil {
 		t.Fatalf("BuildSingboxConfig() error = %v", err)
 	}
@@ -37,23 +51,22 @@ func TestBuildSingboxConfigOmitsUnsupportedFieldsForVLESS(t *testing.T) {
 }
 
 func TestBuildSingboxConfigRealityTLS(t *testing.T) {
-	ib := users.UserInbound{
+	ib := inbounds.Inbound{
 		ID:                   "ib1",
-		UserID:               "u1",
 		NodeID:               "node-1",
 		Protocol:             "vless",
-		UUID:                 "11111111-1111-1111-1111-111111111111",
+		Tag:                  "pulse-vless-443",
+		Port:                 443,
 		Security:             "reality",
 		RealityPrivateKey:    "myprivatekey",
 		RealityShortID:       "deadbeef",
 		RealityHandshakeAddr: "www.google.com:443",
-		Domain:               "1.2.3.4",
-		Port:                 443,
 	}
+	acc := userAccess("u1")
 	userMap := map[string]users.User{
 		"u1": {ID: "u1", Username: "alice", Status: users.StatusActive},
 	}
-	config, err := BuildSingboxConfig([]users.UserInbound{ib}, userMap, BuildOptions{})
+	config, err := BuildSingboxConfig([]inbounds.Inbound{ib}, []users.UserInbound{acc}, userMap, BuildOptions{})
 	if err != nil {
 		t.Fatalf("BuildSingboxConfig() error = %v", err)
 	}
@@ -65,20 +78,24 @@ func TestBuildSingboxConfigRealityTLS(t *testing.T) {
 }
 
 func TestBuildSingboxConfigKeepsShadowsocksMethod(t *testing.T) {
-	ib := users.UserInbound{
+	ib := inbounds.Inbound{
 		ID:       "ib1",
-		UserID:   "u1",
 		NodeID:   "node-1",
 		Protocol: "shadowsocks",
-		Secret:   "secret",
-		Method:   "aes-256-gcm",
-		Domain:   "example.com",
+		Tag:      "pulse-shadowsocks-39002",
 		Port:     39002,
+		Method:   "aes-256-gcm",
+	}
+	acc := users.UserInbound{
+		ID:     "acc1",
+		UserID: "u1",
+		NodeID: "node-1",
+		Secret: "secret",
 	}
 	userMap := map[string]users.User{
 		"u1": {ID: "u1", Username: "alice", Status: users.StatusActive},
 	}
-	config, err := BuildSingboxConfig([]users.UserInbound{ib}, userMap, BuildOptions{})
+	config, err := BuildSingboxConfig([]inbounds.Inbound{ib}, []users.UserInbound{acc}, userMap, BuildOptions{})
 	if err != nil {
 		t.Fatalf("BuildSingboxConfig() error = %v", err)
 	}

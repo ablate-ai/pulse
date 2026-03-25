@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"pulse/internal/inbounds"
 	"pulse/internal/nodes"
 	"pulse/internal/users"
 )
@@ -77,11 +78,19 @@ func TestResetTraffic_ResetsLimitedUser(t *testing.T) {
 
 	// 创建对应的 UserInbound
 	_, _ = userStore.UpsertUserInbound(users.UserInbound{
-		ID:       "u1-ib0",
-		UserID:   "u1",
+		ID:     "u1-ib0",
+		UserID: "u1",
+		NodeID: "n1",
+		UUID:   "11111111-1111-1111-1111-111111111111",
+		Secret: "test-secret",
+	})
+
+	ibStore := inbounds.NewMemoryStore()
+	_, _ = ibStore.UpsertInbound(inbounds.Inbound{
+		ID:       "ib-vless",
 		NodeID:   "n1",
 		Protocol: "vless",
-		Domain:   "example.com",
+		Tag:      "pulse-vless-n1",
 		Port:     443,
 	})
 
@@ -93,7 +102,7 @@ func TestResetTraffic_ResetsLimitedUser(t *testing.T) {
 		}
 	})
 
-	result, err := ResetTraffic(context.Background(), userStore, nodeStore, dial, ApplyOptions{})
+	result, err := ResetTraffic(context.Background(), userStore, nodeStore, ibStore, dial, ApplyOptions{})
 	if err != nil {
 		t.Fatalf("ResetTraffic() error = %v", err)
 	}
@@ -128,12 +137,11 @@ func TestSyncUsage_UpdatesBytesAndReloads(t *testing.T) {
 		TrafficLimit: 100,
 	})
 	_, _ = userStore.UpsertUserInbound(users.UserInbound{
-		ID:       "u1-ib0",
-		UserID:   "u1",
-		NodeID:   "n1",
-		Protocol: "vless",
-		Domain:   "example.com",
-		Port:     443,
+		ID:     "u1-ib0",
+		UserID: "u1",
+		NodeID: "n1",
+		UUID:   "11111111-1111-1111-1111-111111111111",
+		Secret: "test-secret",
 	})
 
 	dial := testDial(t, func(path string, w http.ResponseWriter, r *http.Request) {
@@ -150,7 +158,7 @@ func TestSyncUsage_UpdatesBytesAndReloads(t *testing.T) {
 		}
 	})
 
-	result, err := SyncUsage(context.Background(), userStore, nodeStore, dial, ApplyOptions{})
+	result, err := SyncUsage(context.Background(), userStore, nodeStore, inbounds.NewMemoryStore(), dial, ApplyOptions{})
 	if err != nil {
 		t.Fatalf("SyncUsage() error = %v", err)
 	}

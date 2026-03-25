@@ -7,16 +7,17 @@ import (
 	"sort"
 	"strconv"
 
+	"pulse/internal/inbounds"
 	"pulse/internal/users"
 )
 
 type singboxConfig struct {
 	Log       map[string]any   `json:"log"`
-	Inbounds  []inbound        `json:"inbounds"`
+	Inbounds  []inboundBlock   `json:"inbounds"`
 	Outbounds []map[string]any `json:"outbounds"`
 }
 
-type inbound struct {
+type inboundBlock struct {
 	Type       string           `json:"type"`
 	Tag        string           `json:"tag"`
 	Listen     string           `json:"listen"`
@@ -35,87 +36,96 @@ type BuildOptions struct {
 	SingboxWSLocalPort int
 }
 
-// BuildSingboxConfig 根据节点入站配置列表和用户 map 生成 sing-box 配置 JSON。
-// 只有 userMap 中对应用户 EffectiveEnabled() 为 true 的 inbound 才会被下发。
-func BuildSingboxConfig(nodeInbounds []users.UserInbound, userMap map[string]users.User, opts BuildOptions) (string, error) {
-	// 过滤出已启用用户的 inbound
-	active := make([]users.UserInbound, 0, len(nodeInbounds))
+// BuildSingboxConfig 根据节点 inbound 配置和用户凭据生成 sing-box 配置 JSON。
+// nodeInbounds 是节点上定义的 inbound 列表（协议/端口/TLS 等服务端配置）。
+// userAccesses 是有访问权限的用户凭据（UUID/Secret），每条对应一个 (user, node) 对。
+// 只有 userMap 中对应用户 EffectiveEnabled() 为 true 的用户才会被写入配置。
+func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.UserInbound, userMap map[string]users.User, opts BuildOptions) (string, error) {
+	if len(nodeInbounds) == 0 {
+		return "", fmt.Errorf("at least one inbound is required")
+	}
+
+	// 过滤出已启用的用户访问记录
+	activeAccesses := make([]users.UserInbound, 0, len(userAccesses))
+	for _, acc := range userAccesses {
+		u, ok := userMap[acc.UserID]
+		if ok && u.EffectiveEnabled() {
+			activeAccesses = append(activeAccesses, acc)
+		}
+	}
+	if len(activeAccesses) == 0 {
+		return "", fmt.Errorf("at least one active user is required")
+	}
+
+	// Trojan Caddy WS 模式下，多个 Trojan inbound 合并为一个
+	type trojanMergeKey struct{}
+	trojanMerged := false
+
+	blocks := make([]inboundBlock, 0, len(nodeInbounds))
 	for _, ib := range nodeInbounds {
-		u, ok := userMap[ib.UserID]
-		if !ok {
-			continue
+		tag := ib.Tag
+		if tag == "" {
+			tag = fmt.Sprintf("pulse-%s-%d", ib.Protocol, ib.Port)
 		}
-		if u.EffectiveEnabled() {
-			active = append(active, ib)
-		}
-	}
 
-	if len(active) == 0 {
-		return "", fmt.Errorf("at least one user is required")
-	}
+		listenAddr := "::"
+		listenPort := ib.Port
 
-	type inboundKey struct {
-		Port     int
-		Tag      string
-		Protocol string
-		Method   string
-	}
-
-	inboundIndex := make(map[inboundKey]int)
-	inbounds := make([]inbound, 0)
-
-	for _, ib := range active {
-		port := ib.Port
-		tag := inboundTag(ib)
-		// Caddy 模式下所有 Trojan 用户共用同一本地端口和 tag，合并为一个 inbound
-		if opts.SingboxWSLocalPort > 0 && protocolOf(ib) == "trojan" {
-			port = opts.SingboxWSLocalPort
+		if opts.SingboxWSLocalPort > 0 && ib.Protocol == "trojan" {
+			if trojanMerged {
+				// 已生成过 trojan WS inbound，跳过
+				continue
+			}
+			listenAddr = "127.0.0.1"
+			listenPort = opts.SingboxWSLocalPort
 			tag = "pulse-trojan-ws"
-		}
-		key := inboundKey{
-			Port:     port,
-			Tag:      tag,
-			Protocol: protocolOf(ib),
-			Method:   methodOf(ib),
+			trojanMerged = true
 		}
 
-		index, ok := inboundIndex[key]
-		if !ok {
-			listen, listenPort := listenAddrFor(ib, opts)
-			inbounds = append(inbounds, inbound{
-				Type:       key.Protocol,
-				Tag:        key.Tag,
-				Listen:     listen,
-				ListenPort: listenPort,
-				Users:      make([]map[string]any, 0, 1),
-				Transport:  transportFor(key.Protocol, opts),
-				TLS:        tlsFor(ib, opts),
-				Method:     key.Method,
-				Password:   inboundPasswordFor(key.Protocol, key.Method),
-			})
-			index = len(inbounds) - 1
-			inboundIndex[key] = index
+		method := ""
+		password := ""
+		if ib.Protocol == "shadowsocks" {
+			method = ib.Method
+			if method == "" {
+				method = "aes-128-gcm"
+			}
+			password = "pulse-shared-secret"
 		}
 
-		username := ""
-		if u, ok := userMap[ib.UserID]; ok {
-			username = u.Username
+		userList := make([]map[string]any, 0, len(activeAccesses))
+		for _, acc := range activeAccesses {
+			u, ok := userMap[acc.UserID]
+			if !ok {
+				continue
+			}
+			userList = append(userList, buildInboundUser(ib.Protocol, acc, u.Username))
 		}
-		inbounds[index].Users = append(inbounds[index].Users, inboundUser(ib, username)...)
+
+		blocks = append(blocks, inboundBlock{
+			Type:       ib.Protocol,
+			Tag:        tag,
+			Listen:     listenAddr,
+			ListenPort: listenPort,
+			Users:      userList,
+			Transport:  transportFor(ib.Protocol, opts),
+			TLS:        tlsForInbound(ib, opts),
+			Method:     method,
+			Password:   password,
+		})
 	}
 
-	sort.Slice(inbounds, func(i, j int) bool {
-		if inbounds[i].ListenPort == inbounds[j].ListenPort {
-			return inbounds[i].Tag < inbounds[j].Tag
+	sort.Slice(blocks, func(i, j int) bool {
+		if blocks[i].ListenPort == blocks[j].ListenPort {
+			return blocks[i].Tag < blocks[j].Tag
 		}
-		return inbounds[i].ListenPort < inbounds[j].ListenPort
+		return blocks[i].ListenPort < blocks[j].ListenPort
 	})
 
 	cfg := singboxConfig{
 		Log: map[string]any{
 			"level": "warn",
 		},
-		Inbounds: inbounds,
+		Inbounds: blocks,
 		Outbounds: []map[string]any{
 			{
 				"type": "direct",
@@ -131,37 +141,19 @@ func BuildSingboxConfig(nodeInbounds []users.UserInbound, userMap map[string]use
 	return string(data), nil
 }
 
-func inboundTag(ib users.UserInbound) string {
-	if ib.InboundTag != "" {
-		return ib.InboundTag
+func buildInboundUser(protocol string, acc users.UserInbound, username string) map[string]any {
+	switch protocol {
+	case "trojan", "shadowsocks":
+		return map[string]any{
+			"name":     username,
+			"password": acc.Secret,
+		}
+	default: // vless, vmess
+		return map[string]any{
+			"uuid": acc.UUID,
+			"name": username,
+		}
 	}
-	return fmt.Sprintf("pulse-%s-%d", protocolOf(ib), ib.Port)
-}
-
-func protocolOf(ib users.UserInbound) string {
-	if ib.Protocol == "" {
-		return "vless"
-	}
-	return ib.Protocol
-}
-
-func methodOf(ib users.UserInbound) string {
-	if protocolOf(ib) != "shadowsocks" {
-		return ""
-	}
-	if ib.Method != "" {
-		return ib.Method
-	}
-	return "aes-128-gcm"
-}
-
-// listenAddrFor 返回 inbound 的监听地址和端口。
-// Caddy 模式下所有 Trojan inbound 共用同一本地 WS 端口，其余协议不变。
-func listenAddrFor(ib users.UserInbound, opts BuildOptions) (listen string, port int) {
-	if opts.SingboxWSLocalPort > 0 && protocolOf(ib) == "trojan" {
-		return "127.0.0.1", opts.SingboxWSLocalPort
-	}
-	return "::", ib.Port
 }
 
 func transportFor(protocol string, opts BuildOptions) map[string]any {
@@ -171,19 +163,9 @@ func transportFor(protocol string, opts BuildOptions) map[string]any {
 	return nil
 }
 
-func inboundPasswordFor(protocol, method string) string {
-	switch protocol {
-	case "shadowsocks":
-		return "pulse-shared-secret"
-	default:
-		return ""
-	}
-}
-
-// tlsFor 根据协议、security 和选项选择 TLS 配置。
-// Caddy WS 模式下 Trojan 的 TLS 由外部 Caddy 处理，inbound 本身不需要 TLS。
-func tlsFor(ib users.UserInbound, opts BuildOptions) map[string]any {
-	if protocolOf(ib) == "trojan" {
+// tlsForInbound 根据节点 inbound 配置选择 TLS 设置。
+func tlsForInbound(ib inbounds.Inbound, opts BuildOptions) map[string]any {
+	if ib.Protocol == "trojan" {
 		if opts.SingboxWSLocalPort > 0 {
 			return nil // TLS 由 Caddy 终止
 		}
@@ -192,8 +174,7 @@ func tlsFor(ib users.UserInbound, opts BuildOptions) map[string]any {
 	return realityTLSFor(ib)
 }
 
-// trojanTLSFor 生成 Trojan inbound 的标准 TLS 配置（非 TLSProxyMode 时使用）。
-func trojanTLSFor(ib users.UserInbound) map[string]any {
+func trojanTLSFor(ib inbounds.Inbound) map[string]any {
 	if ib.TLSCertPath == "" || ib.TLSKeyPath == "" {
 		return nil
 	}
@@ -204,9 +185,7 @@ func trojanTLSFor(ib users.UserInbound) map[string]any {
 	}
 }
 
-// realityTLSFor 生成 sing-box inbound 的 Reality TLS 配置。
-// 仅当 Security=="reality" 且 RealityPrivateKey 非空时生效。
-func realityTLSFor(ib users.UserInbound) map[string]any {
+func realityTLSFor(ib inbounds.Inbound) map[string]any {
 	if ib.Security != "reality" || ib.RealityPrivateKey == "" {
 		return nil
 	}
@@ -239,25 +218,5 @@ func realityTLSFor(ib users.UserInbound) map[string]any {
 			"private_key": ib.RealityPrivateKey,
 			"short_id":    shortIDs,
 		},
-	}
-}
-
-func inboundUser(ib users.UserInbound, username string) []map[string]any {
-	switch protocolOf(ib) {
-	case "trojan":
-		return []map[string]any{{
-			"name":     username,
-			"password": ib.Secret,
-		}}
-	case "shadowsocks":
-		return []map[string]any{{
-			"name":     username,
-			"password": ib.Secret,
-		}}
-	default:
-		return []map[string]any{{
-			"uuid": ib.UUID,
-			"name": username,
-		}}
 	}
 }
