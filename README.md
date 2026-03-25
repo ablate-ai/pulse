@@ -84,7 +84,11 @@ curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/instal
 pulse 默认以 HTTP 提供面板，如需 HTTPS 及 Trojan 在标准 443 端口运行，运行 Caddy 配置脚本：
 
 ```bash
+# server 节点（有面板）
 PANEL_DOMAIN=panel.example.com sh <(curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/setup-caddy.sh)
+
+# agent 节点（无面板，只需安装 Caddy + 创建 Trojan 路由目录）
+sh <(curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/setup-caddy.sh)
 ```
 
 **脚本做的事：**
@@ -101,7 +105,7 @@ PANEL_DOMAIN=panel.example.com sh <(curl -fsSL https://raw.githubusercontent.com
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `PANEL_DOMAIN` | 必填 | 面板对外域名 |
+| `PANEL_DOMAIN` | 空 | 面板对外域名（agent 节点可留空） |
 | `PANEL_PORT` | 自动读取，兜底 `8080` | pulse-server 监听端口 |
 | `ACME_EMAIL` | 空 | Let's Encrypt 账号邮箱（可选） |
 | `CADDYFILE` | `/etc/caddy/Caddyfile` | Caddyfile 路径 |
