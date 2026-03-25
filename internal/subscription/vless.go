@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
 
 	"pulse/internal/inbounds"
@@ -58,6 +59,11 @@ func vlessLink(ib inbounds.Inbound, host inbounds.Host, acc users.UserInbound, u
 			query.Set("spx", spiderX)
 		}
 		sni := host.SNI
+		if sni == "" && ib.RealityHandshakeAddr != "" {
+			if h, _, err := net.SplitHostPort(ib.RealityHandshakeAddr); err == nil {
+				sni = h
+			}
+		}
 		if sni == "" {
 			sni = addr
 		}
