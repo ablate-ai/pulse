@@ -6,15 +6,19 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
-	"sync"
 )
+
+// SessionStore 定义 session 持久化接口。
+type SessionStore interface {
+	Create(token, username string) error
+	GetUsername(token string) (string, bool)
+	Delete(token string) error
+}
 
 type Manager struct {
 	username string
 	password string
-
-	mu       sync.RWMutex
-	sessions map[string]string
+	sessions SessionStore
 }
 
 type loginRequest struct {
@@ -22,11 +26,11 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-func NewManager(username, password string) *Manager {
+func NewManager(username, password string, sessions SessionStore) *Manager {
 	return &Manager{
 		username: username,
 		password: password,
-		sessions: make(map[string]string),
+		sessions: sessions,
 	}
 }
 
@@ -58,10 +62,10 @@ func (m *Manager) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token := randomToken()
-
-	m.mu.Lock()
-	m.sessions[token] = req.Username
-	m.mu.Unlock()
+	if err := m.sessions.Create(token, req.Username); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "create session: " + err.Error()})
+		return
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token":    token,
@@ -76,9 +80,7 @@ func (m *Manager) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token := bearerToken(r.Header.Get("Authorization"))
-	m.mu.Lock()
-	delete(m.sessions, token)
-	m.mu.Unlock()
+	_ = m.sessions.Delete(token)
 
 	writeJSON(w, http.StatusOK, map[string]any{"logged_out": true})
 }
@@ -90,18 +92,13 @@ func (m *Manager) HandleMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token := bearerToken(r.Header.Get("Authorization"))
-
-	m.mu.RLock()
-	username := m.sessions[token]
-	m.mu.RUnlock()
+	username, _ := m.sessions.GetUsername(token)
 
 	writeJSON(w, http.StatusOK, map[string]any{"username": username})
 }
 
 func (m *Manager) valid(token string) bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	_, ok := m.sessions[token]
+	_, ok := m.sessions.GetUsername(token)
 	return ok
 }
 

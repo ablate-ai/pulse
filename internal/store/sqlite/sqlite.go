@@ -38,6 +38,10 @@ func (db *DB) UserStore() *UserStore {
 	return &UserStore{db: db.conn}
 }
 
+func (db *DB) SessionStore() *SessionStore {
+	return &SessionStore{db: db.conn}
+}
+
 func (db *DB) init() error {
 	stmts := []string{
 		// inbounds：节点上的监听入站，含服务端 TLS/Reality 配置
@@ -108,6 +112,12 @@ func (db *DB) init() error {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_user_inbounds_user_id ON user_inbounds(user_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_user_inbounds_node_id ON user_inbounds(node_id);`,
+		// sessions：管理员登录 session，持久化以便服务重启后保持登录态
+		`CREATE TABLE IF NOT EXISTS sessions (
+			token      TEXT PRIMARY KEY,
+			username   TEXT NOT NULL,
+			created_at TEXT NOT NULL
+		);`,
 	}
 
 	for _, stmt := range stmts {

@@ -5,11 +5,43 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 )
 
+// memSessionStore 内存实现，仅用于测试。
+type memSessionStore struct {
+	mu   sync.RWMutex
+	data map[string]string
+}
+
+func newMemStore() *memSessionStore {
+	return &memSessionStore{data: make(map[string]string)}
+}
+
+func (s *memSessionStore) Create(token, username string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data[token] = username
+	return nil
+}
+
+func (s *memSessionStore) GetUsername(token string) (string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	u, ok := s.data[token]
+	return u, ok
+}
+
+func (s *memSessionStore) Delete(token string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.data, token)
+	return nil
+}
+
 func TestLoginMeLogout(t *testing.T) {
-	manager := NewManager("admin", "secret")
+	manager := NewManager("admin", "secret", newMemStore())
 
 	loginBody := []byte(`{"username":"admin","password":"secret"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", bytes.NewReader(loginBody))
