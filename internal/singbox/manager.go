@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"runtime/debug"
 	"sort"
 	"strings"
@@ -33,6 +34,7 @@ type Manager struct {
 	logs       []string
 	traffic    trafficManager
 	lastConfig string
+	configFile string // 持久化路径，非空时 Start/Stop 会读写该文件
 }
 
 type trafficManager interface {
@@ -75,6 +77,28 @@ func NewManager() *Manager {
 	return &Manager{
 		logs: make([]string, 0, maxLogs),
 	}
+}
+
+// NewManagerWithPersistence 创建带持久化的 Manager。
+// configFile 为保存最近一次配置的文件路径；启动成功后写入，显式 Stop 后删除。
+func NewManagerWithPersistence(configFile string) *Manager {
+	return &Manager{
+		logs:       make([]string, 0, maxLogs),
+		configFile: configFile,
+	}
+}
+
+// SavedConfig 读取磁盘上持久化的配置（进程重启后自动恢复用）。
+// 文件不存在时返回空字符串，不报错。
+func (m *Manager) SavedConfig() string {
+	if m.configFile == "" {
+		return ""
+	}
+	data, err := os.ReadFile(m.configFile)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }
 
 func (m *Manager) Start(config string) error {
@@ -121,7 +145,13 @@ func (m *Manager) Start(config string) error {
 	m.lastConfig = config
 	m.traffic = extractTrafficManager(ctx)
 	m.appendLogLocked("sing-box started")
+	configFile := m.configFile
 	m.mu.Unlock()
+
+	// 持久化配置，进程重启后可自动恢复
+	if configFile != "" {
+		_ = os.WriteFile(configFile, []byte(config), 0600)
+	}
 	return nil
 }
 
@@ -146,12 +176,18 @@ func (m *Manager) Stop() error {
 	}
 
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	configFile := m.configFile
 	if m.instance == instance {
 		m.instance = nil
 		m.startedAt = time.Time{}
 		m.traffic = nil
 		m.appendLogLocked("sing-box stopped")
+	}
+	m.mu.Unlock()
+
+	// 显式停止时清除持久化配置，避免下次进程启动时自动恢复
+	if configFile != "" {
+		_ = os.Remove(configFile)
 	}
 	return nil
 }

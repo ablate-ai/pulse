@@ -18,9 +18,12 @@ import (
 	"pulse/internal/singbox"
 )
 
+// singboxConfigFile 保存 sing-box 最近一次配置的文件路径，与节点 TLS key 同目录。
+const singboxConfigFile = "./singbox_last.json"
+
 func Run() error {
 	cfg := config.Load()
-	manager := singbox.NewManager()
+	manager := singbox.NewManagerWithPersistence(singboxConfigFile)
 	runtimeInfo := manager.RuntimeInfo(context.Background())
 
 	cm := certmgr.New(cfg.CertDir, cfg.ACMEEmail)
@@ -69,6 +72,16 @@ func Run() error {
 		}
 	} else {
 		log.Printf("pulse-node sing-box unavailable: %s", runtimeInfo.LastError)
+	}
+
+	// 进程重启后自动恢复：若磁盘上有上次的配置则直接启动
+	if saved := manager.SavedConfig(); saved != "" {
+		log.Printf("pulse-node restoring sing-box from saved config")
+		if err := manager.Start(saved); err != nil {
+			log.Printf("pulse-node auto-start failed: %v", err)
+		} else {
+			log.Printf("pulse-node sing-box auto-started")
+		}
 	}
 
 	log.Printf("pulse-node listening on %s", cfg.NodeAddr)
