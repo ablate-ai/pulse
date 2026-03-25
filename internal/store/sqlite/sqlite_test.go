@@ -30,21 +30,30 @@ func TestSQLiteStoresPersistData(t *testing.T) {
 		t.Fatalf("node upsert error = %v", err)
 	}
 
-	_, err = userStore.Upsert(users.User{
-		ID:            "user-1",
-		Username:      "alice",
-		UUID:          "bf000d23-0752-40b4-affe-68f7707a9661",
+	_, err = userStore.UpsertUser(users.User{
+		ID:       "user-1",
+		Username: "alice",
+		Status:   users.StatusActive,
+	})
+	if err != nil {
+		t.Fatalf("user upsert error = %v", err)
+	}
+
+	_, err = userStore.UpsertUserInbound(users.UserInbound{
+		ID:            "user-1-ib0",
+		UserID:        "user-1",
+		NodeID:        "node-1",
 		Protocol:      "trojan",
+		UUID:          "bf000d23-0752-40b4-affe-68f7707a9661",
 		Secret:        "trojan-pass",
 		Method:        "aes-128-gcm",
-		NodeID:        "node-1",
 		Domain:        "example.com",
 		Port:          443,
 		ApplyCount:    3,
 		LastAppliedAt: time.Now().UTC().Truncate(time.Second),
 	})
 	if err != nil {
-		t.Fatalf("user upsert error = %v", err)
+		t.Fatalf("user inbound upsert error = %v", err)
 	}
 
 	if err := db.Close(); err != nil {
@@ -65,15 +74,15 @@ func TestSQLiteStoresPersistData(t *testing.T) {
 		t.Fatalf("unexpected node name: %s", node.Name)
 	}
 
-	list, err := db.UserStore().ListByNode("node-1")
+	list, err := db.UserStore().ListUserInboundsByNode("node-1")
 	if err != nil {
-		t.Fatalf("ListByNode() error = %v", err)
+		t.Fatalf("ListUserInboundsByNode() error = %v", err)
 	}
-	if len(list) != 1 || list[0].Username != "alice" {
-		t.Fatalf("unexpected users: %#v", list)
+	if len(list) != 1 || list[0].UserID != "user-1" {
+		t.Fatalf("unexpected inbounds: %#v", list)
 	}
 	if list[0].Protocol != "trojan" || list[0].ApplyCount != 3 {
-		t.Fatalf("unexpected user fields: %#v", list[0])
+		t.Fatalf("unexpected inbound fields: %#v", list[0])
 	}
 }
 
@@ -99,6 +108,14 @@ func TestOpenMigratesLegacyUsersTable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create legacy users table error = %v", err)
 	}
+	// 插入一行旧数据
+	_, err = conn.Exec(`
+		INSERT INTO users (id, username, uuid, node_id, domain, port, inbound_tag, created_at)
+		VALUES ('user-1', 'alice', 'bf000d23-0752-40b4-affe-68f7707a9661', 'node-1', 'example.com', 443, 'pulse-vless-443', '2024-01-01T00:00:00Z')
+	`)
+	if err != nil {
+		t.Fatalf("insert legacy user error = %v", err)
+	}
 	if err := conn.Close(); err != nil {
 		t.Fatalf("close legacy db error = %v", err)
 	}
@@ -109,15 +126,21 @@ func TestOpenMigratesLegacyUsersTable(t *testing.T) {
 	}
 	defer db.Close()
 
-	_, err = db.UserStore().Upsert(users.User{
-		ID:       "user-1",
-		Username: "alice",
-		UUID:     "bf000d23-0752-40b4-affe-68f7707a9661",
-		NodeID:   "node-1",
-		Domain:   "example.com",
-		Port:     443,
+	// 迁移后应能正常操作 users 和 user_inbounds
+	_, err = db.UserStore().UpsertUser(users.User{
+		ID:       "user-2",
+		Username: "bob",
 	})
 	if err != nil {
 		t.Fatalf("user upsert after migration error = %v", err)
+	}
+
+	// 旧数据迁移到 user_inbounds
+	inbounds, err := db.UserStore().ListUserInboundsByNode("node-1")
+	if err != nil {
+		t.Fatalf("ListUserInboundsByNode after migration error = %v", err)
+	}
+	if len(inbounds) != 1 || inbounds[0].UserID != "user-1" {
+		t.Fatalf("expected migrated inbound for user-1, got: %#v", inbounds)
 	}
 }

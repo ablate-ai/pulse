@@ -26,7 +26,7 @@ type SyncUsageResult struct {
 
 // SyncUsage 从各节点拉取流量统计，更新用户字节数，
 // 若某节点上的用户启用状态发生变化则重新下发配置。
-func SyncUsage(ctx context.Context, userStore users.Store, nodeStore nodes.Store, dial NodeDialer, applyOpts ApplyOptions) (SyncUsageResult, error) {
+func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, dial NodeDialer, applyOpts ApplyOptions) (SyncUsageResult, error) {
 	nodesList, err := nodeStore.List()
 	if err != nil {
 		return SyncUsageResult{}, err
@@ -48,7 +48,23 @@ func SyncUsage(ctx context.Context, userStore users.Store, nodeStore nodes.Store
 		}
 		result.NodesSynced++
 
-		nodeUsers, err := userStore.ListByNode(node.ID)
+		// 游标 inbound：每 (user, node) 只取 ID 最小的，用于流量去重
+		cursorInbounds, err := store.ListCursorInboundsByNode(node.ID)
+		if err != nil {
+			result.Errors = append(result.Errors, node.ID+": "+err.Error())
+			continue
+		}
+
+		// 全量 inbound：用于判断 reload 后下发
+		allInbounds, err := store.ListUserInboundsByNode(node.ID)
+		if err != nil {
+			result.Errors = append(result.Errors, node.ID+": "+err.Error())
+			continue
+		}
+
+		// 批量获取涉及的 User
+		userIDs := collectUserIDs(cursorInbounds)
+		userMap, err := store.GetUsersByIDs(userIDs)
 		if err != nil {
 			result.Errors = append(result.Errors, node.ID+": "+err.Error())
 			continue
@@ -60,32 +76,51 @@ func SyncUsage(ctx context.Context, userStore users.Store, nodeStore nodes.Store
 		}
 
 		reloadNeeded := false
-		updatedUsers := make([]users.User, 0, len(nodeUsers))
-		for _, user := range nodeUsers {
+
+		for _, ib := range cursorInbounds {
+			user, ok := userMap[ib.UserID]
+			if !ok {
+				continue
+			}
 			prevEnabled := user.EffectiveEnabled()
+
 			if stats, ok := usageByUser[user.Username]; ok {
-				user.UploadBytes += usageDelta(stats.UploadTotal, user.SyncedUploadBytes)
-				user.DownloadBytes += usageDelta(stats.DownloadTotal, user.SyncedDownloadBytes)
-				user.SyncedUploadBytes = stats.UploadTotal
-				user.SyncedDownloadBytes = stats.DownloadTotal
+				user.UploadBytes += usageDelta(stats.UploadTotal, ib.SyncedUploadBytes)
+				user.DownloadBytes += usageDelta(stats.DownloadTotal, ib.SyncedDownloadBytes)
+				ib.SyncedUploadBytes = stats.UploadTotal
+				ib.SyncedDownloadBytes = stats.DownloadTotal
+				// 保存更新后的游标
+				if _, err := store.UpsertUserInbound(ib); err != nil {
+					result.Errors = append(result.Errors, node.ID+": "+err.Error())
+					continue
+				}
 			}
 			user.UsedBytes = user.UploadBytes + user.DownloadBytes
 			if prevEnabled != user.EffectiveEnabled() {
 				reloadNeeded = true
 			}
-			user, err = userStore.Upsert(user)
+			user, err = store.UpsertUser(user)
 			if err != nil {
 				result.Errors = append(result.Errors, node.ID+": "+err.Error())
 				continue
 			}
 			result.UsersUpdated++
-			updatedUsers = append(updatedUsers, user)
+			userMap[user.ID] = user
 		}
 
 		if !reloadNeeded {
 			continue
 		}
-		status, _, err := ApplyNodeUsers(ctx, client, updatedUsers, applyOpts)
+
+		// 重新查全量 inbound 对应的 userMap（流量已更新）
+		allUserIDs := collectUserIDs(allInbounds)
+		allUserMap, err := store.GetUsersByIDs(allUserIDs)
+		if err != nil {
+			result.Errors = append(result.Errors, node.ID+": reload usermap: "+err.Error())
+			continue
+		}
+
+		status, _, err := ApplyNodeUsers(ctx, client, allInbounds, allUserMap, applyOpts)
 		if err != nil {
 			result.Errors = append(result.Errors, node.ID+": reload: "+err.Error())
 			continue
@@ -110,8 +145,8 @@ type ResetTrafficResult struct {
 }
 
 // ResetTraffic 检查所有用户的流量重置策略，到期则清零并重新下发节点配置。
-func ResetTraffic(ctx context.Context, userStore users.Store, nodeStore nodes.Store, dial NodeDialer, applyOpts ApplyOptions) (ResetTrafficResult, error) {
-	allUsers, err := userStore.List()
+func ResetTraffic(ctx context.Context, store users.Store, nodeStore nodes.Store, dial NodeDialer, applyOpts ApplyOptions) (ResetTrafficResult, error) {
+	allUsers, err := store.ListUsers()
 	if err != nil {
 		return ResetTrafficResult{}, err
 	}
@@ -129,15 +164,28 @@ func ResetTraffic(ctx context.Context, userStore users.Store, nodeStore nodes.St
 		user.UploadBytes = 0
 		user.DownloadBytes = 0
 		user.UsedBytes = 0
-		user.SyncedUploadBytes = 0
-		user.SyncedDownloadBytes = 0
 		user.LastTrafficResetAt = &now
-		if _, err := userStore.Upsert(user); err != nil {
+		if _, err := store.UpsertUser(user); err != nil {
 			result.Errors = append(result.Errors, user.ID+": "+err.Error())
 			continue
 		}
+
+		// 清空该用户所有 inbound 的游标
+		userInbounds, err := store.ListUserInboundsByUser(user.ID)
+		if err != nil {
+			result.Errors = append(result.Errors, user.ID+": list inbounds: "+err.Error())
+			continue
+		}
+		for _, ib := range userInbounds {
+			ib.SyncedUploadBytes = 0
+			ib.SyncedDownloadBytes = 0
+			if _, err := store.UpsertUserInbound(ib); err != nil {
+				result.Errors = append(result.Errors, user.ID+": reset inbound cursor: "+err.Error())
+			}
+			dirtyNodes[ib.NodeID] = struct{}{}
+		}
+
 		result.UsersReset++
-		dirtyNodes[user.NodeID] = struct{}{}
 	}
 
 	if len(dirtyNodes) == 0 {
@@ -151,12 +199,18 @@ func ResetTraffic(ctx context.Context, userStore users.Store, nodeStore nodes.St
 			result.Errors = append(result.Errors, nodeID+": "+err.Error())
 			continue
 		}
-		nodeUsers, err := userStore.ListByNode(nodeID)
+		nodeInbounds, err := store.ListUserInboundsByNode(nodeID)
 		if err != nil {
 			result.Errors = append(result.Errors, nodeID+": "+err.Error())
 			continue
 		}
-		status, _, err := ApplyNodeUsers(ctx, client, nodeUsers, applyOpts)
+		userIDs := collectUserIDs(nodeInbounds)
+		userMap, err := store.GetUsersByIDs(userIDs)
+		if err != nil {
+			result.Errors = append(result.Errors, nodeID+": get users: "+err.Error())
+			continue
+		}
+		status, _, err := ApplyNodeUsers(ctx, client, nodeInbounds, userMap, applyOpts)
 		if err != nil {
 			result.Errors = append(result.Errors, nodeID+": reload: "+err.Error())
 			continue
@@ -209,10 +263,11 @@ type ApplyOptions struct {
 	SingboxWSLocalPort int
 }
 
-// ApplyNodeUsers 根据节点用户列表生成配置并下发到节点。
+// ApplyNodeUsers 根据节点入站配置列表和用户 map 生成配置并下发到节点。
 // Caddy WS 模式下（SingboxWSLocalPort > 0）同步更新节点上的 Caddy Trojan 路由。
-func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeUsers []users.User, applyOpts ApplyOptions) (nodes.Status, string, error) {
-	active := filterEnabled(nodeUsers)
+func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []users.UserInbound, userMap map[string]users.User, applyOpts ApplyOptions) (nodes.Status, string, error) {
+	// 过滤出已启用用户的 inbound
+	active := filterEnabled(nodeInbounds, userMap)
 	if len(active) == 0 {
 		status, err := client.Stop(ctx)
 		if err == nil && applyOpts.SingboxWSLocalPort > 0 {
@@ -224,7 +279,7 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeUsers []users
 		return status, "", err
 	}
 
-	cfg, err := proxycfg.BuildSingboxConfig(active, proxycfg.BuildOptions{
+	cfg, err := proxycfg.BuildSingboxConfig(active, userMap, proxycfg.BuildOptions{
 		SingboxWSLocalPort: applyOpts.SingboxWSLocalPort,
 	})
 	if err != nil {
@@ -238,7 +293,7 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeUsers []users
 
 	// Caddy WS 模式：同步当前生效的 Trojan 域名路由
 	if applyOpts.SingboxWSLocalPort > 0 {
-		domains := collectTrojanDomains(active)
+		domains := collectTrojanDomains(active, userMap)
 		if syncErr := client.SyncCaddyRoutes(ctx, domains, applyOpts.SingboxWSLocalPort); syncErr != nil {
 			log.Printf("warn: caddy sync: %v", syncErr)
 		}
@@ -247,26 +302,47 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeUsers []users
 	return status, cfg, nil
 }
 
-// collectTrojanDomains 从用户列表中提取去重后的 Trojan 域名。
-func collectTrojanDomains(userList []users.User) []string {
+// collectTrojanDomains 从入站列表中提取去重后的 Trojan 域名。
+func collectTrojanDomains(inbounds []users.UserInbound, userMap map[string]users.User) []string {
 	seen := make(map[string]struct{})
 	out := make([]string, 0)
-	for _, u := range userList {
-		if u.Protocol == "trojan" && u.Domain != "" {
-			if _, ok := seen[u.Domain]; !ok {
-				seen[u.Domain] = struct{}{}
-				out = append(out, u.Domain)
+	for _, ib := range inbounds {
+		u, ok := userMap[ib.UserID]
+		if !ok || !u.EffectiveEnabled() {
+			continue
+		}
+		if ib.Protocol == "trojan" && ib.Domain != "" {
+			if _, ok := seen[ib.Domain]; !ok {
+				seen[ib.Domain] = struct{}{}
+				out = append(out, ib.Domain)
 			}
 		}
 	}
 	return out
 }
 
-func filterEnabled(items []users.User) []users.User {
-	out := make([]users.User, 0, len(items))
-	for _, u := range items {
+func filterEnabled(inbounds []users.UserInbound, userMap map[string]users.User) []users.UserInbound {
+	out := make([]users.UserInbound, 0, len(inbounds))
+	for _, ib := range inbounds {
+		u, ok := userMap[ib.UserID]
+		if !ok {
+			continue
+		}
 		if u.EffectiveEnabled() {
-			out = append(out, u)
+			out = append(out, ib)
+		}
+	}
+	return out
+}
+
+// collectUserIDs 从入站列表中提取去重后的 UserID 列表。
+func collectUserIDs(inbounds []users.UserInbound) []string {
+	seen := make(map[string]struct{})
+	out := make([]string, 0)
+	for _, ib := range inbounds {
+		if _, ok := seen[ib.UserID]; !ok {
+			seen[ib.UserID] = struct{}{}
+			out = append(out, ib.UserID)
 		}
 	}
 	return out

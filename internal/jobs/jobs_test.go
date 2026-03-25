@@ -67,14 +67,23 @@ func TestResetTraffic_ResetsLimitedUser(t *testing.T) {
 	created := time.Now().Add(-25 * time.Hour)
 	u := users.User{
 		ID: "u1", Username: "alice", Status: users.StatusActive,
-		NodeID: "n1", Domain: "example.com", Port: 443, Protocol: "vless",
 		DataLimitResetStrategy: users.ResetStrategyDay,
 		TrafficLimit:           400,
 		UploadBytes:            300, DownloadBytes: 200,
 		CreatedAt: created,
 	}
 	u.UsedBytes = u.UploadBytes + u.DownloadBytes
-	_, _ = userStore.Upsert(u)
+	_, _ = userStore.UpsertUser(u)
+
+	// 创建对应的 UserInbound
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID:       "u1-ib0",
+		UserID:   "u1",
+		NodeID:   "n1",
+		Protocol: "vless",
+		Domain:   "example.com",
+		Port:     443,
+	})
 
 	var restarted bool
 	dial := testDial(t, func(path string, w http.ResponseWriter, r *http.Request) {
@@ -95,7 +104,7 @@ func TestResetTraffic_ResetsLimitedUser(t *testing.T) {
 		t.Fatal("expected node restart after reset")
 	}
 
-	alice, _ := userStore.Get("u1")
+	alice, _ := userStore.GetUser("u1")
 	if alice.UsedBytes != 0 || alice.UploadBytes != 0 || alice.DownloadBytes != 0 {
 		t.Fatalf("expected bytes cleared, got used=%d", alice.UsedBytes)
 	}
@@ -114,10 +123,17 @@ func TestSyncUsage_UpdatesBytesAndReloads(t *testing.T) {
 	nodeStore := nodes.NewMemoryStore()
 	userStore := users.NewMemoryStore()
 	_, _ = nodeStore.Upsert(nodes.Node{ID: "n1", Name: "n1", BaseURL: "http://node.test"})
-	_, _ = userStore.Upsert(users.User{
+	_, _ = userStore.UpsertUser(users.User{
 		ID: "u1", Username: "alice", Status: users.StatusActive,
-		NodeID: "n1", Domain: "example.com", Port: 443, Protocol: "vless",
 		TrafficLimit: 100,
+	})
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID:       "u1-ib0",
+		UserID:   "u1",
+		NodeID:   "n1",
+		Protocol: "vless",
+		Domain:   "example.com",
+		Port:     443,
 	})
 
 	dial := testDial(t, func(path string, w http.ResponseWriter, r *http.Request) {
@@ -142,7 +158,7 @@ func TestSyncUsage_UpdatesBytesAndReloads(t *testing.T) {
 		t.Fatalf("unexpected result: %+v", result)
 	}
 
-	alice, _ := userStore.Get("u1")
+	alice, _ := userStore.GetUser("u1")
 	if alice.UsedBytes != 110 {
 		t.Fatalf("expected used=110, got %d", alice.UsedBytes)
 	}

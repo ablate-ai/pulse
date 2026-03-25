@@ -26,7 +26,12 @@ func Build(nodeStore nodes.Store, userStore users.Store) (Summary, error) {
 		return Summary{}, err
 	}
 
-	usersList, err := userStore.List()
+	usersList, err := userStore.ListUsers()
+	if err != nil {
+		return Summary{}, err
+	}
+
+	allInbounds, err := userStore.ListUserInbounds()
 	if err != nil {
 		return Summary{}, err
 	}
@@ -38,12 +43,6 @@ func Build(nodeStore nodes.Store, userStore users.Store) (Summary, error) {
 	}
 
 	for _, user := range usersList {
-		protocol := user.Protocol
-		if protocol == "" {
-			protocol = "vless"
-		}
-		summary.Protocols[protocol]++
-		summary.TotalApplyCount += user.ApplyCount
 		summary.TotalUploadBytes += user.UploadBytes
 		summary.TotalDownloadBytes += user.DownloadBytes
 		summary.TotalUsedBytes += user.UsedBytes
@@ -53,8 +52,17 @@ func Build(nodeStore nodes.Store, userStore users.Store) (Summary, error) {
 		if !user.EffectiveEnabled() {
 			summary.DisabledUsersCount++
 		}
-		if user.LastAppliedAt.After(summary.LastAppliedAt) {
-			summary.LastAppliedAt = user.LastAppliedAt
+	}
+
+	for _, ib := range allInbounds {
+		protocol := ib.Protocol
+		if protocol == "" {
+			protocol = "vless"
+		}
+		summary.Protocols[protocol]++
+		summary.TotalApplyCount += ib.ApplyCount
+		if ib.LastAppliedAt.After(summary.LastAppliedAt) {
+			summary.LastAppliedAt = ib.LastAppliedAt
 		}
 	}
 

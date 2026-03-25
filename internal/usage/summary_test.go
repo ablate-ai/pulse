@@ -16,9 +16,16 @@ func TestBuild(t *testing.T) {
 	_, _ = nodeStore.Upsert(nodes.Node{ID: "node-2", Name: "node-2", BaseURL: "http://127.0.0.1:8082"})
 
 	lastApplied := time.Now().UTC().Truncate(time.Second)
-	_, _ = userStore.Upsert(users.User{ID: "u1", Username: "alice", Status: users.StatusActive, NodeID: "node-1", Domain: "example.com", Port: 443, Protocol: "vless", ApplyCount: 2, UploadBytes: 10, DownloadBytes: 20})
-	_, _ = userStore.Upsert(users.User{ID: "u2", Username: "bob", Status: users.StatusActive, NodeID: "node-1", Domain: "example.com", Port: 8443, Protocol: "trojan", ApplyCount: 1, LastAppliedAt: lastApplied, TrafficLimit: 100, UploadBytes: 30, DownloadBytes: 40})
-	_, _ = userStore.Upsert(users.User{ID: "u3", Username: "carol", Status: users.StatusDisabled, NodeID: "node-2", Domain: "example.com", Port: 9443, Protocol: "shadowsocks", TrafficLimit: 50, UploadBytes: 30, DownloadBytes: 30})
+
+	// 用户数据（身份+流量）
+	_, _ = userStore.UpsertUser(users.User{ID: "u1", Username: "alice", Status: users.StatusActive, UploadBytes: 10, DownloadBytes: 20})
+	_, _ = userStore.UpsertUser(users.User{ID: "u2", Username: "bob", Status: users.StatusActive, TrafficLimit: 100, UploadBytes: 30, DownloadBytes: 40})
+	_, _ = userStore.UpsertUser(users.User{ID: "u3", Username: "carol", Status: users.StatusDisabled, TrafficLimit: 50, UploadBytes: 30, DownloadBytes: 30})
+
+	// 入站数据（协议+节点）
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{ID: "u1-ib0", UserID: "u1", NodeID: "node-1", Protocol: "vless", Domain: "example.com", Port: 443, ApplyCount: 2})
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{ID: "u2-ib0", UserID: "u2", NodeID: "node-1", Protocol: "trojan", Domain: "example.com", Port: 8443, ApplyCount: 1, LastAppliedAt: lastApplied})
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{ID: "u3-ib0", UserID: "u3", NodeID: "node-2", Protocol: "shadowsocks", Domain: "example.com", Port: 9443})
 
 	summary, err := Build(nodeStore, userStore)
 	if err != nil {

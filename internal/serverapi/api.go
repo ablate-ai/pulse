@@ -356,19 +356,38 @@ func (a *API) handleNodeApply(w http.ResponseWriter, r *http.Request, nodeID str
 		writeNodeError(w, err)
 		return
 	}
-	nodeUsers, err := a.usersStore.ListByNode(nodeID)
+	allInbounds, err := a.usersStore.ListUserInboundsByNode(nodeID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	userIDs := collectNodeUserIDs(allInbounds)
+	userMap, err := a.usersStore.GetUsersByIDs(userIDs)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	status, _, err := jobs.ApplyNodeUsers(ctx, client, nodeUsers, a.applyOpts)
+	status, _, err := jobs.ApplyNodeUsers(ctx, client, allInbounds, userMap, a.applyOpts)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, status)
+}
+
+// collectNodeUserIDs 提取 inbound 列表中去重后的 UserID（api.go 内部使用）。
+func collectNodeUserIDs(inbounds []users.UserInbound) []string {
+	seen := make(map[string]struct{})
+	out := make([]string, 0)
+	for _, ib := range inbounds {
+		if _, ok := seen[ib.UserID]; !ok {
+			seen[ib.UserID] = struct{}{}
+			out = append(out, ib.UserID)
+		}
+	}
+	return out
 }
 
 func (a *API) clientFor(nodeID string) (*nodes.Client, error) {
