@@ -27,7 +27,7 @@ info()  { printf '\033[32m[INFO]\033[0m  %s\n' "$*"; }
 warn()  { printf '\033[33m[WARN]\033[0m  %s\n' "$*"; }
 error() { printf '\033[31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
 
-tty_available() { [ -r /dev/tty ] && [ -w /dev/tty ]; }
+tty_available() { [ -t 0 ]; }  # stdin 是终端时才交互（curl | sh 下为 false）
 
 # ── 从 pulse-server.env 读取面板端口 ──────────────────────────────────────────
 read_panel_port() {
@@ -46,10 +46,11 @@ read_panel_port() {
 # ── 获取面板域名（可选，agent 节点可跳过）────────────────────────────────────
 prompt_panel_domain() {
   [ -n "${PANEL_DOMAIN:-}" ] && return
-  tty_available || return  # 非交互环境直接跳过，PANEL_DOMAIN 留空
+  # curl | sh 管道下 tty 不可用，直接跳过（PANEL_DOMAIN 留空）
+  tty_available || return
   printf '面板域名（无面板直接回车跳过）: '
-  read -r PANEL_DOMAIN </dev/tty
-  PANEL_DOMAIN="${PANEL_DOMAIN:-}"
+  read -r input </dev/tty
+  PANEL_DOMAIN="${input:-}"
 }
 
 # ── 检查 Caddy 是否安装 ────────────────────────────────────────────────────────
