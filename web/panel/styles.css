@@ -353,8 +353,8 @@ a:hover { text-decoration: underline; }
 .node-card-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .node-card-usage { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; min-height: 16px; }
 .node-stat { display: flex; align-items: center; }
-.logs-content { background: var(--bg-elevated); border-radius: var(--radius); padding: 12px; font-size: 12px; font-family: var(--font-mono); max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; margin: 0; color: var(--text); }
-.modal-box-lg { max-width: 700px; width: 90vw; }
+.logs-content { background: var(--bg-elevated); border-radius: var(--radius); padding: 12px; font-size: 12px; font-family: var(--font-mono); overflow-y: auto; white-space: pre-wrap; word-break: break-all; margin: 0; color: var(--text); flex: 1; min-height: 0; }
+.modal-box-lg { max-width: 700px; width: 90vw; max-height: 85vh; display: flex; flex-direction: column; }
 .node-badge { display: flex; align-items: center; }
 .node-url { font-size: 12px; color: var(--text-muted); font-family: var(--font-mono); margin-bottom: 12px; }
 .node-id-tag {
