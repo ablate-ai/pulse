@@ -141,6 +141,26 @@ func (a *API) handleNode(w http.ResponseWriter, r *http.Request, nodeID string) 
 			return
 		}
 		writeJSON(w, http.StatusOK, node)
+	case http.MethodPut:
+		var req upsertNodeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
+			return
+		}
+		if req.Name == "" || req.BaseURL == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "name and base_url are required"})
+			return
+		}
+		node, err := a.store.Upsert(nodes.Node{
+			ID:      nodeID,
+			Name:    req.Name,
+			BaseURL: strings.TrimRight(req.BaseURL, "/"),
+		})
+		if err != nil {
+			writeNodeError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, node)
 	case http.MethodDelete:
 		if err := a.store.Delete(nodeID); err != nil {
 			writeNodeError(w, err)
@@ -148,7 +168,7 @@ func (a *API) handleNode(w http.ResponseWriter, r *http.Request, nodeID string) 
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
 	default:
-		writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodDelete)
+		writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodPut+", "+http.MethodDelete)
 	}
 }
 
