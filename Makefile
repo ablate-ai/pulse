@@ -4,7 +4,7 @@ BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 TARGET_OS ?= $(shell go env GOOS)
 TARGET_ARCH ?= $(shell go env GOARCH)
 DIST_DIR ?= dist
-SINGBOX_TAGS ?= with_clash_api
+SINGBOX_TAGS ?= with_clash_api,with_utls
 LDFLAGS = -s -w -X pulse/internal/buildinfo.Version=$(VERSION) -X pulse/internal/buildinfo.Commit=$(COMMIT) -X pulse/internal/buildinfo.BuildDate=$(BUILD_DATE)
 
 # 版本管理
