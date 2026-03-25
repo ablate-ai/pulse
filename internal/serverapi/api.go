@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"pulse/internal/idgen"
+	"pulse/internal/inbounds"
 	"pulse/internal/jobs"
 	"pulse/internal/nodes"
 	"pulse/internal/users"
@@ -17,6 +18,7 @@ import (
 type API struct {
 	store         nodes.Store
 	usersStore    users.Store
+	inboundStore  inbounds.InboundStore
 	clientOptions nodes.ClientOptions
 	clientFactory func(node nodes.Node) *nodes.Client
 	applyOpts     jobs.ApplyOptions
@@ -42,16 +44,18 @@ func New(store nodes.Store, clientOptions nodes.ClientOptions) *API {
 	}
 }
 
-func NewWithUsers(nodesStore nodes.Store, usersStore users.Store, clientOptions nodes.ClientOptions, applyOpts jobs.ApplyOptions) *API {
+func NewWithUsers(nodesStore nodes.Store, usersStore users.Store, inboundStore inbounds.InboundStore, clientOptions nodes.ClientOptions, applyOpts jobs.ApplyOptions) *API {
 	api := New(nodesStore, clientOptions)
 	api.usersStore = usersStore
+	api.inboundStore = inboundStore
 	api.applyOpts = applyOpts
 	return api
 }
 
-func RegisterUsersAPI(mux *http.ServeMux, usersStore users.Store, nodesStore nodes.Store, clientOptions nodes.ClientOptions, applyOpts jobs.ApplyOptions) {
+func RegisterUsersAPI(mux *http.ServeMux, usersStore users.Store, nodesStore nodes.Store, inboundStore inbounds.InboundStore, clientOptions nodes.ClientOptions, applyOpts jobs.ApplyOptions) {
 	base := New(nodesStore, clientOptions)
-	newUserAPI(usersStore, nodesStore, base, applyOpts).Register(mux)
+	base.inboundStore = inboundStore
+	newUserAPI(usersStore, nodesStore, inboundStore, base, applyOpts).Register(mux)
 }
 
 func (a *API) Register(mux *http.ServeMux) {
@@ -347,8 +351,8 @@ func (a *API) handleNodeApply(w http.ResponseWriter, r *http.Request, nodeID str
 		writeMethodNotAllowed(w, http.MethodPost)
 		return
 	}
-	if a.usersStore == nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "users store not configured"})
+	if a.usersStore == nil || a.inboundStore == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "stores not configured"})
 		return
 	}
 	client, err := a.clientFor(nodeID)
@@ -356,12 +360,17 @@ func (a *API) handleNodeApply(w http.ResponseWriter, r *http.Request, nodeID str
 		writeNodeError(w, err)
 		return
 	}
-	allInbounds, err := a.usersStore.ListUserInboundsByNode(nodeID)
+	nodeInbounds, err := a.inboundStore.ListInboundsByNode(nodeID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
-	userIDs := collectNodeUserIDs(allInbounds)
+	userAccesses, err := a.usersStore.ListUserInboundsByNode(nodeID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	userIDs := collectNodeUserIDs(userAccesses)
 	userMap, err := a.usersStore.GetUsersByIDs(userIDs)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
@@ -369,7 +378,7 @@ func (a *API) handleNodeApply(w http.ResponseWriter, r *http.Request, nodeID str
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	status, _, err := jobs.ApplyNodeUsers(ctx, client, allInbounds, userMap, a.applyOpts)
+	status, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, a.inboundStore, a.applyOpts)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
@@ -377,14 +386,14 @@ func (a *API) handleNodeApply(w http.ResponseWriter, r *http.Request, nodeID str
 	writeJSON(w, http.StatusOK, status)
 }
 
-// collectNodeUserIDs 提取 inbound 列表中去重后的 UserID（api.go 内部使用）。
-func collectNodeUserIDs(inbounds []users.UserInbound) []string {
+// collectNodeUserIDs 提取用户凭据列表中去重后的 UserID（api.go 内部使用）。
+func collectNodeUserIDs(accesses []users.UserInbound) []string {
 	seen := make(map[string]struct{})
 	out := make([]string, 0)
-	for _, ib := range inbounds {
-		if _, ok := seen[ib.UserID]; !ok {
-			seen[ib.UserID] = struct{}{}
-			out = append(out, ib.UserID)
+	for _, acc := range accesses {
+		if _, ok := seen[acc.UserID]; !ok {
+			seen[acc.UserID] = struct{}{}
+			out = append(out, acc.UserID)
 		}
 	}
 	return out

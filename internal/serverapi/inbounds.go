@@ -27,7 +27,13 @@ func RegisterInboundsAPI(mux *http.ServeMux, store inbounds.InboundStore) {
 func (a *inboundAPI) handleInbounds(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		items, err := a.store.ListInbounds()
+		var items []inbounds.Inbound
+		var err error
+		if nodeID := r.URL.Query().Get("node_id"); nodeID != "" {
+			items, err = a.store.ListInboundsByNode(nodeID)
+		} else {
+			items, err = a.store.ListInbounds()
+		}
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return

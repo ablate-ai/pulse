@@ -8,48 +8,19 @@ import (
 	"strings"
 	"testing"
 
+	"pulse/internal/inbounds"
 	"pulse/internal/jobs"
 	"pulse/internal/nodes"
 	"pulse/internal/users"
 )
 
-// createTestUserAndInbound 辅助函数：先创建 User，再创建 UserInbound，返回 inbound ID。
-func createTestUserAndInbound(t *testing.T, mux *http.ServeMux, userBody, inboundBody string, userID string) string {
+// setupTestMux 创建带 mock 节点的测试 mux，返回 mux 和 ibStore。
+func setupTestMux(t *testing.T, nodeHandler func(path string, w http.ResponseWriter, r *http.Request)) (*http.ServeMux, *inbounds.MemoryStore) {
 	t.Helper()
 
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/v1/users", bytes.NewReader([]byte(userBody)))
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("create user status = %d body=%s", rec.Code, rec.Body.String())
-	}
-
-	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/v1/users/"+userID+"/inbounds", bytes.NewReader([]byte(inboundBody)))
-	mux.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("create inbound status = %d body=%s", rec.Code, rec.Body.String())
-	}
-
-	var out map[string]any
-	if err := json.NewDecoder(rec.Body).Decode(&out); err != nil {
-		t.Fatalf("decode inbound: %v", err)
-	}
-	return out["id"].(string)
-}
-
-func TestUserSubscriptionAndApplyFlow(t *testing.T) {
-	var capturedConfig string
 	nodeMux := http.NewServeMux()
-	nodeMux.HandleFunc("/v1/node/runtime/restart", func(w http.ResponseWriter, r *http.Request) {
-		var req map[string]string
-		_ = json.NewDecoder(r.Body).Decode(&req)
-		capturedConfig = req["config"]
-		if !strings.Contains(req["config"], "\"type\": \"vless\"") {
-			http.Error(w, "bad config", http.StatusBadRequest)
-			return
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"running": true})
+	nodeMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		nodeHandler(r.URL.Path, w, r)
 	})
 
 	nodeStore := nodes.NewMemoryStore()
@@ -70,20 +41,81 @@ func TestUserSubscriptionAndApplyFlow(t *testing.T) {
 		})
 	}
 
-	userAPI := newUserAPI(users.NewMemoryStore(), nodeStore, baseAPI, jobs.ApplyOptions{})
+	ibStore := inbounds.NewMemoryStore()
+	userAPI := newUserAPI(users.NewMemoryStore(), nodeStore, ibStore, baseAPI, jobs.ApplyOptions{})
 	mux := http.NewServeMux()
 	userAPI.Register(mux)
 
-	// 创建用户和入站
-	ibID := createTestUserAndInbound(t, mux,
-		`{"id":"user-1","username":"alice"}`,
-		`{"id":"ib-1","node_id":"node-1","domain":"example.com","port":443}`,
-		"user-1",
-	)
+	return mux, ibStore
+}
+
+// createUser 辅助：POST /v1/users，返回 user ID。
+func createUser(t *testing.T, mux *http.ServeMux, body string) string {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/users", bytes.NewReader([]byte(body)))
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create user status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var out map[string]any
+	_ = json.NewDecoder(rec.Body).Decode(&out)
+	return out["id"].(string)
+}
+
+// createUserInbound 辅助：POST /v1/users/{userID}/inbounds，返回 inbound ID。
+func createUserInbound(t *testing.T, mux *http.ServeMux, userID, nodeID string) string {
+	t.Helper()
+	body := `{"node_id":"` + nodeID + `"}`
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/users/"+userID+"/inbounds", bytes.NewReader([]byte(body)))
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create user inbound status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var out map[string]any
+	_ = json.NewDecoder(rec.Body).Decode(&out)
+	return out["id"].(string)
+}
+
+func TestUserSubscriptionAndApplyFlow(t *testing.T) {
+	var capturedConfig string
+	mux, ibStore := setupTestMux(t, func(path string, w http.ResponseWriter, r *http.Request) {
+		switch path {
+		case "/v1/node/runtime/restart":
+			var req map[string]string
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			capturedConfig = req["config"]
+			if !strings.Contains(req["config"], "\"type\": \"vless\"") {
+				http.Error(w, "bad config", http.StatusBadRequest)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"running": true})
+		}
+	})
+
+	// 在 ibStore 中注册 vless 入站和对应 host
+	_, _ = ibStore.UpsertInbound(inbounds.Inbound{
+		ID:       "ib-vless",
+		NodeID:   "node-1",
+		Protocol: "vless",
+		Tag:      "pulse-vless-node-1",
+		Port:     443,
+	})
+	_, _ = ibStore.UpsertHost(inbounds.Host{
+		ID:        "host-1",
+		InboundID: "ib-vless",
+		Address:   "example.com",
+		Port:      443,
+	})
+
+	// 创建 alice 并绑定节点
+	aliceID := createUser(t, mux, `{"id":"user-1","username":"alice"}`)
+	ibID := createUserInbound(t, mux, aliceID, "node-1")
 
 	// 获取订阅链接
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/users/user-1/inbounds/"+ibID+"/subscription", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v1/users/"+aliceID+"/inbounds/"+ibID+"/subscription", nil)
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("subscription status = %d body=%s", rec.Code, rec.Body.String())
@@ -94,7 +126,7 @@ func TestUserSubscriptionAndApplyFlow(t *testing.T) {
 
 	// 下发配置
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/v1/users/user-1/inbounds/"+ibID+"/apply", nil)
+	req = httptest.NewRequest(http.MethodPost, "/v1/users/"+aliceID+"/inbounds/"+ibID+"/apply", nil)
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("apply status = %d body=%s", rec.Code, rec.Body.String())
@@ -103,21 +135,19 @@ func TestUserSubscriptionAndApplyFlow(t *testing.T) {
 		t.Fatalf("expected running node status, got %s", rec.Body.String())
 	}
 
-	// 创建第二个用户和入站
-	ibID2 := createTestUserAndInbound(t, mux,
-		`{"id":"user-2","username":"bob"}`,
-		`{"id":"ib-2","node_id":"node-1","domain":"example.com","port":443}`,
-		"user-2",
-	)
+	// 创建 bob 并绑定同一节点
+	bobID := createUser(t, mux, `{"id":"user-2","username":"bob"}`)
+	ibID2 := createUserInbound(t, mux, bobID, "node-1")
 
-	// 下发第二个用户
+	// 下发 bob 的配置
 	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/v1/users/user-2/inbounds/"+ibID2+"/apply", nil)
+	req = httptest.NewRequest(http.MethodPost, "/v1/users/"+bobID+"/inbounds/"+ibID2+"/apply", nil)
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("apply second user status = %d body=%s", rec.Code, rec.Body.String())
 	}
 
+	// 配置中应包含两个用户
 	if !strings.Contains(capturedConfig, "\"name\": \"alice\"") || !strings.Contains(capturedConfig, "\"name\": \"bob\"") {
 		t.Fatalf("expected aggregated config with both users, got %s", capturedConfig)
 	}
@@ -132,7 +162,7 @@ func TestCreateUserAutoGeneratesID(t *testing.T) {
 	})
 
 	baseAPI := New(nodeStore, nodes.ClientOptions{})
-	userAPI := newUserAPI(users.NewMemoryStore(), nodeStore, baseAPI, jobs.ApplyOptions{})
+	userAPI := newUserAPI(users.NewMemoryStore(), nodeStore, inbounds.NewMemoryStore(), baseAPI, jobs.ApplyOptions{})
 	mux := http.NewServeMux()
 	userAPI.Register(mux)
 
@@ -154,60 +184,55 @@ func TestCreateUserAutoGeneratesID(t *testing.T) {
 }
 
 func TestUserSupportsMultipleProtocols(t *testing.T) {
-	nodeStore := nodes.NewMemoryStore()
-	_, _ = nodeStore.Upsert(nodes.Node{
-		ID:      "node-1",
-		Name:    "node 1",
-		BaseURL: "http://node.test",
+	mux, ibStore := setupTestMux(t, func(path string, w http.ResponseWriter, r *http.Request) {
+		if path == "/v1/node/runtime/restart" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"running": true})
+		}
 	})
 
-	baseAPI := New(nodeStore, nodes.ClientOptions{})
-	baseAPI.clientFactory = func(node nodes.Node) *nodes.Client {
-		return nodes.NewClientWithHTTPClient(node.BaseURL, &http.Client{
-			Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-				rec := httptest.NewRecorder()
-				if req.URL.Path == "/v1/node/runtime/restart" {
-					_ = json.NewEncoder(rec).Encode(map[string]any{"running": true})
-				} else {
-					http.NotFound(rec, req)
-				}
-				return rec.Result(), nil
-			}),
-		})
-	}
+	// 在 node-1 上注册 trojan 和 shadowsocks 入站
+	_, _ = ibStore.UpsertInbound(inbounds.Inbound{
+		ID:       "ib-trojan",
+		NodeID:   "node-1",
+		Protocol: "trojan",
+		Tag:      "pulse-trojan-node-1",
+		Port:     443,
+	})
+	_, _ = ibStore.UpsertHost(inbounds.Host{
+		ID:        "host-trojan",
+		InboundID: "ib-trojan",
+		Address:   "example.com",
+		Port:      443,
+	})
+	_, _ = ibStore.UpsertInbound(inbounds.Inbound{
+		ID:       "ib-ss",
+		NodeID:   "node-1",
+		Protocol: "shadowsocks",
+		Tag:      "pulse-ss-node-1",
+		Port:     8443,
+		Method:   "aes-256-gcm",
+	})
+	_, _ = ibStore.UpsertHost(inbounds.Host{
+		ID:        "host-ss",
+		InboundID: "ib-ss",
+		Address:   "example.com",
+		Port:      8443,
+	})
 
-	userAPI := newUserAPI(users.NewMemoryStore(), nodeStore, baseAPI, jobs.ApplyOptions{})
-	mux := http.NewServeMux()
-	userAPI.Register(mux)
+	// 创建用户并绑定节点
+	userID := createUser(t, mux, `{"id":"user-multi","username":"alice"}`)
+	ibID := createUserInbound(t, mux, userID, "node-1")
 
-	// 先创建用户，再创建各协议入站
-	ibIDTrojan := createTestUserAndInbound(t, mux,
-		`{"id":"user-trojan","username":"alice"}`,
-		`{"id":"ib-trojan","protocol":"trojan","secret":"trojan-pass","node_id":"node-1","domain":"example.com","port":443}`,
-		"user-trojan",
-	)
-	ibIDSS := createTestUserAndInbound(t, mux,
-		`{"id":"user-ss","username":"bob"}`,
-		`{"id":"ib-ss","protocol":"shadowsocks","secret":"ss-pass","method":"aes-256-gcm","node_id":"node-1","domain":"example.com","port":8443}`,
-		"user-ss",
-	)
-
-	for _, tc := range []struct {
-		userID string
-		ibID   string
-		want   string
-	}{
-		{userID: "user-trojan", ibID: ibIDTrojan, want: "trojan://"},
-		{userID: "user-ss", ibID: ibIDSS, want: "ss://"},
-	} {
+	// 订阅应包含 trojan 和 ss 链接
+	for _, want := range []string{"trojan://", "ss://"} {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/v1/users/"+tc.userID+"/inbounds/"+tc.ibID+"/subscription", nil)
+		req := httptest.NewRequest(http.MethodGet, "/v1/users/"+userID+"/inbounds/"+ibID+"/subscription", nil)
 		mux.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("subscription status = %d body=%s", rec.Code, rec.Body.String())
 		}
-		if !strings.Contains(rec.Body.String(), tc.want) {
-			t.Fatalf("expected %s link, got %s", tc.want, rec.Body.String())
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("expected %s link, got %s", want, rec.Body.String())
 		}
 	}
 }
@@ -252,13 +277,22 @@ func TestSyncUsageDisablesLimitedUserAndReloadsNode(t *testing.T) {
 		})
 	}
 
+	ibStore := inbounds.NewMemoryStore()
+	_, _ = ibStore.UpsertInbound(inbounds.Inbound{
+		ID:       "ib-vless",
+		NodeID:   "node-1",
+		Protocol: "vless",
+		Tag:      "pulse-vless-node-1",
+		Port:     443,
+	})
+
 	userStore := users.NewMemoryStore()
 	_, _ = userStore.UpsertUser(users.User{ID: "u1", Username: "alice", Status: users.StatusActive, TrafficLimit: 100})
 	_, _ = userStore.UpsertUser(users.User{ID: "u2", Username: "bob", Status: users.StatusActive})
-	_, _ = userStore.UpsertUserInbound(users.UserInbound{ID: "u1-ib0", UserID: "u1", NodeID: "node-1", Protocol: "vless", Domain: "example.com", Port: 443})
-	_, _ = userStore.UpsertUserInbound(users.UserInbound{ID: "u2-ib0", UserID: "u2", NodeID: "node-1", Protocol: "vless", Domain: "example.com", Port: 443})
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{ID: "u1-ib0", UserID: "u1", NodeID: "node-1", UUID: "uuid-alice", Secret: "secret-alice"})
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{ID: "u2-ib0", UserID: "u2", NodeID: "node-1", UUID: "uuid-bob", Secret: "secret-bob"})
 
-	result, err := jobs.SyncUsage(t.Context(), userStore, nodeStore, baseAPI.Dial, jobs.ApplyOptions{})
+	result, err := jobs.SyncUsage(t.Context(), userStore, nodeStore, ibStore, baseAPI.Dial, jobs.ApplyOptions{})
 	if err != nil {
 		t.Fatalf("SyncUsage() error = %v", err)
 	}

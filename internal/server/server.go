@@ -44,13 +44,13 @@ func Run() error {
 	applyOpts := jobs.ApplyOptions{
 		SingboxWSLocalPort: cfg.SingboxWSLocalPort,
 	}
-	nodeAPI := serverapi.NewWithUsers(store, userStore, clientOptions, applyOpts)
+	nodeAPI := serverapi.NewWithUsers(store, userStore, inboundStore, clientOptions, applyOpts)
 	scheduler := jobs.NewScheduler(nil)
 	scheduler.Add(jobs.Job{
 		Name:     "sync-usage",
 		Interval: 1 * time.Minute,
 		Fn: func(ctx context.Context) error {
-			_, err := jobs.SyncUsage(ctx, userStore, store, nodeAPI.Dial, applyOpts)
+			_, err := jobs.SyncUsage(ctx, userStore, store, inboundStore, nodeAPI.Dial, applyOpts)
 			return err
 		},
 	})
@@ -58,7 +58,7 @@ func Run() error {
 		Name:     "reset-traffic",
 		Interval: 1 * time.Minute,
 		Fn: func(ctx context.Context) error {
-			_, err := jobs.ResetTraffic(ctx, userStore, store, nodeAPI.Dial, applyOpts)
+			_, err := jobs.ResetTraffic(ctx, userStore, store, inboundStore, nodeAPI.Dial, applyOpts)
 			return err
 		},
 	})
@@ -105,9 +105,9 @@ func Run() error {
 		})
 	})
 	registerWeb(mux, cfg.WebDir)
-	serverapi.NewWithUsers(store, userStore, clientOptions, applyOpts).Register(protectedV1)
-	serverapi.RegisterUsersAPI(protectedV1, userStore, store, clientOptions, applyOpts)
-	serverapi.RegisterSystemAPI(protectedV1, userStore, store, clientOptions, applyOpts)
+	serverapi.NewWithUsers(store, userStore, inboundStore, clientOptions, applyOpts).Register(protectedV1)
+	serverapi.RegisterUsersAPI(protectedV1, userStore, store, inboundStore, clientOptions, applyOpts)
+	serverapi.RegisterSystemAPIWithInbounds(protectedV1, userStore, store, inboundStore, clientOptions, applyOpts)
 	serverapi.RegisterInboundsAPI(protectedV1, inboundStore)
 	serverapi.RegisterToolsAPI(protectedV1)
 	mux.Handle("/v1/tools/", authManager.Middleware(protectedV1))
