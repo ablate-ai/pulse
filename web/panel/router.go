@@ -38,9 +38,6 @@ func (a *app) renderRoute() {
 		title = "Nodes"
 	case "/users":
 		title = "Users"
-		if a.byID("user-port").Get("value").String() == "" {
-			a.byID("user-port").Set("value", randomPort())
-		}
 	}
 	a.byID("page-title").Set("textContent", title)
 

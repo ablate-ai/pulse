@@ -27,30 +27,41 @@ type user struct {
 	CreatedAt              string `json:"created_at"`
 }
 
-// userInbound 代表用户与节点+协议的绑定关系。
+// userInbound 代表用户与节点的访问凭据（协议配置由节点 inbound 决定）。
 type userInbound struct {
+	ID        string `json:"id"`
+	UserID    string `json:"user_id"`
+	NodeID    string `json:"node_id"`
+	UUID      string `json:"uuid"`
+	Secret    string `json:"secret"`
+	CreatedAt string `json:"created_at"`
+}
+
+// nodeInbound 代表节点上的一个监听入站（协议 + 端口 + TLS）。
+type nodeInbound struct {
 	ID                   string `json:"id"`
-	UserID               string `json:"user_id"`
 	NodeID               string `json:"node_id"`
 	Protocol             string `json:"protocol"`
-	UUID                 string `json:"uuid"`
-	Secret               string `json:"secret"`
+	Tag                  string `json:"tag"`
+	Port                 int    `json:"port"`
 	Method               string `json:"method"`
 	Security             string `json:"security"`
-	Flow                 string `json:"flow"`
-	SNI                  string `json:"sni"`
-	Fingerprint          string `json:"fingerprint"`
-	RealityPublicKey     string `json:"reality_public_key"`
-	RealityShortID       string `json:"reality_short_id"`
-	RealitySpiderX       string `json:"reality_spider_x"`
 	RealityPrivateKey    string `json:"reality_private_key"`
+	RealityPublicKey     string `json:"reality_public_key"`
 	RealityHandshakeAddr string `json:"reality_handshake_addr"`
-	Domain               string `json:"domain"`
-	Port                 int    `json:"port"`
-	InboundTag           string `json:"inbound_tag"`
-	ApplyCount           int    `json:"apply_count"`
-	LastAppliedAt        string `json:"last_applied_at"`
-	CreatedAt            string `json:"created_at"`
+	RealityShortID       string `json:"reality_short_id"`
+}
+
+// host 代表客户端连接模板（地址 + TLS 参数）。
+type host struct {
+	ID          string `json:"id"`
+	InboundID   string `json:"inbound_id"`
+	Remark      string `json:"remark"`
+	Address     string `json:"address"`
+	Port        int    `json:"port"`
+	SNI         string `json:"sni"`
+	Security    string `json:"security"`
+	Fingerprint string `json:"fingerprint"`
 }
 
 type app struct {
@@ -62,8 +73,10 @@ type app struct {
 	nodes                []node
 	users                []user
 	editingUserID        string
-	editingInboundUserID string                // 正在为哪个用户添加 inbound
+	editingInboundUserID string                   // 正在为哪个用户添加 inbound
+	editingNodeID        string                   // 正在管理入站的节点 ID
 	userInbounds         map[string][]userInbound // 懒加载，key = userID
+	nodeInbounds         map[string][]nodeInbound // 懒加载，key = nodeID
 }
 
 func main() {
@@ -72,6 +85,7 @@ func main() {
 		storage:      js.Global().Get("localStorage"),
 		window:       js.Global().Get("window"),
 		userInbounds: make(map[string][]userInbound),
+		nodeInbounds: make(map[string][]nodeInbound),
 	}
 	a.bind()
 	a.bootstrap()
@@ -80,7 +94,6 @@ func main() {
 
 func (a *app) bootstrap() {
 	a.setStatus("加载中...")
-	a.syncProtocolFields()
 	a.token = a.storage.Call("getItem", "pulse_token").String()
 	if a.token == "" || a.token == "null" {
 		a.setAuthenticated(false)

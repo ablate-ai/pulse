@@ -95,11 +95,11 @@
             <div class="card-head">
               <h3 class="card-title">添加用户</h3>
             </div>
-            <p class="field-label" style="margin-bottom:4px">步骤：先填写用户基本信息和首条入站配置，提交后可在用户卡片中管理更多入站。</p>
+            <p class="field-label" style="margin-bottom:4px">协议配置由节点统一管理，用户只需选择接入节点即可。</p>
             <form id="user-form" class="form-stack">
               <input id="user-name" placeholder="用户名" required>
 
-              <input id="user-traffic-limit" placeholder="流量上限 GB（用户总量，0=不限）" type="number" min="0" step="0.1">
+              <input id="user-traffic-limit" placeholder="流量上限 GB（0=不限）" type="number" min="0" step="0.1">
 
               <select id="user-reset-strategy">
                 <option value="no_reset">流量不重置</option>
@@ -114,40 +114,8 @@
                 <input id="user-expire-at" type="datetime-local">
               </div>
 
-              <hr style="border-color:var(--border-muted);margin:4px 0">
-              <p class="field-label" style="margin-bottom:4px">首条入站配置</p>
-
-              <select id="user-protocol" required>
-                <option value="vless">VLESS</option>
-                <option value="vmess">VMess</option>
-                <option value="trojan">Trojan</option>
-                <option value="shadowsocks">Shadowsocks</option>
-              </select>
-
-              <input id="user-secret" placeholder="密钥（可留空自动生成）">
-
-              <div id="user-method-wrap">
-                <input id="user-method" placeholder="加密方式（如 aes-128-gcm）">
-              </div>
-
-              <!-- Reality 字段（VLESS 专用） -->
-              <div id="user-reality-wrap" hidden>
-                <div class="form-row">
-                  <input id="user-reality-sni" placeholder="目标域名，如 www.google.com" style="flex:1">
-                  <button type="button" id="btn-gen-keypair" class="btn btn-ghost btn-sm">一键生成</button>
-                </div>
-                <input id="user-reality-pubkey" placeholder="公钥">
-                <input id="user-reality-privkey" placeholder="私钥（服务端）">
-                <input id="user-reality-shortid" placeholder="Short ID">
-              </div>
-
-              <div class="form-row-2">
-                <input id="user-domain" placeholder="example.com" required>
-                <input id="user-port" placeholder="443" type="number" min="1" max="65535" required>
-              </div>
-
-              <select id="user-node" required>
-                <option value="">选择节点</option>
+              <select id="user-node">
+                <option value="">选择节点（可选）</option>
               </select>
 
               <button type="submit" class="btn btn-primary">创建用户</button>
@@ -223,6 +191,52 @@
   </div>
 </dialog>
 
+<!-- ─── Node Inbounds Modal ─────────────────────────────── -->
+<dialog id="node-inbounds-modal" class="modal">
+  <div class="modal-box modal-box-lg">
+    <div class="modal-head">
+      <h3 id="node-inbounds-title" class="modal-title">管理入站</h3>
+      <button id="node-inbounds-modal-close" type="button" class="btn-icon">✕</button>
+    </div>
+
+    <div id="node-inbounds-list" class="inbounds-list" style="min-height:48px"></div>
+
+    <hr style="border-color:var(--border-muted);margin:12px 0">
+    <p class="field-label" style="margin-bottom:8px">添加入站</p>
+    <form id="node-inbound-add-form" class="form-stack">
+      <input type="hidden" id="ni-node-id">
+      <input type="hidden" id="ni-security">
+
+      <div class="form-row-2">
+        <select id="ni-protocol" required>
+          <option value="vless">VLESS</option>
+          <option value="vmess">VMess</option>
+          <option value="trojan">Trojan</option>
+          <option value="shadowsocks">Shadowsocks</option>
+        </select>
+        <input id="ni-port" placeholder="端口，如 443" type="number" min="1" max="65535" required>
+      </div>
+      <input id="ni-address" placeholder="客户端连接地址，如 example.com 或 1.2.3.4" required>
+
+      <div id="ni-method-wrap" hidden>
+        <input id="ni-method" placeholder="加密方式（如 aes-128-gcm）">
+      </div>
+
+      <div id="ni-reality-wrap" hidden>
+        <div class="form-row">
+          <input id="ni-reality-sni" placeholder="握手域名，如 www.google.com" style="flex:1">
+          <button type="button" id="btn-ni-gen-keypair" class="btn btn-ghost btn-sm">生成密钥</button>
+        </div>
+        <input id="ni-reality-pubkey" placeholder="公钥（客户端使用）">
+        <input id="ni-reality-privkey" placeholder="私钥（服务端）">
+        <input id="ni-reality-shortid" placeholder="Short ID">
+      </div>
+
+      <button type="submit" class="btn btn-primary">添加入站</button>
+    </form>
+  </div>
+</dialog>
+
 <!-- ─── Edit User Modal ────────────────────────────────── -->
 <dialog id="edit-modal" class="modal">
   <div class="modal-box">
@@ -271,46 +285,18 @@
   </div>
 </dialog>
 
-<!-- ─── Add Inbound Modal ─────────────────────────────── -->
+<!-- ─── Add User Inbound Modal ────────────────────────── -->
 <dialog id="inbound-add-modal" class="modal">
   <div class="modal-box">
     <div class="modal-head">
-      <h3 class="modal-title">添加入站</h3>
+      <h3 class="modal-title">添加入站（绑定节点）</h3>
       <button id="inbound-add-modal-close" type="button" class="btn-icon">✕</button>
     </div>
     <form id="inbound-add-form" class="form-stack">
+      <p class="field-label">选择节点后，系统自动为该用户生成对应凭据（UUID / Secret）。</p>
       <select id="add-ib-node" required>
         <option value="">选择节点</option>
       </select>
-
-      <select id="add-ib-protocol" required>
-        <option value="vless">VLESS</option>
-        <option value="vmess">VMess</option>
-        <option value="trojan">Trojan</option>
-        <option value="shadowsocks">Shadowsocks</option>
-      </select>
-
-      <input id="add-ib-secret" placeholder="密钥（可留空自动生成）">
-
-      <div id="add-ib-method-wrap">
-        <input id="add-ib-method" placeholder="加密方式（如 aes-128-gcm）">
-      </div>
-
-      <div id="add-ib-reality-wrap" hidden>
-        <div class="form-row">
-          <input id="add-ib-reality-sni" placeholder="目标域名，如 www.google.com" style="flex:1">
-          <button type="button" id="btn-gen-keypair-add" class="btn btn-ghost btn-sm">一键生成</button>
-        </div>
-        <input id="add-ib-reality-pubkey" placeholder="公钥">
-        <input id="add-ib-reality-privkey" placeholder="私钥（服务端）">
-        <input id="add-ib-reality-shortid" placeholder="Short ID">
-      </div>
-
-      <div class="form-row-2">
-        <input id="add-ib-domain" placeholder="example.com" required>
-        <input id="add-ib-port" placeholder="443" type="number" min="1" max="65535" required>
-      </div>
-
       <div class="modal-actions">
         <button type="button" id="inbound-add-modal-cancel" class="btn btn-ghost">取消</button>
         <button type="submit" class="btn btn-primary">添加</button>

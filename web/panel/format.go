@@ -84,6 +84,15 @@ func bytesToGBString(b int64) string {
 	return strconv.FormatFloat(gb, 'f', 2, 64)
 }
 
+// parsePort 解析端口字符串，返回 1-65535 范围内的整数。
+func parsePort(value string) (int, error) {
+	n, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || n < 1 || n > 65535 {
+		return 0, fmt.Errorf("invalid port: %s", value)
+	}
+	return n, nil
+}
+
 // parseInt64 安全解析 int64。
 func parseInt64(value string) int64 {
 	value = strings.TrimSpace(value)

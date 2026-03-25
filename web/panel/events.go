@@ -48,19 +48,7 @@ func (a *app) bind() {
 		return nil
 	}))
 
-	// 协议切换（创建用户表单）
-	a.byID("user-protocol").Call("addEventListener", "change", js.FuncOf(func(this js.Value, args []js.Value) any {
-		a.syncProtocolFields()
-		return nil
-	}))
-
-	// 生成 Reality 密钥对（创建用户表单）
-	a.byID("btn-gen-keypair").Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
-		go a.generateRealityKeypair()
-		return nil
-	}))
-
-	// 用户列表过滤（移除了 user-filter-protocol，协议现在属于 inbound 层）
+	// 用户列表过滤
 	for _, id := range []string{"user-search", "user-filter-status"} {
 		id := id
 		a.byID(id).Call("addEventListener", "input", js.FuncOf(func(this js.Value, args []js.Value) any {
@@ -100,32 +88,37 @@ func (a *app) bind() {
 		return nil
 	}))
 
-	// 添加入站 modal
+	// 添加用户入站 modal（仅节点选择）
 	a.byID("inbound-add-modal-close").Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
 		a.byID("inbound-add-modal").Call("close")
 		return nil
 	}))
-
 	a.byID("inbound-add-modal-cancel").Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
 		a.byID("inbound-add-modal").Call("close")
 		return nil
 	}))
-
 	a.byID("inbound-add-form").Call("addEventListener", "submit", js.FuncOf(func(this js.Value, args []js.Value) any {
 		args[0].Call("preventDefault")
 		go a.submitAddInbound()
 		return nil
 	}))
 
-	// 协议切换（添加入站 modal）
-	a.byID("add-ib-protocol").Call("addEventListener", "change", js.FuncOf(func(this js.Value, args []js.Value) any {
-		a.syncAddInboundProtocolFields()
+	// 节点入站管理 modal
+	a.byID("node-inbounds-modal-close").Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
+		a.byID("node-inbounds-modal").Call("close")
 		return nil
 	}))
-
-	// 生成 Reality 密钥对（添加入站 modal）
-	a.byID("btn-gen-keypair-add").Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
-		go a.generateRealityKeypairForAdd()
+	a.byID("node-inbound-add-form").Call("addEventListener", "submit", js.FuncOf(func(this js.Value, args []js.Value) any {
+		args[0].Call("preventDefault")
+		go a.submitNodeInbound()
+		return nil
+	}))
+	a.byID("ni-protocol").Call("addEventListener", "change", js.FuncOf(func(this js.Value, args []js.Value) any {
+		a.syncNodeInboundProtocolFields()
+		return nil
+	}))
+	a.byID("btn-ni-gen-keypair").Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
+		go a.generateRealityKeypair()
 		return nil
 	}))
 

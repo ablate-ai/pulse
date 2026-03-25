@@ -21,7 +21,7 @@ func (a *app) login() {
 	a.setAuthenticated(true)
 	a.setStatus("登录成功")
 	a.reset("login-form")
-	a.syncProtocolFields()
+	a.syncNodeInboundProtocolFields()
 	a.loadSystemInfo()
 	a.loadNodes()
 	a.loadUsers()
@@ -46,7 +46,7 @@ func (a *app) checkSession() {
 		return
 	}
 	a.setAuthenticated(true)
-	a.syncProtocolFields()
+	a.syncNodeInboundProtocolFields()
 	a.loadSystemInfo()
 	a.loadNodes()
 	a.loadUsers()
