@@ -58,12 +58,29 @@ install_caddy() {
       | tee /etc/apt/sources.list.d/caddy-stable.list
     apt-get update
     apt-get install -y caddy
+  elif command -v dnf >/dev/null 2>&1; then
+    dnf install -y 'dnf-command(copr)' 2>/dev/null || true
+    dnf copr enable -y @caddy/caddy
+    dnf install -y caddy
   elif command -v yum >/dev/null 2>&1; then
     yum install -y yum-utils 2>/dev/null || true
-    yum-config-manager --add-repo https://copr.fedorainfracloud.org/coprs/g/caddy/caddy/repo/epel-7/g-caddy-caddy-epel-7.repo
+    yum-config-manager --add-repo https://copr.fedorainfracloud.org/coprs/g/caddy/caddy/repo/epel-8/g-caddy-caddy-epel-8.repo
     yum install -y caddy
   else
     error "无法自动安装 Caddy，请手动安装后重试: https://caddyserver.com/docs/install"
+  fi
+}
+
+# ── 检查 443 端口 ──────────────────────────────────────────────────────────────
+check_port_443() {
+  # 如果 caddy 已经占用 443，则跳过（稍后热重载即可）
+  if systemctl is-active --quiet caddy 2>/dev/null; then
+    return
+  fi
+  if ss -tlnp 2>/dev/null | grep -q ':443 ' || \
+     netstat -tlnp 2>/dev/null | grep -q ':443 '; then
+    OCCUPANT=$(ss -tlnp 2>/dev/null | grep ':443 ' | awk '{print $NF}' | head -1 || true)
+    error "端口 443 已被占用（${OCCUPANT:-未知进程}），请先停止该进程再运行"
   fi
 }
 
@@ -95,12 +112,8 @@ ${EMAIL_BLOCK}
 ${PANEL_DOMAIN} {
 	# Trojan WebSocket 流量：路径 /ws 反代到 sing-box 本地端口
 	handle /ws {
-		reverse_proxy 127.0.0.1:${WS_PORT} {
-			header_up Host {host}
-			# 保留 WebSocket 连接头
-			header_up Connection {>Connection}
-			header_up Upgrade {>Upgrade}
-		}
+		# Caddy v2 自动处理 WebSocket 升级，无需手动转发 Connection/Upgrade
+		reverse_proxy 127.0.0.1:${WS_PORT}
 	}
 
 	# 面板 API 及前端
@@ -140,15 +153,24 @@ reload_caddy() {
   fi
 }
 
+# ── 重启 pulse-server 使新端口变量生效 ─────────────────────────────────────────
+restart_pulse_server() {
+  systemctl is-active --quiet pulse-server 2>/dev/null || return
+  systemctl restart pulse-server
+  info "pulse-server 已重启"
+}
+
 # ── 主流程 ─────────────────────────────────────────────────────────────────────
 main() {
   [ "$(id -u)" = "0" ] || error "请以 root 身份运行"
 
   prompt_panel_domain
   check_caddy
+  check_port_443
   write_caddyfile
   update_pulse_env
   reload_caddy
+  restart_pulse_server
 
   cat <<EOF
 
@@ -159,10 +181,7 @@ main() {
   Trojan WS:  wss://${PANEL_DOMAIN}/ws  (本地 :${WS_PORT})
   Caddyfile:  ${CADDYFILE}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  下一步:
-    1. 确认 DNS 已将 ${PANEL_DOMAIN} 指向本机 IP
-    2. 重启 pulse-server 使 PULSE_SINGBOX_WS_PORT 生效:
-       systemctl restart pulse-server
+  提示: 确认 DNS 已将 ${PANEL_DOMAIN} 指向本机 IP
 EOF
 }
 
