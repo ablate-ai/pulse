@@ -44,7 +44,11 @@ func (a *API) handleCaddySync(w http.ResponseWriter, r *http.Request) {
 
 // syncCaddyRoutes 将 Trojan 域名列表同步到 /etc/caddy/pulse.d/，每个域名一个文件，
 // 删除不再使用的旧文件，最后热重载 Caddy。
+// Caddy 未安装时直接返回（非 A2 节点）。
 func syncCaddyRoutes(domains []string, wsPort int) error {
+	if _, err := exec.LookPath("caddy"); err != nil {
+		return nil
+	}
 	if err := os.MkdirAll(caddyPulseDDir, 0755); err != nil {
 		return fmt.Errorf("create caddy pulse.d dir: %w", err)
 	}
@@ -85,10 +89,6 @@ func syncCaddyRoutes(domains []string, wsPort int) error {
 }
 
 func reloadCaddy() error {
-	// caddy 未安装时不视为错误（非 A2 环境）
-	if _, err := exec.LookPath("caddy"); err != nil {
-		return nil
-	}
 	cmd := exec.Command("caddy", "reload", "--config", caddyfilePath, "--adapter", "caddyfile")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("caddy reload: %w: %s", err, strings.TrimSpace(string(out)))
