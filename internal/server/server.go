@@ -104,6 +104,8 @@ func Run() error {
 			"last_applied_at":      summary.LastAppliedAt,
 		})
 	})
+	// 公开订阅端点，无需认证
+	serverapi.RegisterSubAPI(mux, userStore, inboundStore)
 	registerWeb(mux, cfg.WebDir)
 	serverapi.NewWithUsers(store, userStore, inboundStore, clientOptions, applyOpts).Register(protectedV1)
 	serverapi.RegisterUsersAPI(protectedV1, userStore, store, inboundStore, clientOptions, applyOpts)
