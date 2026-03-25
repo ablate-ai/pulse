@@ -237,7 +237,8 @@ if [ "$component" = "server" ]; then
   run_as_root install -m 0644 "${package_dir}/lib/systemd/system/pulse-server.service" "${lib_dir}/pulse-server.service"
   if command -v systemctl >/dev/null 2>&1; then
     run_as_root systemctl daemon-reload
-    run_as_root systemctl enable --now pulse-server
+    run_as_root systemctl enable pulse-server
+    run_as_root systemctl restart pulse-server
   fi
 else
   env_target="${etc_dir}/pulse-node.env"
@@ -256,7 +257,8 @@ else
   run_as_root install -m 0644 "${package_dir}/lib/systemd/system/pulse-node.service" "${lib_dir}/pulse-node.service"
   if command -v systemctl >/dev/null 2>&1; then
     run_as_root systemctl daemon-reload
-    run_as_root systemctl enable --now pulse-node
+    run_as_root systemctl enable pulse-node
+    run_as_root systemctl restart pulse-node
   fi
 fi
 
