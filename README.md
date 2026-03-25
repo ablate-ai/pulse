@@ -19,6 +19,7 @@ Go 重写版 Marzban + Marzban-node，控制面与节点统一在单一仓库。
 ├── internal/store/sqlite # SQLite 持久化
 ├── web/panel             # 前端静态资源（WASM）
 ├── scripts/install.sh    # 生产安装脚本
+├── scripts/uninstall.sh  # 卸载脚本
 └── scripts/setup-caddy.sh # Caddy 反代配置脚本（A2 架构）
 ```
 
@@ -83,37 +84,25 @@ curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/instal
 pulse 默认以 HTTP 提供面板，如需 HTTPS 及 Trojan 在标准 443 端口运行，运行 Caddy 配置脚本：
 
 ```bash
-# 仅配置面板 HTTPS
 PANEL_DOMAIN=panel.example.com sh <(curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/setup-caddy.sh)
-
-# 添加 Trojan inbound 时，指定 Trojan 域名（与面板域名无关）
-TROJAN_DOMAIN=nc.example.com sh <(curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/setup-caddy.sh)
-
-# 两者同域
-PANEL_DOMAIN=example.com TROJAN_DOMAIN=example.com sh <(curl -fsSL ...)
 ```
-
-> `PANEL_DOMAIN` 和 `TROJAN_DOMAIN` 至少填一个，可相同可不同。
 
 **脚本做的事：**
 
 1. 从 `/etc/pulse/pulse-server.env` 自动读取面板端口（`PULSE_SERVER_ADDR`）
-2. 校验参数，检测 443 端口是否已被占用
+2. 检测 443 端口是否已被占用
 3. 自动安装 Caddy（apt / dnf / yum，如已安装则跳过）
-4. 生成 `/etc/caddy/Caddyfile`，按域名分块：
-   - `PANEL_DOMAIN` → 反代到本机面板（`:PANEL_PORT`）
-   - `TROJAN_DOMAIN/ws` → 反代到 sing-box Trojan WS 端口（`:WS_PORT`）
-   - 同域时合并为一个 Caddy 块
-5. 若配置了 Trojan：在 `/etc/pulse/pulse-server.env` 写入 `PULSE_SINGBOX_WS_PORT` 并重启 pulse-server
+4. 生成 `/etc/caddy/Caddyfile`：面板 HTTPS 块 + `import /etc/caddy/pulse.d/*.caddy`
+5. 热重载 Caddy，重启 pulse-server
+
+**Trojan 域名路由无需手动配置**，创建 Trojan inbound 后 pulse-server 会自动写入 `/etc/caddy/pulse.d/<domain>.caddy` 并热重载 Caddy。
 
 **可配置的环境变量：**
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `PANEL_DOMAIN` | 空 | 面板对外域名（与 TROJAN_DOMAIN 至少填一个） |
-| `TROJAN_DOMAIN` | 空 | Trojan inbound 域名（可与面板域名相同） |
-| `PANEL_PORT` | 自动读取配置，兜底 `8080` | pulse-server 监听端口 |
-| `WS_PORT` | `10443` | sing-box Trojan WS 本地端口 |
+| `PANEL_DOMAIN` | 必填 | 面板对外域名 |
+| `PANEL_PORT` | 自动读取，兜底 `8080` | pulse-server 监听端口 |
 | `ACME_EMAIL` | 空 | Let's Encrypt 账号邮箱（可选） |
 | `CADDYFILE` | `/etc/caddy/Caddyfile` | Caddyfile 路径 |
 
@@ -121,9 +110,33 @@ PANEL_DOMAIN=example.com TROJAN_DOMAIN=example.com sh <(curl -fsSL ...)
 
 ```
 客户端
-  ├── HTTPS  → :443 (Caddy) → :PANEL_PORT  (pulse-server 面板)
-  └── Trojan → wss://<TROJAN_DOMAIN>/ws → :443 (Caddy) → :WS_PORT (sing-box)
+  ├── HTTPS  → :443 (Caddy) → :PANEL_PORT (pulse-server 面板)
+  └── Trojan → wss://<domain>/ws → :443 (Caddy) → :WS_PORT (sing-box)
+              每个 Trojan inbound 域名对应 /etc/caddy/pulse.d/<domain>.caddy
 ```
+
+---
+
+### 卸载
+
+```bash
+# 卸载 server（保留数据）
+curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/uninstall.sh | sh -s -- server
+
+# 卸载 node
+curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/uninstall.sh | sh -s -- node
+
+# 同时删除数据库、证书等（不可恢复）
+curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/uninstall.sh | sh -s -- server --purge
+```
+
+**卸载脚本做的事：**
+
+- 停止并禁用 systemd 服务
+- 删除二进制、配置文件、服务文件
+- server：删除面板静态资源
+- node：删除节点客户端证书
+- 默认**保留**数据目录（`/var/lib/pulse`），`--purge` 一并删除
 
 ---
 
