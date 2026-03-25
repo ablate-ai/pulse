@@ -113,6 +113,8 @@
 - [x] 支持 Trojan
 - [x] 支持 Shadowsocks
 - [x] 支持订阅链接生成
+- [ ] 支持用户自助订阅端点（`/sub/{token}` 公开 endpoint，用户无需管理员凭证）
+- [ ] 支持订阅 Userinfo Header（`Subscription-Userinfo: upload=x; download=x; total=x; expire=x`）
 - [ ] 支持分享链接生成
 - [ ] 支持二维码生成
 - [ ] 支持用户模板应用
@@ -197,8 +199,10 @@
 - [ ] **使用量历史记录**：`NodeUserUsage` / `NodeUsage` 时序表；`/user/{username}/usage` 和 `/node/{id}/usage` 按日期范围查询；重置时写入 `UserUsageResetLogs`
 - [ ] **批量用户操作**：`/users/reset`（全量重置流量）、`/users/expired`（查询/删除过期用户）
 - [ ] **系统统计端点**：CPU/内存 + 用户分状态计数 + 在线用户数（24h）+ 实时带宽
+- [ ] **节点资源监控**：per-node CPU/内存/网络实时指标，在节点详情页展示
 - [ ] **用户查询过滤**：`/users` 支持 `username/search/status/admin/sort/offset/limit` 参数
 - [ ] **用户在线状态追踪**：`online_at`（最后在线）+ `last_status_change` 字段
+- [ ] **用户备注字段**：`note` 字段，支持记录用户信息（联系方式、备注）；API + 面板均可编辑
 - [ ] **订阅撤销**：`/user/{username}/revoke_sub`；独立订阅令牌（非用户 ID）；`sub_updated_at` / `sub_last_user_agent` / `sub_revoked_at` 字段
 - [ ] **通知提醒去重**：`NotificationReminder` 表；支持 `expiration_date` / `data_usage` 类型 + 阈值（如 80% 流量）
 - [ ] **节点日志 WebSocket 流式转发**：`/node/{id}/logs`
@@ -207,7 +211,7 @@
 
 ### P3：锦上添花
 
-- [ ] **高级订阅格式**：Clash / ClashMeta / Sing-box / V2Ray JSON / Outline；User-Agent 自适应；HTML 订阅页
+- [ ] **高级订阅格式**：Sing-box / V2Ray JSON / Outline；User-Agent 自适应；HTML 订阅页
 - [ ] **高级代理配置**：ALPN、TLS Fingerprint、Fragment、Noise、XTLS flow、REALITY
 - [ ] **Telegram Bot 通知**：管理员绑定 `telegram_id`，接收用户操作事件
 - [ ] **Discord Webhook 通知**
