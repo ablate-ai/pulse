@@ -187,6 +187,16 @@ func (c *Client) Logs(ctx context.Context) (LogsResponse, error) {
 	return out, err
 }
 
+type ConfigResponse struct {
+	Config string `json:"config"`
+}
+
+func (c *Client) Config(ctx context.Context) (ConfigResponse, error) {
+	var out ConfigResponse
+	err := c.do(ctx, http.MethodGet, "/v1/node/runtime/config", nil, &out)
+	return out, err
+}
+
 func (c *Client) Usage(ctx context.Context) (UsageStats, error) {
 	var out UsageStats
 	err := c.do(ctx, http.MethodGet, "/v1/node/runtime/usage", nil, &out)

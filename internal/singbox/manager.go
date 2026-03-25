@@ -26,12 +26,13 @@ const maxLogs = 200
 var ErrNotRunning = errors.New("sing-box is not running")
 
 type Manager struct {
-	mu        sync.Mutex
-	instance  *box.Box
-	starting  bool
-	startedAt time.Time
-	logs      []string
-	traffic   trafficManager
+	mu         sync.Mutex
+	instance   *box.Box
+	starting   bool
+	startedAt  time.Time
+	logs       []string
+	traffic    trafficManager
+	lastConfig string
 }
 
 type trafficManager interface {
@@ -117,10 +118,18 @@ func (m *Manager) Start(config string) error {
 	m.mu.Lock()
 	m.instance = instance
 	m.startedAt = time.Now().UTC()
+	m.lastConfig = config
 	m.traffic = extractTrafficManager(ctx)
 	m.appendLogLocked("sing-box started")
 	m.mu.Unlock()
 	return nil
+}
+
+// Config 返回最近一次成功启动时使用的配置（JSON 字符串）。
+func (m *Manager) Config() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.lastConfig
 }
 
 func (m *Manager) Stop() error {

@@ -67,8 +67,9 @@ func (a *app) loadNodes() {
   <div class="node-card-actions">
     <button class="btn btn-ghost btn-sm" data-action="apply-node" data-id="%s">下发</button>
     <button class="btn btn-ghost btn-sm" data-action="stop-node"  data-id="%s">停止</button>
-    <button class="btn btn-ghost btn-sm" data-action="logs-node"  data-id="%s">日志</button>
-    <button class="btn btn-ghost btn-sm" data-action="edit-node"  data-id="%s">编辑</button>
+    <button class="btn btn-ghost btn-sm" data-action="logs-node"   data-id="%s">日志</button>
+    <button class="btn btn-ghost btn-sm" data-action="config-node" data-id="%s">配置</button>
+    <button class="btn btn-ghost btn-sm" data-action="edit-node"   data-id="%s">编辑</button>
     <button class="btn btn-ghost btn-sm btn-danger" data-action="delete-node" data-id="%s">删除</button>
   </div>
 </article>`,
@@ -76,7 +77,7 @@ func (a *app) loadNodes() {
 			escape(n.ID), nodeBadge(false),
 			escape(n.BaseURL),
 			escape(n.ID),
-			escape(n.ID), escape(n.ID), escape(n.ID), escape(n.ID), escape(n.ID),
+			escape(n.ID), escape(n.ID), escape(n.ID), escape(n.ID), escape(n.ID), escape(n.ID),
 		))
 
 		option := a.document.Call("createElement", "option")
@@ -116,6 +117,7 @@ func (a *app) bindNodeButtons() {
 		"apply-node":  a.applyNode,
 		"stop-node":   a.stopNode,
 		"logs-node":   a.showNodeLogs,
+		"config-node": a.showNodeConfig,
 		"edit-node":   a.openEditNodeModal,
 	}
 	for action, fn := range actions {
@@ -218,4 +220,22 @@ func (a *app) submitEditNode() {
 	a.byID("node-edit-modal").Call("close")
 	a.setStatus("节点已更新")
 	a.loadNodes()
+}
+
+func (a *app) showNodeConfig(id string) {
+	var resp struct {
+		Config string `json:"config"`
+	}
+	if err := getJSON("/v1/nodes/"+id+"/runtime/config", &resp, a.token); err != nil {
+		a.handleAuthError(err)
+		a.setStatus("获取配置失败: " + err.Error())
+		return
+	}
+	configContent := a.byID("node-config-content")
+	if resp.Config == "" {
+		configContent.Set("textContent", "暂无配置（节点尚未下发）")
+	} else {
+		configContent.Set("textContent", resp.Config)
+	}
+	a.byID("node-config-modal").Call("showModal")
 }

@@ -117,6 +117,8 @@ func (a *API) handleNodeRoutes(w http.ResponseWriter, r *http.Request) {
 		a.handleNodeStatus(w, r, nodeID)
 	case "runtime/usage":
 		a.handleNodeUsage(w, r, nodeID)
+	case "runtime/config":
+		a.handleNodeConfig(w, r, nodeID)
 	case "runtime/logs":
 		a.handleNodeLogs(w, r, nodeID)
 	case "runtime/start":
@@ -205,6 +207,26 @@ func (a *API) handleNodeStatus(w http.ResponseWriter, r *http.Request, nodeID st
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	out, err := client.Status(ctx)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (a *API) handleNodeConfig(w http.ResponseWriter, r *http.Request, nodeID string) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, http.MethodGet)
+		return
+	}
+	client, err := a.clientFor(nodeID)
+	if err != nil {
+		writeNodeError(w, err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	out, err := client.Config(ctx)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return

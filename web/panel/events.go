@@ -81,6 +81,12 @@ func (a *app) bind() {
 		return nil
 	}))
 
+	// 节点配置 modal
+	a.byID("node-config-modal-close").Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
+		a.byID("node-config-modal").Call("close")
+		return nil
+	}))
+
 	// 节点编辑 modal
 	a.byID("node-edit-form").Call("addEventListener", "submit", js.FuncOf(func(this js.Value, args []js.Value) any {
 		args[0].Call("preventDefault")

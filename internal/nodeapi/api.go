@@ -30,6 +30,7 @@ func (a *API) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/v1/node/runtime/status", a.handleStatus)
 	mux.HandleFunc("/v1/node/runtime/usage", a.handleUsage)
 	mux.HandleFunc("/v1/node/runtime/version", a.handleVersion)
+	mux.HandleFunc("/v1/node/runtime/config", a.handleConfig)
 	mux.HandleFunc("/v1/node/runtime/logs", a.handleLogs)
 	mux.HandleFunc("/v1/node/runtime/start", a.handleStart)
 	mux.HandleFunc("/v1/node/runtime/stop", a.handleStop)
@@ -82,6 +83,14 @@ func (a *API) handleVersion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"version": version})
+}
+
+func (a *API) handleConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, http.MethodGet)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"config": a.manager.Config()})
 }
 
 func (a *API) handleLogs(w http.ResponseWriter, r *http.Request) {
