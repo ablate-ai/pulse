@@ -16,6 +16,7 @@ usage() {
   PULSE_ADMIN_USERNAME server 安装时写入管理员用户名，默认 admin
   PULSE_ADMIN_PASSWORD server 安装时写入管理员密码，不指定则随机生成
   PULSE_SERVER_ADDR    server 监听地址，不指定则随机端口（格式 :端口）
+  PULSE_PANEL_DOMAIN   server 面板对外域名，设置后 TLS proxy 自动申请证书并启用 HTTPS
   PULSE_SERVER_NODE_CLIENT_CERT_FILE server 访问节点时使用的客户端证书路径
   PULSE_SERVER_NODE_CLIENT_KEY_FILE  server 访问节点时使用的客户端私钥路径
   PULSE_NODE_TLS_CERT_FILE           node 服务端证书路径
@@ -32,6 +33,14 @@ EOF
 
 tty_available() {
   [ -r /dev/tty ] && [ -w /dev/tty ]
+}
+
+prompt_panel_domain() {
+  [ "${PULSE_PANEL_DOMAIN+x}" = "x" ] && return
+  tty_available || return
+  printf "面板域名（用于 HTTPS，留空则跳过）: " > /dev/tty
+  read -r PULSE_PANEL_DOMAIN < /dev/tty || true
+  export PULSE_PANEL_DOMAIN
 }
 
 prompt_node_client_cert_pem() {
@@ -205,6 +214,7 @@ if [ "$component" = "server" ]; then
     if [ "${PULSE_SERVER_ADDR+x}" != "x" ]; then
       PULSE_SERVER_ADDR=":$(random_port)"
     fi
+    prompt_panel_domain
   fi
   if [ "${PULSE_ADMIN_USERNAME+x}" = "x" ]; then
     set_env_file_value "$env_target" "PULSE_ADMIN_USERNAME" "$PULSE_ADMIN_USERNAME"
@@ -220,6 +230,9 @@ if [ "$component" = "server" ]; then
   fi
   if [ "${PULSE_SERVER_NODE_CLIENT_KEY_FILE+x}" = "x" ]; then
     set_env_file_value "$env_target" "PULSE_SERVER_NODE_CLIENT_KEY_FILE" "$PULSE_SERVER_NODE_CLIENT_KEY_FILE"
+  fi
+  if [ "${PULSE_PANEL_DOMAIN+x}" = "x" ] && [ -n "$PULSE_PANEL_DOMAIN" ]; then
+    set_env_file_value "$env_target" "PULSE_PANEL_DOMAIN" "$PULSE_PANEL_DOMAIN"
   fi
   run_as_root install -m 0644 "${package_dir}/lib/systemd/system/pulse-server.service" "${lib_dir}/pulse-server.service"
   if command -v systemctl >/dev/null 2>&1; then
@@ -254,7 +267,11 @@ echo "工作目录: ${state_dir}"
 if [ "$component" = "server" ] && [ "${is_new_install:-0}" = "1" ]; then
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "  面板地址: http://<IP>${PULSE_SERVER_ADDR}"
+  if [ -n "${PULSE_PANEL_DOMAIN:-}" ]; then
+    echo "  面板地址: https://${PULSE_PANEL_DOMAIN}"
+  else
+    echo "  面板地址: http://<IP>${PULSE_SERVER_ADDR}"
+  fi
   echo "  管理员:   ${PULSE_ADMIN_USERNAME:-admin}"
   echo "  密码:     ${PULSE_ADMIN_PASSWORD}"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
