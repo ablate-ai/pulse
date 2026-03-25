@@ -66,7 +66,6 @@ type host struct {
 
 type app struct {
 	document             js.Value
-	storage              js.Value
 	window               js.Value
 	token                string
 	route                string
@@ -82,7 +81,6 @@ type app struct {
 func main() {
 	a := &app{
 		document:     js.Global().Get("document"),
-		storage:      js.Global().Get("localStorage"),
 		window:       js.Global().Get("window"),
 		userInbounds: make(map[string][]userInbound),
 		nodeInbounds: make(map[string][]nodeInbound),
@@ -94,8 +92,8 @@ func main() {
 
 func (a *app) bootstrap() {
 	a.setStatus("加载中...")
-	a.token = a.storage.Call("getItem", "pulse_token").String()
-	if a.token == "" || a.token == "null" {
+	a.token = getCookie("pulse_token")
+	if a.token == "" {
 		a.setAuthenticated(false)
 		a.setStatus("请登录")
 		return
