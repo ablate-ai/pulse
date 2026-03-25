@@ -37,6 +37,7 @@ type User struct {
 	UsedBytes              int64      `json:"used_bytes"`
 	LastTrafficResetAt     *time.Time `json:"last_traffic_reset_at,omitempty"`
 	CreatedAt              time.Time  `json:"created_at"`
+	SubToken               string     `json:"sub_token,omitempty"`
 }
 
 // UserInbound 用户在某个节点上的访问凭据（一条记录对应一个 (user_id, node_id) 对）。
@@ -57,6 +58,7 @@ type Store interface {
 	// User CRUD
 	UpsertUser(user User) (User, error)
 	GetUser(id string) (User, error)
+	GetUserBySubToken(token string) (User, error)
 	ListUsers() ([]User, error)
 	DeleteUser(id string) error
 

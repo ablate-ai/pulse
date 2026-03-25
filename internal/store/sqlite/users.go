@@ -32,8 +32,8 @@ func (s *UserStore) UpsertUser(user users.User) (users.User, error) {
 		INSERT INTO users (
 			id, username, status, expire_at, data_limit_reset_strategy,
 			traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
-			last_traffic_reset_at, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			last_traffic_reset_at, created_at, sub_token
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			username = excluded.username,
 			status = excluded.status,
@@ -48,7 +48,7 @@ func (s *UserStore) UpsertUser(user users.User) (users.User, error) {
 	`,
 		user.ID, user.Username, user.Status, formatTimePtr(user.ExpireAt), user.DataLimitResetStrategy,
 		user.TrafficLimit, user.UploadBytes, user.DownloadBytes, user.UsedBytes,
-		formatTimePtr(user.LastTrafficResetAt), user.CreatedAt.Format(time.RFC3339Nano),
+		formatTimePtr(user.LastTrafficResetAt), user.CreatedAt.Format(time.RFC3339Nano), user.SubToken,
 	)
 	if err != nil {
 		return users.User{}, fmt.Errorf("upsert user: %w", err)
@@ -60,9 +60,19 @@ func (s *UserStore) GetUser(id string) (users.User, error) {
 	row := s.db.QueryRow(`
 		SELECT id, username, status, expire_at, data_limit_reset_strategy,
 		       traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
-		       last_traffic_reset_at, created_at
+		       last_traffic_reset_at, created_at, sub_token
 		FROM users WHERE id = ?
 	`, id)
+	return scanUser(row)
+}
+
+func (s *UserStore) GetUserBySubToken(token string) (users.User, error) {
+	row := s.db.QueryRow(`
+		SELECT id, username, status, expire_at, data_limit_reset_strategy,
+		       traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
+		       last_traffic_reset_at, created_at, sub_token
+		FROM users WHERE sub_token = ?
+	`, token)
 	return scanUser(row)
 }
 
@@ -70,7 +80,7 @@ func (s *UserStore) ListUsers() ([]users.User, error) {
 	rows, err := s.db.Query(`
 		SELECT id, username, status, expire_at, data_limit_reset_strategy,
 		       traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
-		       last_traffic_reset_at, created_at
+		       last_traffic_reset_at, created_at, sub_token
 		FROM users ORDER BY id
 	`)
 	if err != nil {
@@ -108,7 +118,7 @@ func (s *UserStore) GetUsersByIDs(ids []string) (map[string]users.User, error) {
 	query := fmt.Sprintf(`
 		SELECT id, username, status, expire_at, data_limit_reset_strategy,
 		       traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
-		       last_traffic_reset_at, created_at
+		       last_traffic_reset_at, created_at, sub_token
 		FROM users WHERE id IN (%s)
 	`, strings.Join(placeholders, ","))
 
@@ -243,7 +253,7 @@ func scanUser(row scanner) (users.User, error) {
 	err := row.Scan(
 		&user.ID, &user.Username, &user.Status, &expireAt, &user.DataLimitResetStrategy,
 		&user.TrafficLimit, &user.UploadBytes, &user.DownloadBytes, &user.UsedBytes,
-		&lastTrafficResetAt, &createdAt,
+		&lastTrafficResetAt, &createdAt, &user.SubToken,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return users.User{}, users.ErrUserNotFound

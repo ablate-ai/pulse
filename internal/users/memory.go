@@ -48,6 +48,17 @@ func (s *MemoryStore) GetUser(id string) (User, error) {
 	return user, nil
 }
 
+func (s *MemoryStore) GetUserBySubToken(token string) (User, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, u := range s.users {
+		if u.SubToken == token {
+			return u, nil
+		}
+	}
+	return User{}, ErrUserNotFound
+}
+
 func (s *MemoryStore) ListUsers() ([]User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

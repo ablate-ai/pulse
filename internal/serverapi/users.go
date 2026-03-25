@@ -98,6 +98,7 @@ func (a *userAPI) handleUsers(w http.ResponseWriter, r *http.Request) {
 			ExpireAt:               req.ExpireAt,
 			DataLimitResetStrategy: req.DataLimitResetStrategy,
 			TrafficLimit:           req.TrafficLimit,
+			SubToken:               randomToken(16),
 		})
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})

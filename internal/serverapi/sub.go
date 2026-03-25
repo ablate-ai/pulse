@@ -27,7 +27,7 @@ func (a *subAPI) handleSub(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 从路径提取 userID：/sub/{userID}
+	// 从路径提取 token：/sub/{token}
 	userID := strings.TrimPrefix(r.URL.Path, "/sub/")
 	userID = strings.TrimSuffix(userID, "/")
 	if userID == "" {
@@ -35,14 +35,14 @@ func (a *subAPI) handleSub(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := a.users.GetUser(userID)
+	user, err := a.users.GetUserBySubToken(userID)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
 
 	// 收集该用户所有节点的全部订阅链接
-	accesses, err := a.users.ListUserInboundsByUser(userID)
+	accesses, err := a.users.ListUserInboundsByUser(user.ID)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

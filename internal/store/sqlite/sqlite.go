@@ -190,6 +190,15 @@ func (db *DB) migrateUsersTable() error {
 		return db.rebuildUsersTable(columns)
 	}
 
+	if _, ok := columns["sub_token"]; !ok {
+		if _, err := db.conn.Exec(`ALTER TABLE users ADD COLUMN sub_token TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("migrate users add sub_token: %w", err)
+		}
+		if _, err := db.conn.Exec(`UPDATE users SET sub_token = lower(hex(randomblob(16))) WHERE sub_token = ''`); err != nil {
+			return fmt.Errorf("migrate users generate sub_token: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -326,7 +335,8 @@ func (db *DB) rebuildUsersTable(columns map[string]struct{}) error {
 			download_bytes INTEGER NOT NULL DEFAULT 0,
 			used_bytes INTEGER NOT NULL DEFAULT 0,
 			last_traffic_reset_at TEXT,
-			created_at TEXT NOT NULL
+			created_at TEXT NOT NULL,
+			sub_token TEXT NOT NULL DEFAULT ''
 		)
 	`); err != nil {
 		return fmt.Errorf("create users_slim: %w", err)
@@ -366,11 +376,11 @@ func (db *DB) rebuildUsersTable(columns map[string]struct{}) error {
 		INSERT INTO users_slim
 			(id, username, status, expire_at, data_limit_reset_strategy,
 			 traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
-			 last_traffic_reset_at, created_at)
+			 last_traffic_reset_at, created_at, sub_token)
 		SELECT
 			id, username, status, %s, %s,
 			%s, %s, %s, %s,
-			%s, created_at
+			%s, created_at, lower(hex(randomblob(16)))
 		FROM users
 	`, expireAt, resetStrategy, trafficLimit, uploadBytes, downloadBytes, usedBytes, lastReset)
 
