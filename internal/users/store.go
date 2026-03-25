@@ -39,35 +39,16 @@ type User struct {
 	CreatedAt              time.Time  `json:"created_at"`
 }
 
-// UserInbound 用户在某个节点上的一条协议入站配置。
+// UserInbound 用户在某个节点上的访问凭据（一条记录对应一个 (user_id, node_id) 对）。
+// 协议配置由节点的 inbounds.Inbound 定义，此处只存储凭据和流量同步游标。
 type UserInbound struct {
-	ID                   string    `json:"id"`
-	UserID               string    `json:"user_id"`
-	NodeID               string    `json:"node_id"`
-	Protocol             string    `json:"protocol"`
-	UUID                 string    `json:"uuid"`
-	Secret               string    `json:"secret,omitempty"`
-	Method               string    `json:"method,omitempty"`
-	Security             string    `json:"security,omitempty"`
-	Flow                 string    `json:"flow,omitempty"`
-	SNI                  string    `json:"sni,omitempty"`
-	Fingerprint          string    `json:"fingerprint,omitempty"`
-	RealityPublicKey     string    `json:"reality_public_key,omitempty"`
-	RealityShortID       string    `json:"reality_short_id,omitempty"`
-	RealitySpiderX       string    `json:"reality_spider_x,omitempty"`
-	RealityPrivateKey    string    `json:"reality_private_key,omitempty"`
-	RealityHandshakeAddr string    `json:"reality_handshake_addr,omitempty"`
-	Domain               string    `json:"domain"`
-	Port                 int       `json:"port"`
-	InboundTag           string    `json:"inbound_tag"`
-	// 不入库，apply 时由节点填充
-	TLSCertPath  string `json:"-"`
-	TLSKeyPath   string `json:"-"`
-	// 流量同步游标（per-user per-node，SyncUsage 时去重）
+	ID                  string    `json:"id"`
+	UserID              string    `json:"user_id"`
+	NodeID              string    `json:"node_id"`
+	UUID                string    `json:"uuid"`   // 用于 VLESS / VMess
+	Secret              string    `json:"secret"` // 用于 Trojan / Shadowsocks
 	SyncedUploadBytes   int64     `json:"-"`
 	SyncedDownloadBytes int64     `json:"-"`
-	ApplyCount          int       `json:"apply_count"`
-	LastAppliedAt       time.Time `json:"last_applied_at,omitempty"`
 	CreatedAt           time.Time `json:"created_at"`
 }
 
@@ -79,16 +60,14 @@ type Store interface {
 	ListUsers() ([]User, error)
 	DeleteUser(id string) error
 
-	// UserInbound CRUD
+	// UserInbound CRUD（每个用户在每个节点上只有一条凭据记录）
 	UpsertUserInbound(inbound UserInbound) (UserInbound, error)
 	GetUserInbound(id string) (UserInbound, error)
-	ListUserInbounds() ([]UserInbound, error)
 	ListUserInboundsByUser(userID string) ([]UserInbound, error)
 	ListUserInboundsByNode(nodeID string) ([]UserInbound, error)
-	// ListCursorInboundsByNode 返回每个 (userID, nodeID) 组合中 ID 最小的 inbound（流量游标持有者）。
-	ListCursorInboundsByNode(nodeID string) ([]UserInbound, error)
 	DeleteUserInbound(id string) error
 	DeleteUserInboundsByUser(userID string) error
+
 	// GetUsersByIDs 批量获取 User，返回 map[userID]User。
 	GetUsersByIDs(ids []string) (map[string]User, error)
 }

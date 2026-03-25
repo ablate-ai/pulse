@@ -131,104 +131,47 @@ func (s *UserStore) GetUsersByIDs(ids []string) (map[string]users.User, error) {
 
 // ─── UserInbound CRUD ─────────────────────────────────────────────────────────
 
-func (s *UserStore) UpsertUserInbound(ib users.UserInbound) (users.UserInbound, error) {
-	if ib.CreatedAt.IsZero() {
-		ib.CreatedAt = time.Now().UTC()
-	}
-	if ib.Protocol == "" {
-		ib.Protocol = "vless"
+func (s *UserStore) UpsertUserInbound(acc users.UserInbound) (users.UserInbound, error) {
+	if acc.CreatedAt.IsZero() {
+		acc.CreatedAt = time.Now().UTC()
 	}
 
 	_, err := s.db.Exec(`
 		INSERT INTO user_inbounds (
-			id, user_id, node_id, protocol, uuid, secret, method,
-			security, flow, sni, fingerprint,
-			reality_public_key, reality_short_id, reality_spider_x,
-			reality_private_key, reality_handshake_addr,
-			domain, port, inbound_tag,
-			synced_upload_bytes, synced_download_bytes,
-			apply_count, last_applied_at, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			id, user_id, node_id, uuid, secret,
+			synced_upload_bytes, synced_download_bytes, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
-			user_id = excluded.user_id,
-			node_id = excluded.node_id,
-			protocol = excluded.protocol,
-			uuid = excluded.uuid,
-			secret = excluded.secret,
-			method = excluded.method,
-			security = excluded.security,
-			flow = excluded.flow,
-			sni = excluded.sni,
-			fingerprint = excluded.fingerprint,
-			reality_public_key = excluded.reality_public_key,
-			reality_short_id = excluded.reality_short_id,
-			reality_spider_x = excluded.reality_spider_x,
-			reality_private_key = excluded.reality_private_key,
-			reality_handshake_addr = excluded.reality_handshake_addr,
-			domain = excluded.domain,
-			port = excluded.port,
-			inbound_tag = excluded.inbound_tag,
-			synced_upload_bytes = excluded.synced_upload_bytes,
+			user_id              = excluded.user_id,
+			node_id              = excluded.node_id,
+			uuid                 = excluded.uuid,
+			secret               = excluded.secret,
+			synced_upload_bytes  = excluded.synced_upload_bytes,
 			synced_download_bytes = excluded.synced_download_bytes,
-			apply_count = excluded.apply_count,
-			last_applied_at = excluded.last_applied_at,
-			created_at = excluded.created_at
+			created_at           = excluded.created_at
 	`,
-		ib.ID, ib.UserID, ib.NodeID, ib.Protocol, ib.UUID, ib.Secret, ib.Method,
-		ib.Security, ib.Flow, ib.SNI, ib.Fingerprint,
-		ib.RealityPublicKey, ib.RealityShortID, ib.RealitySpiderX,
-		ib.RealityPrivateKey, ib.RealityHandshakeAddr,
-		ib.Domain, ib.Port, ib.InboundTag,
-		ib.SyncedUploadBytes, ib.SyncedDownloadBytes,
-		ib.ApplyCount, formatTime(ib.LastAppliedAt), ib.CreatedAt.Format(time.RFC3339Nano),
+		acc.ID, acc.UserID, acc.NodeID, acc.UUID, acc.Secret,
+		acc.SyncedUploadBytes, acc.SyncedDownloadBytes, acc.CreatedAt.Format(time.RFC3339Nano),
 	)
 	if err != nil {
 		return users.UserInbound{}, fmt.Errorf("upsert user inbound: %w", err)
 	}
-	return ib, nil
+	return acc, nil
 }
 
 func (s *UserStore) GetUserInbound(id string) (users.UserInbound, error) {
 	row := s.db.QueryRow(`
-		SELECT id, user_id, node_id, protocol, uuid, secret, method,
-		       security, flow, sni, fingerprint,
-		       reality_public_key, reality_short_id, reality_spider_x,
-		       reality_private_key, reality_handshake_addr,
-		       domain, port, inbound_tag,
-		       synced_upload_bytes, synced_download_bytes,
-		       apply_count, last_applied_at, created_at
+		SELECT id, user_id, node_id, uuid, secret,
+		       synced_upload_bytes, synced_download_bytes, created_at
 		FROM user_inbounds WHERE id = ?
 	`, id)
 	return scanUserInbound(row)
 }
 
-func (s *UserStore) ListUserInbounds() ([]users.UserInbound, error) {
-	rows, err := s.db.Query(`
-		SELECT id, user_id, node_id, protocol, uuid, secret, method,
-		       security, flow, sni, fingerprint,
-		       reality_public_key, reality_short_id, reality_spider_x,
-		       reality_private_key, reality_handshake_addr,
-		       domain, port, inbound_tag,
-		       synced_upload_bytes, synced_download_bytes,
-		       apply_count, last_applied_at, created_at
-		FROM user_inbounds ORDER BY id
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("list user inbounds: %w", err)
-	}
-	defer rows.Close()
-	return scanUserInbounds(rows)
-}
-
 func (s *UserStore) ListUserInboundsByUser(userID string) ([]users.UserInbound, error) {
 	rows, err := s.db.Query(`
-		SELECT id, user_id, node_id, protocol, uuid, secret, method,
-		       security, flow, sni, fingerprint,
-		       reality_public_key, reality_short_id, reality_spider_x,
-		       reality_private_key, reality_handshake_addr,
-		       domain, port, inbound_tag,
-		       synced_upload_bytes, synced_download_bytes,
-		       apply_count, last_applied_at, created_at
+		SELECT id, user_id, node_id, uuid, secret,
+		       synced_upload_bytes, synced_download_bytes, created_at
 		FROM user_inbounds WHERE user_id = ? ORDER BY id
 	`, userID)
 	if err != nil {
@@ -240,42 +183,12 @@ func (s *UserStore) ListUserInboundsByUser(userID string) ([]users.UserInbound, 
 
 func (s *UserStore) ListUserInboundsByNode(nodeID string) ([]users.UserInbound, error) {
 	rows, err := s.db.Query(`
-		SELECT id, user_id, node_id, protocol, uuid, secret, method,
-		       security, flow, sni, fingerprint,
-		       reality_public_key, reality_short_id, reality_spider_x,
-		       reality_private_key, reality_handshake_addr,
-		       domain, port, inbound_tag,
-		       synced_upload_bytes, synced_download_bytes,
-		       apply_count, last_applied_at, created_at
+		SELECT id, user_id, node_id, uuid, secret,
+		       synced_upload_bytes, synced_download_bytes, created_at
 		FROM user_inbounds WHERE node_id = ? ORDER BY id
 	`, nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("list user inbounds by node: %w", err)
-	}
-	defer rows.Close()
-	return scanUserInbounds(rows)
-}
-
-// ListCursorInboundsByNode 返回每个 (node_id, user_id) 组合中 id 最小的 inbound。
-func (s *UserStore) ListCursorInboundsByNode(nodeID string) ([]users.UserInbound, error) {
-	rows, err := s.db.Query(`
-		SELECT ui.id, ui.user_id, ui.node_id, ui.protocol, ui.uuid, ui.secret, ui.method,
-		       ui.security, ui.flow, ui.sni, ui.fingerprint,
-		       ui.reality_public_key, ui.reality_short_id, ui.reality_spider_x,
-		       ui.reality_private_key, ui.reality_handshake_addr,
-		       ui.domain, ui.port, ui.inbound_tag,
-		       ui.synced_upload_bytes, ui.synced_download_bytes,
-		       ui.apply_count, ui.last_applied_at, ui.created_at
-		FROM user_inbounds ui
-		WHERE ui.node_id = ?
-		  AND ui.id = (
-		    SELECT MIN(id) FROM user_inbounds
-		    WHERE node_id = ui.node_id AND user_id = ui.user_id
-		  )
-		ORDER BY ui.user_id
-	`, nodeID)
-	if err != nil {
-		return nil, fmt.Errorf("list cursor inbounds by node: %w", err)
 	}
 	defer rows.Close()
 	return scanUserInbounds(rows)
@@ -376,28 +289,22 @@ func scanUser(row scanner) (users.User, error) {
 func scanUserInbounds(rows *sql.Rows) ([]users.UserInbound, error) {
 	items := make([]users.UserInbound, 0)
 	for rows.Next() {
-		ib, err := scanUserInbound(rows)
+		acc, err := scanUserInbound(rows)
 		if err != nil {
 			return nil, err
 		}
-		items = append(items, ib)
+		items = append(items, acc)
 	}
 	return items, rows.Err()
 }
 
 func scanUserInbound(row scanner) (users.UserInbound, error) {
-	var ib users.UserInbound
-	var lastAppliedAt string
+	var acc users.UserInbound
 	var createdAt string
 
 	err := row.Scan(
-		&ib.ID, &ib.UserID, &ib.NodeID, &ib.Protocol, &ib.UUID, &ib.Secret, &ib.Method,
-		&ib.Security, &ib.Flow, &ib.SNI, &ib.Fingerprint,
-		&ib.RealityPublicKey, &ib.RealityShortID, &ib.RealitySpiderX,
-		&ib.RealityPrivateKey, &ib.RealityHandshakeAddr,
-		&ib.Domain, &ib.Port, &ib.InboundTag,
-		&ib.SyncedUploadBytes, &ib.SyncedDownloadBytes,
-		&ib.ApplyCount, &lastAppliedAt, &createdAt,
+		&acc.ID, &acc.UserID, &acc.NodeID, &acc.UUID, &acc.Secret,
+		&acc.SyncedUploadBytes, &acc.SyncedDownloadBytes, &createdAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return users.UserInbound{}, users.ErrUserInboundNotFound
@@ -411,16 +318,9 @@ func scanUserInbound(row scanner) (users.UserInbound, error) {
 		if err != nil {
 			return users.UserInbound{}, fmt.Errorf("parse inbound created_at: %w", err)
 		}
-		ib.CreatedAt = t
+		acc.CreatedAt = t
 	}
-	if lastAppliedAt != "" {
-		t, err := time.Parse(time.RFC3339Nano, lastAppliedAt)
-		if err != nil {
-			return users.UserInbound{}, fmt.Errorf("parse inbound last_applied_at: %w", err)
-		}
-		ib.LastAppliedAt = t
-	}
-	return ib, nil
+	return acc, nil
 }
 
 func formatTime(value time.Time) string {

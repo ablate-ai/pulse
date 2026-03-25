@@ -40,27 +40,40 @@ func (db *DB) UserStore() *UserStore {
 
 func (db *DB) init() error {
 	stmts := []string{
+		// inbounds：节点上的监听入站，含服务端 TLS/Reality 配置
 		`CREATE TABLE IF NOT EXISTS inbounds (
-			id       TEXT PRIMARY KEY,
-			node_id  TEXT NOT NULL,
-			protocol TEXT NOT NULL,
-			tag      TEXT NOT NULL,
-			port     INTEGER NOT NULL
+			id                    TEXT PRIMARY KEY,
+			node_id               TEXT NOT NULL,
+			protocol              TEXT NOT NULL,
+			tag                   TEXT NOT NULL,
+			port                  INTEGER NOT NULL,
+			method                TEXT NOT NULL DEFAULT '',
+			security              TEXT NOT NULL DEFAULT '',
+			reality_private_key   TEXT NOT NULL DEFAULT '',
+			reality_public_key    TEXT NOT NULL DEFAULT '',
+			reality_handshake_addr TEXT NOT NULL DEFAULT '',
+			reality_short_id      TEXT NOT NULL DEFAULT '',
+			tls_cert_path         TEXT NOT NULL DEFAULT '',
+			tls_key_path          TEXT NOT NULL DEFAULT ''
 		);`,
+		// hosts：客户端连接模板（地址 + TLS 客户端参数）
 		`CREATE TABLE IF NOT EXISTS hosts (
-			id             TEXT PRIMARY KEY,
-			inbound_id     TEXT NOT NULL,
-			remark         TEXT NOT NULL DEFAULT '',
-			address        TEXT NOT NULL DEFAULT '',
-			port           INTEGER NOT NULL DEFAULT 0,
-			sni            TEXT NOT NULL DEFAULT '',
-			host           TEXT NOT NULL DEFAULT '',
-			path           TEXT NOT NULL DEFAULT '',
-			security       TEXT NOT NULL DEFAULT 'none',
-			alpn           TEXT NOT NULL DEFAULT '',
-			fingerprint    TEXT NOT NULL DEFAULT '',
-			allow_insecure INTEGER NOT NULL DEFAULT 0,
-			mux_enable     INTEGER NOT NULL DEFAULT 0
+			id                TEXT PRIMARY KEY,
+			inbound_id        TEXT NOT NULL,
+			remark            TEXT NOT NULL DEFAULT '',
+			address           TEXT NOT NULL DEFAULT '',
+			port              INTEGER NOT NULL DEFAULT 0,
+			sni               TEXT NOT NULL DEFAULT '',
+			host              TEXT NOT NULL DEFAULT '',
+			path              TEXT NOT NULL DEFAULT '',
+			security          TEXT NOT NULL DEFAULT 'none',
+			alpn              TEXT NOT NULL DEFAULT '',
+			fingerprint       TEXT NOT NULL DEFAULT '',
+			allow_insecure    INTEGER NOT NULL DEFAULT 0,
+			mux_enable        INTEGER NOT NULL DEFAULT 0,
+			reality_public_key TEXT NOT NULL DEFAULT '',
+			reality_short_id   TEXT NOT NULL DEFAULT '',
+			reality_spider_x   TEXT NOT NULL DEFAULT ''
 		);`,
 		`CREATE TABLE IF NOT EXISTS nodes (
 			id TEXT PRIMARY KEY,
@@ -68,7 +81,7 @@ func (db *DB) init() error {
 			base_url TEXT NOT NULL,
 			certificate TEXT NOT NULL DEFAULT ''
 		);`,
-		// users 表：只含身份+流量字段
+		// users：用户身份 + 流量统计
 		`CREATE TABLE IF NOT EXISTS users (
 			id TEXT PRIMARY KEY,
 			username TEXT NOT NULL,
@@ -82,32 +95,16 @@ func (db *DB) init() error {
 			last_traffic_reset_at TEXT,
 			created_at TEXT NOT NULL
 		);`,
-		// user_inbounds 表：协议+节点+连接配置
+		// user_inbounds：用户对节点的访问凭据（一条记录对应一个 user+node 对）
 		`CREATE TABLE IF NOT EXISTS user_inbounds (
-			id TEXT PRIMARY KEY,
-			user_id TEXT NOT NULL,
-			node_id TEXT NOT NULL,
-			protocol TEXT NOT NULL DEFAULT 'vless',
-			uuid TEXT NOT NULL DEFAULT '',
-			secret TEXT NOT NULL DEFAULT '',
-			method TEXT NOT NULL DEFAULT 'aes-128-gcm',
-			security TEXT NOT NULL DEFAULT '',
-			flow TEXT NOT NULL DEFAULT '',
-			sni TEXT NOT NULL DEFAULT '',
-			fingerprint TEXT NOT NULL DEFAULT '',
-			reality_public_key TEXT NOT NULL DEFAULT '',
-			reality_short_id TEXT NOT NULL DEFAULT '',
-			reality_spider_x TEXT NOT NULL DEFAULT '',
-			reality_private_key TEXT NOT NULL DEFAULT '',
-			reality_handshake_addr TEXT NOT NULL DEFAULT '',
-			domain TEXT NOT NULL DEFAULT '',
-			port INTEGER NOT NULL DEFAULT 0,
-			inbound_tag TEXT NOT NULL DEFAULT '',
-			synced_upload_bytes INTEGER NOT NULL DEFAULT 0,
+			id                   TEXT PRIMARY KEY,
+			user_id              TEXT NOT NULL,
+			node_id              TEXT NOT NULL,
+			uuid                 TEXT NOT NULL DEFAULT '',
+			secret               TEXT NOT NULL DEFAULT '',
+			synced_upload_bytes  INTEGER NOT NULL DEFAULT 0,
 			synced_download_bytes INTEGER NOT NULL DEFAULT 0,
-			apply_count INTEGER NOT NULL DEFAULT 0,
-			last_applied_at TEXT NOT NULL DEFAULT '',
-			created_at TEXT NOT NULL
+			created_at           TEXT NOT NULL
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_user_inbounds_user_id ON user_inbounds(user_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_user_inbounds_node_id ON user_inbounds(node_id);`,
@@ -124,7 +121,13 @@ func (db *DB) init() error {
 	if err := db.migrateUsersTable(); err != nil {
 		return err
 	}
-	if err := db.migrateUsersToInbounds(); err != nil {
+	if err := db.migrateInboundsTable(); err != nil {
+		return err
+	}
+	if err := db.migrateHostsTable(); err != nil {
+		return err
+	}
+	if err := db.migrateUserInboundsTable(); err != nil {
 		return err
 	}
 	return nil
@@ -135,7 +138,6 @@ func (db *DB) migrateNodesTable() error {
 	if err != nil {
 		return err
 	}
-
 	if _, ok := columns["certificate"]; !ok {
 		if _, err := db.conn.Exec(`ALTER TABLE nodes ADD COLUMN certificate TEXT NOT NULL DEFAULT ''`); err != nil {
 			return fmt.Errorf("migrate nodes table: %w", err)
@@ -145,21 +147,19 @@ func (db *DB) migrateNodesTable() error {
 }
 
 // migrateUsersTable 将旧版 users 表迁移到新版（只含身份+流量字段）。
-// 若 users 表还有旧的协议/节点字段，则先补齐缺失列再做结构迁移。
 func (db *DB) migrateUsersTable() error {
 	columns, err := db.tableColumns("users")
 	if err != nil {
 		return err
 	}
 
-	// 若旧表还没有 status 列，补加（兼容非常旧的数据库）
 	if _, ok := columns["status"]; !ok {
 		if _, err := db.conn.Exec(`ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`); err != nil {
 			return fmt.Errorf("migrate users add status: %w", err)
 		}
 	}
 
-	// 处理旧的 enabled → status 迁移
+	// enabled → status 迁移
 	if _, hasEnabled := columns["enabled"]; hasEnabled {
 		if _, err := db.conn.Exec(`
 			UPDATE users SET status = CASE WHEN enabled = 0 THEN 'disabled' ELSE 'active' END
@@ -169,106 +169,130 @@ func (db *DB) migrateUsersTable() error {
 		}
 	}
 
+	// 若 users 表仍有旧的 node_id 列，重建精简版
+	if _, hasNodeID := columns["node_id"]; hasNodeID {
+		return db.rebuildUsersTable(columns)
+	}
+
 	return nil
 }
 
-// migrateUsersToInbounds 将旧 users 表中的协议/节点字段迁移到 user_inbounds 表，
-// 然后重建精简的 users 表。幂等：已有 user_inbounds 数据则跳过。
-func (db *DB) migrateUsersToInbounds() error {
-	// 检查 user_inbounds 表是否已有数据
-	var count int
-	if err := db.conn.QueryRow(`SELECT COUNT(*) FROM user_inbounds`).Scan(&count); err != nil {
-		return fmt.Errorf("check user_inbounds count: %w", err)
+// migrateInboundsTable 添加新版 inbounds 表缺失的列（兼容旧数据库）。
+func (db *DB) migrateInboundsTable() error {
+	columns, err := db.tableColumns("inbounds")
+	if err != nil {
+		return err
 	}
+	additions := map[string]string{
+		"method":                 `ALTER TABLE inbounds ADD COLUMN method TEXT NOT NULL DEFAULT ''`,
+		"security":               `ALTER TABLE inbounds ADD COLUMN security TEXT NOT NULL DEFAULT ''`,
+		"reality_private_key":    `ALTER TABLE inbounds ADD COLUMN reality_private_key TEXT NOT NULL DEFAULT ''`,
+		"reality_public_key":     `ALTER TABLE inbounds ADD COLUMN reality_public_key TEXT NOT NULL DEFAULT ''`,
+		"reality_handshake_addr": `ALTER TABLE inbounds ADD COLUMN reality_handshake_addr TEXT NOT NULL DEFAULT ''`,
+		"reality_short_id":       `ALTER TABLE inbounds ADD COLUMN reality_short_id TEXT NOT NULL DEFAULT ''`,
+		"tls_cert_path":          `ALTER TABLE inbounds ADD COLUMN tls_cert_path TEXT NOT NULL DEFAULT ''`,
+		"tls_key_path":           `ALTER TABLE inbounds ADD COLUMN tls_key_path TEXT NOT NULL DEFAULT ''`,
+	}
+	for col, ddl := range additions {
+		if _, ok := columns[col]; !ok {
+			if _, err := db.conn.Exec(ddl); err != nil {
+				return fmt.Errorf("migrate inbounds add %s: %w", col, err)
+			}
+		}
+	}
+	return nil
+}
 
-	columns, err := db.tableColumns("users")
+// migrateHostsTable 添加新版 hosts 表缺失的列（Reality 客户端参数）。
+func (db *DB) migrateHostsTable() error {
+	columns, err := db.tableColumns("hosts")
+	if err != nil {
+		return err
+	}
+	additions := map[string]string{
+		"reality_public_key": `ALTER TABLE hosts ADD COLUMN reality_public_key TEXT NOT NULL DEFAULT ''`,
+		"reality_short_id":   `ALTER TABLE hosts ADD COLUMN reality_short_id TEXT NOT NULL DEFAULT ''`,
+		"reality_spider_x":   `ALTER TABLE hosts ADD COLUMN reality_spider_x TEXT NOT NULL DEFAULT ''`,
+	}
+	for col, ddl := range additions {
+		if _, ok := columns[col]; !ok {
+			if _, err := db.conn.Exec(ddl); err != nil {
+				return fmt.Errorf("migrate hosts add %s: %w", col, err)
+			}
+		}
+	}
+	return nil
+}
+
+// migrateUserInboundsTable 将旧版 user_inbounds（含协议/TLS 字段）迁移到新版（只含凭据）。
+// 幂等：若新版列结构已存在则跳过。
+func (db *DB) migrateUserInboundsTable() error {
+	columns, err := db.tableColumns("user_inbounds")
 	if err != nil {
 		return err
 	}
 
-	// 检查旧的 node_id 列是否存在
-	_, hasNodeID := columns["node_id"]
-
-	// 若旧表已无 node_id 列，说明已完成迁移，直接跳过
-	if !hasNodeID {
+	// 新版特征：没有 protocol 列
+	if _, hasProtocol := columns["protocol"]; !hasProtocol {
 		return nil
 	}
 
-	// 若 user_inbounds 还没数据，把旧 users 数据迁入
-	if count == 0 {
-		// 补全旧表可能缺失的列，避免 INSERT 出错
-		legacyColDefaults := map[string]string{
-			"uuid":                   `ALTER TABLE users ADD COLUMN uuid TEXT NOT NULL DEFAULT ''`,
-			"protocol":               `ALTER TABLE users ADD COLUMN protocol TEXT NOT NULL DEFAULT 'vless'`,
-			"secret":                 `ALTER TABLE users ADD COLUMN secret TEXT NOT NULL DEFAULT ''`,
-			"method":                 `ALTER TABLE users ADD COLUMN method TEXT NOT NULL DEFAULT 'aes-128-gcm'`,
-			"security":               `ALTER TABLE users ADD COLUMN security TEXT NOT NULL DEFAULT ''`,
-			"flow":                   `ALTER TABLE users ADD COLUMN flow TEXT NOT NULL DEFAULT ''`,
-			"sni":                    `ALTER TABLE users ADD COLUMN sni TEXT NOT NULL DEFAULT ''`,
-			"fingerprint":            `ALTER TABLE users ADD COLUMN fingerprint TEXT NOT NULL DEFAULT ''`,
-			"reality_public_key":     `ALTER TABLE users ADD COLUMN reality_public_key TEXT NOT NULL DEFAULT ''`,
-			"reality_short_id":       `ALTER TABLE users ADD COLUMN reality_short_id TEXT NOT NULL DEFAULT ''`,
-			"reality_spider_x":       `ALTER TABLE users ADD COLUMN reality_spider_x TEXT NOT NULL DEFAULT ''`,
-			"reality_private_key":    `ALTER TABLE users ADD COLUMN reality_private_key TEXT NOT NULL DEFAULT ''`,
-			"reality_handshake_addr": `ALTER TABLE users ADD COLUMN reality_handshake_addr TEXT NOT NULL DEFAULT ''`,
-			"domain":                 `ALTER TABLE users ADD COLUMN domain TEXT NOT NULL DEFAULT ''`,
-			"port":                   `ALTER TABLE users ADD COLUMN port INTEGER NOT NULL DEFAULT 0`,
-			"inbound_tag":            `ALTER TABLE users ADD COLUMN inbound_tag TEXT NOT NULL DEFAULT ''`,
-			"synced_upload_bytes":    `ALTER TABLE users ADD COLUMN synced_upload_bytes INTEGER NOT NULL DEFAULT 0`,
-			"synced_download_bytes":  `ALTER TABLE users ADD COLUMN synced_download_bytes INTEGER NOT NULL DEFAULT 0`,
-			"apply_count":            `ALTER TABLE users ADD COLUMN apply_count INTEGER NOT NULL DEFAULT 0`,
-			"last_applied_at":        `ALTER TABLE users ADD COLUMN last_applied_at TEXT NOT NULL DEFAULT ''`,
-		}
-		// 重新查询，因为上面的 migrateUsersTable 可能已经加了一些列
-		columns, err = db.tableColumns("users")
-		if err != nil {
-			return err
-		}
-		for col, ddl := range legacyColDefaults {
-			if _, ok := columns[col]; !ok {
-				if _, err := db.conn.Exec(ddl); err != nil {
-					return fmt.Errorf("migrate users add column %s: %w", col, err)
-				}
-			}
-		}
-
-		// 将旧 users 数据插入 user_inbounds
-		if _, err := db.conn.Exec(`
-			INSERT INTO user_inbounds (
-				id, user_id, node_id, protocol, uuid, secret, method,
-				security, flow, sni, fingerprint,
-				reality_public_key, reality_short_id, reality_spider_x,
-				reality_private_key, reality_handshake_addr,
-				domain, port, inbound_tag,
-				synced_upload_bytes, synced_download_bytes,
-				apply_count, last_applied_at, created_at
-			)
-			SELECT
-				id || '-ib0', id, node_id, protocol, uuid, secret, method,
-				COALESCE(security, ''), COALESCE(flow, ''), COALESCE(sni, ''),
-				COALESCE(fingerprint, ''),
-				COALESCE(reality_public_key, ''), COALESCE(reality_short_id, ''),
-				COALESCE(reality_spider_x, ''),
-				COALESCE(reality_private_key, ''), COALESCE(reality_handshake_addr, ''),
-				domain, port, inbound_tag,
-				synced_upload_bytes, synced_download_bytes,
-				apply_count, last_applied_at, created_at
-			FROM users
-			WHERE node_id IS NOT NULL AND node_id != ''
-		`); err != nil {
-			return fmt.Errorf("migrate users to user_inbounds: %w", err)
-		}
+	// 旧表还有 protocol 列，需要重建为简化版本
+	if _, err := db.conn.Exec(`
+		CREATE TABLE IF NOT EXISTS user_inbounds_slim (
+			id                    TEXT PRIMARY KEY,
+			user_id               TEXT NOT NULL,
+			node_id               TEXT NOT NULL,
+			uuid                  TEXT NOT NULL DEFAULT '',
+			secret                TEXT NOT NULL DEFAULT '',
+			synced_upload_bytes   INTEGER NOT NULL DEFAULT 0,
+			synced_download_bytes INTEGER NOT NULL DEFAULT 0,
+			created_at            TEXT NOT NULL
+		)
+	`); err != nil {
+		return fmt.Errorf("create user_inbounds_slim: %w", err)
 	}
 
-	// 重建精简的 users 表（去掉协议/节点字段）
-	return db.rebuildUsersTable(columns)
+	// 只保留每 (user_id, node_id) 对中 id 最小的记录（第一条），复制凭据
+	if _, err := db.conn.Exec(`
+		INSERT OR IGNORE INTO user_inbounds_slim (
+			id, user_id, node_id, uuid, secret,
+			synced_upload_bytes, synced_download_bytes, created_at
+		)
+		SELECT id, user_id, node_id,
+		       COALESCE(uuid, ''), COALESCE(secret, ''),
+		       COALESCE(synced_upload_bytes, 0), COALESCE(synced_download_bytes, 0),
+		       created_at
+		FROM user_inbounds ui
+		WHERE ui.id = (
+		    SELECT MIN(id) FROM user_inbounds
+		    WHERE user_id = ui.user_id AND node_id = ui.node_id
+		)
+	`); err != nil {
+		return fmt.Errorf("migrate user_inbounds to slim: %w", err)
+	}
+
+	if _, err := db.conn.Exec(`DROP TABLE user_inbounds`); err != nil {
+		return fmt.Errorf("drop old user_inbounds: %w", err)
+	}
+	if _, err := db.conn.Exec(`ALTER TABLE user_inbounds_slim RENAME TO user_inbounds`); err != nil {
+		return fmt.Errorf("rename user_inbounds_slim: %w", err)
+	}
+
+	// 重建索引
+	if _, err := db.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_user_inbounds_user_id ON user_inbounds(user_id)`); err != nil {
+		return fmt.Errorf("recreate index user_id: %w", err)
+	}
+	if _, err := db.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_user_inbounds_node_id ON user_inbounds(node_id)`); err != nil {
+		return fmt.Errorf("recreate index node_id: %w", err)
+	}
+
+	return nil
 }
 
 // rebuildUsersTable 通过 CREATE/INSERT/DROP/RENAME 重建精简的 users 表。
 func (db *DB) rebuildUsersTable(columns map[string]struct{}) error {
-	// 检查是否有 last_traffic_reset_at 列
 	_, hasLastReset := columns["last_traffic_reset_at"]
-	// 检查是否有 traffic_limit_bytes 列
 	_, hasTrafficLimit := columns["traffic_limit_bytes"]
 	_, hasUpload := columns["upload_bytes"]
 	_, hasDownload := columns["download_bytes"]
@@ -337,6 +361,29 @@ func (db *DB) rebuildUsersTable(columns map[string]struct{}) error {
 	if _, err := db.conn.Exec(insertSQL); err != nil {
 		return fmt.Errorf("copy users to users_slim: %w", err)
 	}
+
+	// 若旧 users 表有 node_id + uuid，则为每行创建 user_inbounds 记录
+	if _, hasNodeID := columns["node_id"]; hasNodeID {
+		if _, hasUUID := columns["uuid"]; hasUUID {
+			_, hasSecret := columns["secret"]
+			secretExpr := "''"
+			if hasSecret {
+				secretExpr = "COALESCE(secret, '')"
+			}
+			migrateSQL := fmt.Sprintf(`
+				INSERT OR IGNORE INTO user_inbounds (id, user_id, node_id, uuid, secret, created_at)
+				SELECT id, id, node_id,
+				       COALESCE(uuid, ''),
+				       %s,
+				       created_at
+				FROM users
+			`, secretExpr)
+			if _, err := db.conn.Exec(migrateSQL); err != nil {
+				return fmt.Errorf("migrate users→user_inbounds: %w", err)
+			}
+		}
+	}
+
 	if _, err := db.conn.Exec(`DROP TABLE users`); err != nil {
 		return fmt.Errorf("drop old users table: %w", err)
 	}

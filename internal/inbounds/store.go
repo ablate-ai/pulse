@@ -7,13 +7,24 @@ var (
 	ErrHostNotFound    = errors.New("host not found")
 )
 
-// Inbound 表示某节点上的一个监听入站（sing-box inbound）。
+// Inbound 表示某节点上的一个监听入站（sing-box inbound），含服务端配置。
 type Inbound struct {
 	ID       string `json:"id"`
 	NodeID   string `json:"node_id"`
 	Protocol string `json:"protocol"` // vless / vmess / trojan / shadowsocks
 	Tag      string `json:"tag"`      // sing-box inbound tag，同节点内唯一
 	Port     int    `json:"port"`
+	// Shadowsocks 加密方式
+	Method string `json:"method,omitempty"`
+	// TLS / Reality 服务端配置
+	Security             string `json:"security,omitempty"`              // "reality" / "tls"
+	RealityPrivateKey    string `json:"reality_private_key,omitempty"`   // 服务端私钥
+	RealityPublicKey     string `json:"reality_public_key,omitempty"`    // 客户端公钥，用于订阅链接
+	RealityHandshakeAddr string `json:"reality_handshake_addr,omitempty"` // 握手目标 host:port
+	RealityShortID       string `json:"reality_short_id,omitempty"`
+	// 直连 TLS（Trojan 非 Caddy 模式，cert 由节点管理时留空）
+	TLSCertPath string `json:"tls_cert_path,omitempty"`
+	TLSKeyPath  string `json:"tls_key_path,omitempty"`
 }
 
 // Host 表示客户端连接模板：地址 + TLS/传输层配置。
@@ -32,6 +43,10 @@ type Host struct {
 	Fingerprint   string `json:"fingerprint,omitempty"`    // TLS 指纹
 	AllowInsecure bool   `json:"allow_insecure,omitempty"` // 跳过证书验证
 	MuxEnable     bool   `json:"mux_enable,omitempty"`     // 多路复用
+	// Reality 客户端参数（不填则从关联 Inbound 继承）
+	RealityPublicKey string `json:"reality_public_key,omitempty"`
+	RealityShortID   string `json:"reality_short_id,omitempty"`
+	RealitySpiderX   string `json:"reality_spider_x,omitempty"`
 }
 
 // InboundStore 管理 Inbound 和 Host 的持久化。

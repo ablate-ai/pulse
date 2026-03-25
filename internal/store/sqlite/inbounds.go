@@ -20,14 +20,31 @@ func (db *DB) InboundStore() *InboundStore {
 
 func (s *InboundStore) UpsertInbound(inbound inbounds.Inbound) (inbounds.Inbound, error) {
 	_, err := s.db.Exec(`
-		INSERT INTO inbounds (id, node_id, protocol, tag, port)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO inbounds (
+			id, node_id, protocol, tag, port,
+			method, security, reality_private_key, reality_public_key,
+			reality_handshake_addr, reality_short_id,
+			tls_cert_path, tls_key_path
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
-			node_id  = excluded.node_id,
-			protocol = excluded.protocol,
-			tag      = excluded.tag,
-			port     = excluded.port
-	`, inbound.ID, inbound.NodeID, inbound.Protocol, inbound.Tag, inbound.Port)
+			node_id                = excluded.node_id,
+			protocol               = excluded.protocol,
+			tag                    = excluded.tag,
+			port                   = excluded.port,
+			method                 = excluded.method,
+			security               = excluded.security,
+			reality_private_key    = excluded.reality_private_key,
+			reality_public_key     = excluded.reality_public_key,
+			reality_handshake_addr = excluded.reality_handshake_addr,
+			reality_short_id       = excluded.reality_short_id,
+			tls_cert_path          = excluded.tls_cert_path,
+			tls_key_path           = excluded.tls_key_path
+	`,
+		inbound.ID, inbound.NodeID, inbound.Protocol, inbound.Tag, inbound.Port,
+		inbound.Method, inbound.Security, inbound.RealityPrivateKey, inbound.RealityPublicKey,
+		inbound.RealityHandshakeAddr, inbound.RealityShortID,
+		inbound.TLSCertPath, inbound.TLSKeyPath,
+	)
 	if err != nil {
 		return inbounds.Inbound{}, err
 	}
@@ -35,12 +52,24 @@ func (s *InboundStore) UpsertInbound(inbound inbounds.Inbound) (inbounds.Inbound
 }
 
 func (s *InboundStore) GetInbound(id string) (inbounds.Inbound, error) {
-	row := s.db.QueryRow(`SELECT id, node_id, protocol, tag, port FROM inbounds WHERE id = ?`, id)
+	row := s.db.QueryRow(`
+		SELECT id, node_id, protocol, tag, port,
+		       method, security, reality_private_key, reality_public_key,
+		       reality_handshake_addr, reality_short_id,
+		       tls_cert_path, tls_key_path
+		FROM inbounds WHERE id = ?
+	`, id)
 	return scanInbound(row)
 }
 
 func (s *InboundStore) ListInbounds() ([]inbounds.Inbound, error) {
-	rows, err := s.db.Query(`SELECT id, node_id, protocol, tag, port FROM inbounds ORDER BY id`)
+	rows, err := s.db.Query(`
+		SELECT id, node_id, protocol, tag, port,
+		       method, security, reality_private_key, reality_public_key,
+		       reality_handshake_addr, reality_short_id,
+		       tls_cert_path, tls_key_path
+		FROM inbounds ORDER BY id
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +78,13 @@ func (s *InboundStore) ListInbounds() ([]inbounds.Inbound, error) {
 }
 
 func (s *InboundStore) ListInboundsByNode(nodeID string) ([]inbounds.Inbound, error) {
-	rows, err := s.db.Query(`SELECT id, node_id, protocol, tag, port FROM inbounds WHERE node_id = ? ORDER BY id`, nodeID)
+	rows, err := s.db.Query(`
+		SELECT id, node_id, protocol, tag, port,
+		       method, security, reality_private_key, reality_public_key,
+		       reality_handshake_addr, reality_short_id,
+		       tls_cert_path, tls_key_path
+		FROM inbounds WHERE node_id = ? ORDER BY id
+	`, nodeID)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +106,12 @@ func (s *InboundStore) DeleteInbound(id string) error {
 
 func scanInbound(row *sql.Row) (inbounds.Inbound, error) {
 	var in inbounds.Inbound
-	err := row.Scan(&in.ID, &in.NodeID, &in.Protocol, &in.Tag, &in.Port)
+	err := row.Scan(
+		&in.ID, &in.NodeID, &in.Protocol, &in.Tag, &in.Port,
+		&in.Method, &in.Security, &in.RealityPrivateKey, &in.RealityPublicKey,
+		&in.RealityHandshakeAddr, &in.RealityShortID,
+		&in.TLSCertPath, &in.TLSKeyPath,
+	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return inbounds.Inbound{}, inbounds.ErrInboundNotFound
 	}
@@ -82,7 +122,12 @@ func collectInbounds(rows *sql.Rows) ([]inbounds.Inbound, error) {
 	out := make([]inbounds.Inbound, 0)
 	for rows.Next() {
 		var in inbounds.Inbound
-		if err := rows.Scan(&in.ID, &in.NodeID, &in.Protocol, &in.Tag, &in.Port); err != nil {
+		if err := rows.Scan(
+			&in.ID, &in.NodeID, &in.Protocol, &in.Tag, &in.Port,
+			&in.Method, &in.Security, &in.RealityPrivateKey, &in.RealityPublicKey,
+			&in.RealityHandshakeAddr, &in.RealityShortID,
+			&in.TLSCertPath, &in.TLSKeyPath,
+		); err != nil {
 			return nil, err
 		}
 		out = append(out, in)
@@ -94,25 +139,32 @@ func collectInbounds(rows *sql.Rows) ([]inbounds.Inbound, error) {
 
 func (s *InboundStore) UpsertHost(host inbounds.Host) (inbounds.Host, error) {
 	_, err := s.db.Exec(`
-		INSERT INTO hosts (id, inbound_id, remark, address, port, sni, host, path, security, alpn, fingerprint, allow_insecure, mux_enable)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO hosts (
+			id, inbound_id, remark, address, port, sni, host, path,
+			security, alpn, fingerprint, allow_insecure, mux_enable,
+			reality_public_key, reality_short_id, reality_spider_x
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
-			inbound_id     = excluded.inbound_id,
-			remark         = excluded.remark,
-			address        = excluded.address,
-			port           = excluded.port,
-			sni            = excluded.sni,
-			host           = excluded.host,
-			path           = excluded.path,
-			security       = excluded.security,
-			alpn           = excluded.alpn,
-			fingerprint    = excluded.fingerprint,
-			allow_insecure = excluded.allow_insecure,
-			mux_enable     = excluded.mux_enable
+			inbound_id         = excluded.inbound_id,
+			remark             = excluded.remark,
+			address            = excluded.address,
+			port               = excluded.port,
+			sni                = excluded.sni,
+			host               = excluded.host,
+			path               = excluded.path,
+			security           = excluded.security,
+			alpn               = excluded.alpn,
+			fingerprint        = excluded.fingerprint,
+			allow_insecure     = excluded.allow_insecure,
+			mux_enable         = excluded.mux_enable,
+			reality_public_key = excluded.reality_public_key,
+			reality_short_id   = excluded.reality_short_id,
+			reality_spider_x   = excluded.reality_spider_x
 	`,
 		host.ID, host.InboundID, host.Remark, host.Address, host.Port,
 		host.SNI, host.Host, host.Path, host.Security, host.ALPN, host.Fingerprint,
 		boolToInt(host.AllowInsecure), boolToInt(host.MuxEnable),
+		host.RealityPublicKey, host.RealityShortID, host.RealitySpiderX,
 	)
 	if err != nil {
 		return inbounds.Host{}, err
@@ -122,15 +174,21 @@ func (s *InboundStore) UpsertHost(host inbounds.Host) (inbounds.Host, error) {
 
 func (s *InboundStore) GetHost(id string) (inbounds.Host, error) {
 	row := s.db.QueryRow(`
-		SELECT id, inbound_id, remark, address, port, sni, host, path, security, alpn, fingerprint, allow_insecure, mux_enable
-		FROM hosts WHERE id = ?`, id)
+		SELECT id, inbound_id, remark, address, port, sni, host, path,
+		       security, alpn, fingerprint, allow_insecure, mux_enable,
+		       reality_public_key, reality_short_id, reality_spider_x
+		FROM hosts WHERE id = ?
+	`, id)
 	return scanHost(row)
 }
 
 func (s *InboundStore) ListHosts() ([]inbounds.Host, error) {
 	rows, err := s.db.Query(`
-		SELECT id, inbound_id, remark, address, port, sni, host, path, security, alpn, fingerprint, allow_insecure, mux_enable
-		FROM hosts ORDER BY id`)
+		SELECT id, inbound_id, remark, address, port, sni, host, path,
+		       security, alpn, fingerprint, allow_insecure, mux_enable,
+		       reality_public_key, reality_short_id, reality_spider_x
+		FROM hosts ORDER BY id
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -140,8 +198,11 @@ func (s *InboundStore) ListHosts() ([]inbounds.Host, error) {
 
 func (s *InboundStore) ListHostsByInbound(inboundID string) ([]inbounds.Host, error) {
 	rows, err := s.db.Query(`
-		SELECT id, inbound_id, remark, address, port, sni, host, path, security, alpn, fingerprint, allow_insecure, mux_enable
-		FROM hosts WHERE inbound_id = ? ORDER BY id`, inboundID)
+		SELECT id, inbound_id, remark, address, port, sni, host, path,
+		       security, alpn, fingerprint, allow_insecure, mux_enable,
+		       reality_public_key, reality_short_id, reality_spider_x
+		FROM hosts WHERE inbound_id = ? ORDER BY id
+	`, inboundID)
 	if err != nil {
 		return nil, err
 	}
@@ -168,6 +229,7 @@ func scanHost(row *sql.Row) (inbounds.Host, error) {
 		&h.ID, &h.InboundID, &h.Remark, &h.Address, &h.Port,
 		&h.SNI, &h.Host, &h.Path, &h.Security, &h.ALPN, &h.Fingerprint,
 		&allowInsecure, &muxEnable,
+		&h.RealityPublicKey, &h.RealityShortID, &h.RealitySpiderX,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return inbounds.Host{}, inbounds.ErrHostNotFound
@@ -186,6 +248,7 @@ func collectHosts(rows *sql.Rows) ([]inbounds.Host, error) {
 			&h.ID, &h.InboundID, &h.Remark, &h.Address, &h.Port,
 			&h.SNI, &h.Host, &h.Path, &h.Security, &h.ALPN, &h.Fingerprint,
 			&allowInsecure, &muxEnable,
+			&h.RealityPublicKey, &h.RealityShortID, &h.RealitySpiderX,
 		); err != nil {
 			return nil, err
 		}

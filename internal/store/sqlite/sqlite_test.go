@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"pulse/internal/nodes"
 	"pulse/internal/users"
@@ -40,17 +39,11 @@ func TestSQLiteStoresPersistData(t *testing.T) {
 	}
 
 	_, err = userStore.UpsertUserInbound(users.UserInbound{
-		ID:            "user-1-ib0",
-		UserID:        "user-1",
-		NodeID:        "node-1",
-		Protocol:      "trojan",
-		UUID:          "bf000d23-0752-40b4-affe-68f7707a9661",
-		Secret:        "trojan-pass",
-		Method:        "aes-128-gcm",
-		Domain:        "example.com",
-		Port:          443,
-		ApplyCount:    3,
-		LastAppliedAt: time.Now().UTC().Truncate(time.Second),
+		ID:     "user-1-ib0",
+		UserID: "user-1",
+		NodeID: "node-1",
+		UUID:   "bf000d23-0752-40b4-affe-68f7707a9661",
+		Secret: "trojan-pass",
 	})
 	if err != nil {
 		t.Fatalf("user inbound upsert error = %v", err)
@@ -81,7 +74,7 @@ func TestSQLiteStoresPersistData(t *testing.T) {
 	if len(list) != 1 || list[0].UserID != "user-1" {
 		t.Fatalf("unexpected inbounds: %#v", list)
 	}
-	if list[0].Protocol != "trojan" || list[0].ApplyCount != 3 {
+	if list[0].UUID != "bf000d23-0752-40b4-affe-68f7707a9661" || list[0].Secret != "trojan-pass" {
 		t.Fatalf("unexpected inbound fields: %#v", list[0])
 	}
 }
