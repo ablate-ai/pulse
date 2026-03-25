@@ -25,6 +25,7 @@ type user struct {
 	UsedBytes              int64  `json:"used_bytes"`
 	LastTrafficResetAt     string `json:"last_traffic_reset_at"`
 	CreatedAt              string `json:"created_at"`
+	SubToken               string `json:"sub_token"`
 }
 
 // userInbound 代表用户与节点的访问凭据（协议配置由节点 inbound 决定）。

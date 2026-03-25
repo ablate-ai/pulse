@@ -92,7 +92,7 @@ func (a *app) renderUsers() {
   </div>
   <div class="user-card-actions">
     <button class="btn btn-ghost btn-sm" data-action="toggle-inbounds" data-id="%s">入站</button>
-    <button class="btn btn-ghost btn-sm" data-action="copy-sub" data-id="%s">订阅</button>
+    <button class="btn btn-ghost btn-sm" data-action="copy-sub" data-id="%s" data-sub-token="%s">订阅</button>
     <button class="btn btn-ghost btn-sm" data-action="edit-user" data-id="%s">编辑</button>
     <button class="btn btn-ghost btn-sm btn-danger" data-action="delete-user" data-id="%s">删除</button>
   </div>
@@ -107,6 +107,7 @@ func (a *app) renderUsers() {
 			displayTime(u.ExpireAt),
 			escape(u.ID),
 			escape(u.ID),
+			escape(u.SubToken),
 			escape(u.ID),
 			escape(u.ID),
 			escape(u.ID),
@@ -227,7 +228,6 @@ func (a *app) renderInboundsPanel(userID string) {
 			`<div class="inbound-row">
   <span class="inbound-info">%s — UUID: %s</span>
   <div class="inbound-actions">
-    <button class="btn btn-ghost btn-sm" data-action="apply-inbound" data-user="%s" data-id="%s">下发</button>
     <button class="btn btn-ghost btn-sm" data-action="sub-inbound" data-user="%s" data-id="%s">订阅</button>
     <button class="btn btn-ghost btn-sm btn-danger" data-action="del-inbound" data-user="%s" data-id="%s">删除</button>
   </div>
@@ -265,14 +265,6 @@ func (a *app) bindInboundButtons(userID string) {
 			uid := this.Get("dataset").Get("user").String()
 			go func() {
 				switch action {
-				case "apply-inbound":
-					if err := postJSON("/v1/users/"+uid+"/inbounds/"+ibID+"/apply", nil, nil, a.token); err != nil {
-						a.handleAuthError(err)
-						a.setStatus("下发失败: " + err.Error())
-						return
-					}
-					a.setStatus(fmt.Sprintf("入站 %s 已下发", ibID))
-
 				case "sub-inbound":
 					var resp struct {
 						Links []struct {
@@ -345,16 +337,26 @@ func (a *app) submitAddInbound() {
 		a.setStatus("请选择节点")
 		return
 	}
+	var acc struct {
+		ID string `json:"id"`
+	}
 	if err := postJSON("/v1/users/"+userID+"/inbounds",
-		map[string]any{"node_id": nodeID}, nil, a.token); err != nil {
+		map[string]any{"node_id": nodeID}, &acc, a.token); err != nil {
 		a.handleAuthError(err)
 		a.setStatus("添加入站失败: " + err.Error())
 		return
 	}
 	a.byID("inbound-add-modal").Call("close")
 	a.editingInboundUserID = ""
-	a.setStatus("入站已添加")
+	a.setStatus("入站已添加，下发中...")
 	a.loadInboundsForUser(userID)
+	if acc.ID != "" {
+		if err := postJSON("/v1/users/"+userID+"/inbounds/"+acc.ID+"/apply", nil, nil, a.token); err != nil {
+			a.setStatus("入站已添加，但下发失败: " + err.Error())
+			return
+		}
+		a.setStatus("入站已添加并下发")
+	}
 }
 
 // bindUserButtons 为用户卡片上的操作按钮绑定事件。
@@ -382,9 +384,10 @@ func (a *app) bindUserButtons() {
 				case "toggle-inbounds":
 					a.toggleInbounds(id)
 				case "copy-sub":
+					subToken := this.Get("dataset").Get("subToken").String()
 					origin := js.Global().Get("window").Get("location").Get("origin").String()
-					subURL := origin + "/sub/" + id
-					js.Global().Get("navigator").Get("clipboard").Call("writeText", subURL)
+					subURL := origin + "/sub/" + subToken
+					js.Global().Call("copyText", subURL)
 					a.setStatus("订阅链接已复制: " + subURL)
 				}
 			}()
