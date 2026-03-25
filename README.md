@@ -124,23 +124,16 @@ sh <(curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/s
 ### 卸载
 
 ```bash
-# 卸载 server（保留数据）
-curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/uninstall.sh | sh -s -- server
-
-# 卸载 node
-curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/uninstall.sh | sh -s -- node
-
-# 同时删除数据库、证书等（不可恢复）
-curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/uninstall.sh | sh -s -- server --purge
+# 一键卸载全部（server、node、Caddy、证书、数据，不可恢复）
+curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/uninstall.sh | sh
 ```
 
 **卸载脚本做的事：**
 
-- 停止并禁用 systemd 服务
-- 删除二进制、配置文件、服务文件
-- server：删除面板静态资源
-- node：删除节点客户端证书
-- 默认**保留**数据目录（`/var/lib/pulse`），`--purge` 一并删除
+- 停止并禁用 pulse-server、pulse-node、Caddy systemd 服务
+- 删除所有二进制、配置文件、服务文件
+- 删除 Caddyfile 及 ACME 证书目录
+- 删除数据目录（`/var/lib/pulse`、`/var/lib/caddy`）
 
 ---
 
