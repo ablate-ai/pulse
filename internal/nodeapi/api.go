@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"pulse/internal/buildinfo"
 	"pulse/internal/certmgr"
 	"pulse/internal/singbox"
 )
@@ -46,7 +47,14 @@ func (a *API) handleRuntime(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
-	writeJSON(w, http.StatusOK, a.manager.RuntimeInfo(ctx))
+	info := a.manager.RuntimeInfo(ctx)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"available":    info.Available,
+		"module":       info.Module,
+		"version":      info.Version,
+		"last_error":   info.LastError,
+		"node_version": buildinfo.Version,
+	})
 }
 
 func (a *API) handleStatus(w http.ResponseWriter, r *http.Request) {

@@ -27,10 +27,11 @@ type ClientOptions struct {
 }
 
 type RuntimeInfo struct {
-	Available bool   `json:"available"`
-	Module    string `json:"module"`
-	Version   string `json:"version,omitempty"`
-	LastError string `json:"last_error,omitempty"`
+	Available   bool   `json:"available"`
+	Module      string `json:"module"`
+	Version     string `json:"version,omitempty"`
+	LastError   string `json:"last_error,omitempty"`
+	NodeVersion string `json:"node_version,omitempty"`
 }
 
 type Status struct {
