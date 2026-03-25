@@ -319,13 +319,26 @@
 
   let _toastTimer;
   function copyText(text) {
-    navigator.clipboard.writeText(text).then(() => {
+    function showToast() {
       const t = document.getElementById("toast");
       t.textContent = "已复制";
       t.classList.add("toast-show");
       clearTimeout(_toastTimer);
       _toastTimer = setTimeout(() => t.classList.remove("toast-show"), 1800);
-    });
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(showToast);
+    } else {
+      const el = document.createElement("textarea");
+      el.value = text;
+      el.style.position = "fixed";
+      el.style.opacity = "0";
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+      showToast();
+    }
   }
 </script>
 </body>
