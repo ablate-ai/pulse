@@ -92,6 +92,7 @@ func (a *app) renderUsers() {
   </div>
   <div class="user-card-actions">
     <button class="btn btn-ghost btn-sm" data-action="toggle-inbounds" data-id="%s">入站</button>
+    <button class="btn btn-ghost btn-sm" data-action="copy-sub" data-id="%s">订阅</button>
     <button class="btn btn-ghost btn-sm" data-action="edit-user" data-id="%s">编辑</button>
     <button class="btn btn-ghost btn-sm btn-danger" data-action="delete-user" data-id="%s">删除</button>
   </div>
@@ -104,6 +105,7 @@ func (a *app) renderUsers() {
 			formatBytesShort(u.UploadBytes), formatBytesShort(u.DownloadBytes),
 			formatBytesShort(u.UsedBytes), formatLimit(u.TrafficLimit),
 			displayTime(u.ExpireAt),
+			escape(u.ID),
 			escape(u.ID),
 			escape(u.ID),
 			escape(u.ID),
@@ -358,7 +360,7 @@ func (a *app) submitAddInbound() {
 // bindUserButtons 为用户卡片上的操作按钮绑定事件。
 func (a *app) bindUserButtons() {
 	buttons := a.document.Call("querySelectorAll",
-		"[data-action='edit-user'], [data-action='delete-user'], [data-action='toggle-inbounds']")
+		"[data-action='edit-user'], [data-action='delete-user'], [data-action='toggle-inbounds'], [data-action='copy-sub']")
 	length := buttons.Get("length").Int()
 	for i := 0; i < length; i++ {
 		button := buttons.Index(i)
@@ -379,6 +381,11 @@ func (a *app) bindUserButtons() {
 					a.loadUsers()
 				case "toggle-inbounds":
 					a.toggleInbounds(id)
+				case "copy-sub":
+					origin := js.Global().Get("window").Get("location").Get("origin").String()
+					subURL := origin + "/sub/" + id
+					js.Global().Get("navigator").Get("clipboard").Call("writeText", subURL)
+					a.setStatus("订阅链接已复制: " + subURL)
 				}
 			}()
 			return nil
