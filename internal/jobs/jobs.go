@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"pulse/internal/nodes"
@@ -209,10 +210,17 @@ type ApplyOptions struct {
 }
 
 // ApplyNodeUsers 根据节点用户列表生成配置并下发到节点。
+// Caddy WS 模式下（SingboxWSLocalPort > 0）同步更新节点上的 Caddy Trojan 路由。
 func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeUsers []users.User, applyOpts ApplyOptions) (nodes.Status, string, error) {
 	active := filterEnabled(nodeUsers)
 	if len(active) == 0 {
 		status, err := client.Stop(ctx)
+		if err == nil && applyOpts.SingboxWSLocalPort > 0 {
+			// 清空该节点所有 Trojan Caddy 路由
+			if syncErr := client.SyncCaddyRoutes(ctx, nil, applyOpts.SingboxWSLocalPort); syncErr != nil {
+				log.Printf("warn: caddy sync (stop): %v", syncErr)
+			}
+		}
 		return status, "", err
 	}
 
@@ -224,7 +232,34 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeUsers []users
 	}
 
 	status, err := client.Restart(ctx, nodes.ConfigRequest{Config: cfg})
-	return status, cfg, err
+	if err != nil {
+		return status, cfg, err
+	}
+
+	// Caddy WS 模式：同步当前生效的 Trojan 域名路由
+	if applyOpts.SingboxWSLocalPort > 0 {
+		domains := collectTrojanDomains(active)
+		if syncErr := client.SyncCaddyRoutes(ctx, domains, applyOpts.SingboxWSLocalPort); syncErr != nil {
+			log.Printf("warn: caddy sync: %v", syncErr)
+		}
+	}
+
+	return status, cfg, nil
+}
+
+// collectTrojanDomains 从用户列表中提取去重后的 Trojan 域名。
+func collectTrojanDomains(userList []users.User) []string {
+	seen := make(map[string]struct{})
+	out := make([]string, 0)
+	for _, u := range userList {
+		if u.Protocol == "trojan" && u.Domain != "" {
+			if _, ok := seen[u.Domain]; !ok {
+				seen[u.Domain] = struct{}{}
+				out = append(out, u.Domain)
+			}
+		}
+	}
+	return out
 }
 
 func filterEnabled(items []users.User) []users.User {

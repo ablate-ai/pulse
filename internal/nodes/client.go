@@ -223,6 +223,15 @@ func (c *Client) EnsureCert(ctx context.Context, domain string) (CertPaths, erro
 	return out, err
 }
 
+// SyncCaddyRoutes 同步节点上的 Caddy Trojan 路由表。
+// domains 为当前生效的 Trojan 域名列表，缺失的旧域名文件会被删除。
+func (c *Client) SyncCaddyRoutes(ctx context.Context, domains []string, wsPort int) error {
+	return c.do(ctx, http.MethodPost, "/v1/node/caddy/sync", map[string]any{
+		"domains": domains,
+		"ws_port": wsPort,
+	}, nil)
+}
+
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
 	if c.initErr != nil {
 		return fmt.Errorf("configure node client: %w", c.initErr)
