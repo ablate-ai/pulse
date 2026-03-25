@@ -179,6 +179,42 @@
   </main>
 </div><!-- /shell -->
 
+<!-- ─── Node Logs Modal ────────────────────────────────── -->
+<dialog id="node-logs-modal" class="modal">
+  <div class="modal-box modal-box-lg">
+    <div class="modal-head">
+      <h3 class="modal-title">节点日志</h3>
+      <button id="node-logs-modal-close" type="button" class="btn-icon">✕</button>
+    </div>
+    <pre id="node-logs-content" class="logs-content"></pre>
+  </div>
+</dialog>
+
+<!-- ─── Node Edit Modal ────────────────────────────────── -->
+<dialog id="node-edit-modal" class="modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3 class="modal-title">编辑节点</h3>
+      <button id="node-edit-modal-close" type="button" class="btn-icon">✕</button>
+    </div>
+    <form id="node-edit-form" class="form-stack">
+      <input type="hidden" id="edit-node-id">
+      <div class="field-group">
+        <label class="field-label">节点名称</label>
+        <input id="edit-node-name" placeholder="节点名称" required>
+      </div>
+      <div class="field-group">
+        <label class="field-label">节点地址</label>
+        <input id="edit-node-url" placeholder="https://127.0.0.1:8081" required>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="node-edit-modal-cancel" class="btn btn-ghost">取消</button>
+        <button type="submit" class="btn btn-primary">保存</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
 <!-- ─── Edit User Modal ────────────────────────────────── -->
 <dialog id="edit-modal" class="modal">
   <div class="modal-box">

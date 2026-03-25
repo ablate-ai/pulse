@@ -51,6 +51,10 @@ func postJSON(path string, payload any, out any, token string) error {
 	return doRequest(http.MethodPost, path, payload, out, token)
 }
 
+func putJSON(path string, payload any, out any, token string) error {
+	return doRequest(http.MethodPut, path, payload, out, token)
+}
+
 func doRequest(method, path string, payload any, out any, token string) error {
 	var body io.Reader
 	if payload != nil {

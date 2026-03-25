@@ -75,6 +75,27 @@ func (a *app) bind() {
 		}))
 	}
 
+	// 节点日志 modal
+	a.byID("node-logs-modal-close").Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
+		a.byID("node-logs-modal").Call("close")
+		return nil
+	}))
+
+	// 节点编辑 modal
+	a.byID("node-edit-form").Call("addEventListener", "submit", js.FuncOf(func(this js.Value, args []js.Value) any {
+		args[0].Call("preventDefault")
+		go a.submitEditNode()
+		return nil
+	}))
+	a.byID("node-edit-modal-close").Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
+		a.byID("node-edit-modal").Call("close")
+		return nil
+	}))
+	a.byID("node-edit-modal-cancel").Call("addEventListener", "click", js.FuncOf(func(this js.Value, args []js.Value) any {
+		a.byID("node-edit-modal").Call("close")
+		return nil
+	}))
+
 	// 路由导航
 	links := a.document.Call("querySelectorAll", "[data-route]")
 	for i := 0; i < links.Get("length").Int(); i++ {
