@@ -64,6 +64,7 @@ func (a *app) loadNodes() {
   </div>
   <div class="node-card-url">%s</div>
   <div id="node-usage-%s" class="node-card-usage"></div>
+  <div id="node-version-%s" class="node-card-version"></div>
   <div class="node-card-actions">
     <button class="btn btn-ghost btn-sm" data-action="inbounds-node" data-id="%s">入站</button>
     <button class="btn btn-ghost btn-sm" data-action="apply-node" data-id="%s">下发</button>
@@ -79,7 +80,7 @@ func (a *app) loadNodes() {
 			escape(n.BaseURL),
 			escape(n.ID),
 			escape(n.ID),
-			escape(n.ID), escape(n.ID), escape(n.ID), escape(n.ID), escape(n.ID), escape(n.ID),
+			escape(n.ID), escape(n.ID), escape(n.ID), escape(n.ID), escape(n.ID), escape(n.ID), escape(n.ID),
 		))
 
 		option := a.document.Call("createElement", "option")
@@ -91,7 +92,7 @@ func (a *app) loadNodes() {
 	a.bindNodeButtons()
 	a.setStatus(fmt.Sprintf("已加载 %d 个节点", len(resp.Nodes)))
 
-	// 异步刷新各节点运行状态和流量统计
+	// 异步刷新各节点运行状态、流量统计和版本信息
 	for _, n := range resp.Nodes {
 		go func(nodeID string) {
 			var usage nodeUsage
@@ -107,6 +108,22 @@ func (a *app) loadNodes() {
 					formatBytes(usage.UploadTotal),
 					formatBytes(usage.DownloadTotal),
 					usage.Connections,
+				))
+			}
+
+			var rt struct {
+				Version     string `json:"version"`
+				NodeVersion string `json:"node_version"`
+			}
+			if err := getJSON("/v1/nodes/"+nodeID+"/runtime", &rt, a.token); err != nil {
+				return
+			}
+			if rt.NodeVersion != "" || rt.Version != "" {
+				versionEl := a.byID("node-version-" + nodeID)
+				versionEl.Set("innerHTML", fmt.Sprintf(
+					`<span class="node-stat">node %s</span><span class="node-stat">sing-box %s</span>`,
+					escape(rt.NodeVersion),
+					escape(rt.Version),
 				))
 			}
 		}(n.ID)

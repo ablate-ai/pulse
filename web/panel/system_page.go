@@ -15,6 +15,8 @@ func (a *app) loadSystemInfo() {
 		TotalUsedBytes     int64          `json:"total_used_bytes"`
 		LimitedUsersCount  int            `json:"limited_users_count"`
 		DisabledUsersCount int            `json:"disabled_users_count"`
+		Version            string         `json:"version"`
+		Commit             string         `json:"commit"`
 	}
 	if err := getJSON("/v1/system/info", &resp, a.token); err != nil {
 		a.handleAuthError(err)
@@ -55,7 +57,8 @@ func (a *app) loadSystemInfo() {
 			<p class="meta">活跃用户</p>
 			<strong>%d</strong>
 		</article>
-		<p class="meta overview-meta-row">限速 %d · 停用 %d · 协议: %s</p>`,
+		<p class="meta overview-meta-row">限速 %d · 停用 %d · 协议: %s</p>
+	<p class="meta overview-meta-row">server %s</p>`,
 		resp.NodesCount,
 		resp.UsersCount,
 		formatBytes(resp.TotalUsedBytes),
@@ -63,6 +66,7 @@ func (a *app) loadSystemInfo() {
 		resp.LimitedUsersCount,
 		resp.DisabledUsersCount,
 		escape(protoStr),
+		escape(resp.Version),
 	))
 	a.loadNodeInstallInfo()
 }
