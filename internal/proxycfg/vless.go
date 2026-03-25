@@ -98,7 +98,7 @@ func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.Us
 			if !ok {
 				continue
 			}
-			userList = append(userList, buildInboundUser(ib.Protocol, acc, u.Username))
+			userList = append(userList, buildInboundUser(ib, acc, u.Username))
 		}
 
 		blocks = append(blocks, inboundBlock{
@@ -141,18 +141,22 @@ func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.Us
 	return string(data), nil
 }
 
-func buildInboundUser(protocol string, acc users.UserInbound, username string) map[string]any {
-	switch protocol {
+func buildInboundUser(ib inbounds.Inbound, acc users.UserInbound, username string) map[string]any {
+	switch ib.Protocol {
 	case "trojan", "shadowsocks":
 		return map[string]any{
 			"name":     username,
 			"password": acc.Secret,
 		}
 	default: // vless, vmess
-		return map[string]any{
+		user := map[string]any{
 			"uuid": acc.UUID,
 			"name": username,
 		}
+		if ib.Protocol == "vless" && ib.Security == "reality" {
+			user["flow"] = "xtls-rprx-vision"
+		}
+		return user
 	}
 }
 
