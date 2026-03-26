@@ -214,9 +214,6 @@ run_as_root mkdir -p "$bin_dir" "$etc_dir" "$share_dir" "$lib_dir" "$state_dir"
 run_as_root install -m 0755 "${package_dir}/bin/pulse-${component}" "${bin_dir}/pulse-${component}"
 
 if [ "$component" = "server" ]; then
-  run_as_root mkdir -p "${share_dir}/web"
-  run_as_root rm -rf "${share_dir}/web/panel"
-  run_as_root cp -R "${package_dir}/share/pulse/web/panel" "${share_dir}/web/panel"
   env_target="${etc_dir}/pulse-server.env"
   is_new_install=0
   if [ ! -f "$env_target" ]; then
