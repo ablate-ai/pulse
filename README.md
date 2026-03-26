@@ -6,40 +6,37 @@ Go 重写版 Marzban + Marzban-node，控制面与节点统一在单一仓库。
 
 ```text
 .
-├── cmd/pulse-server      # 控制面入口
-├── cmd/pulse-node        # 节点入口
-├── internal/server       # 控制面 HTTP 服务
-├── internal/serverapi    # 控制面 REST API
-├── internal/nodes        # 节点 store 与 RPC client
-├── internal/users        # 用户模型与 store
-├── internal/inbounds     # inbound / host 模型与 store
-├── internal/jobs         # 后台调度任务
-├── internal/proxycfg     # sing-box 配置生成
-├── internal/subscription # 订阅 URL 生成
-├── internal/store/sqlite # SQLite 持久化
-├── web/panel             # 前端静态资源（WASM）
-├── scripts/install.sh    # 生产安装脚本
-├── scripts/uninstall.sh  # 卸载脚本
-└── scripts/setup-caddy.sh # Caddy 反代配置脚本（A2 架构）
+├── cmd/pulse-server          # 控制面入口
+├── cmd/pulse-node            # 节点入口
+├── internal/server           # 控制面 HTTP 服务
+├── internal/serverapi        # 控制面 REST API
+├── internal/panel            # 管理面板（HTMX + Tailwind 服务端渲染）
+│   └── templates/            # HTML 模板
+├── internal/nodes            # 节点 store 与 RPC client
+├── internal/users            # 用户模型与 store
+├── internal/inbounds         # inbound / host 模型与 store
+├── internal/jobs             # 后台调度任务
+├── internal/proxycfg         # sing-box 配置生成
+├── internal/subscription     # 订阅 URL 生成
+├── internal/store/sqlite     # SQLite 持久化
+├── scripts/install.sh        # 生产安装脚本
+├── scripts/uninstall.sh      # 卸载脚本
+└── scripts/setup-caddy.sh    # Caddy 反代配置脚本
 ```
 
 ## 开发
 
 ```bash
-# 编译前端 WASM
-make wasm
+# 同时编译并启动 server + node（热重启）
+make dev
 
-# 启动控制面（自动编译 wasm + server）
-make run-server
-
-# 启动节点
-make run-node
-
-# 运行测试
+# 仅运行测试
 make test
 ```
 
-默认控制面访问地址：`http://localhost:8080`（账号 `admin` / `admin123`）
+默认控制面访问地址：`http://localhost:8080`（账号 `admin` / 密码 `admin123`）
+
+> `make dev` 使用硬编码的开发凭据，生产环境请使用安装脚本。
 
 ## 发布新版本
 
@@ -54,11 +51,20 @@ make release
 ### 1. 安装 server
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
-  PULSE_ADMIN_PASSWORD='your-password' sh -s -- server
+curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | sh -s -- server
 ```
 
-安装完成后服务自动启动，面板地址：`http://<IP>:8080`
+首次安装会随机生成管理员密码并在安装结束时打印：
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  面板地址: http://<IP>:<PORT>
+  管理员:   admin
+  密码:     <随机生成>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+登录后可在「Settings」页面修改密码，修改结果持久化到数据库，重启后依然有效。
 
 如需修改端口或其他配置：
 
