@@ -280,19 +280,24 @@ echo ""
 echo "安装完成: pulse-${component}"
 echo "配置文件: ${env_target}"
 echo "工作目录: ${state_dir}"
-if [ "$component" = "server" ] && [ "${is_new_install:-0}" = "1" ]; then
+if [ "$component" = "server" ]; then
+  # 从 env 文件读取实际值
+  _panel_domain="$(grep '^PULSE_PANEL_DOMAIN=' "$env_target" 2>/dev/null | cut -d= -f2- | tr -d "'" | tr -d '"')"
+  _addr="$(grep '^PULSE_SERVER_ADDR=' "$env_target" 2>/dev/null | cut -d= -f2- | tr -d "'" | tr -d '"')"
+  _username="$(grep '^PULSE_ADMIN_USERNAME=' "$env_target" 2>/dev/null | cut -d= -f2- | tr -d "'" | tr -d '"')"
+  _password="$(grep '^PULSE_ADMIN_PASSWORD=' "$env_target" 2>/dev/null | cut -d= -f2- | tr -d "'" | tr -d '"')"
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  if [ -n "${PULSE_PANEL_DOMAIN:-}" ]; then
-    echo "  面板地址: https://${PULSE_PANEL_DOMAIN}"
+  if [ -n "${_panel_domain:-}" ]; then
+    echo "  面板地址: https://${_panel_domain}"
   else
-    _port="${PULSE_SERVER_ADDR#:}"
+    _port="${_addr#:}"
     _ip="$(ip -4 addr show scope global 2>/dev/null | awk '/inet/{gsub(/\/.*/, "", $2); print $2; exit}' \
           || hostname -I 2>/dev/null | awk '{print $1}' \
           || echo "<your-ip>")"
     echo "  面板地址: http://${_ip}:${_port}"
   fi
-  echo "  管理员:   ${PULSE_ADMIN_USERNAME:-admin}"
-  echo "  密码:     ${PULSE_ADMIN_PASSWORD}"
+  echo "  管理员:   ${_username:-admin}"
+  echo "  密码:     ${_password:-(见 ${env_target})}"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 fi
