@@ -51,7 +51,11 @@ make release
 ### 1. 安装 server
 
 ```bash
+# 安装最新版
 curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | sh -s -- server
+
+# 安装指定版本
+curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | sh -s -- server v0.1.18
 ```
 
 首次安装会随机生成管理员密码并在安装结束时打印：
@@ -80,7 +84,11 @@ systemctl restart pulse-server
 ### 3. 在 node 机器上安装 node
 
 ```bash
+# 安装最新版
 curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | sh -s -- node
+
+# 安装指定版本
+curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | sh -s -- node v0.1.18
 ```
 
 执行后脚本会提示粘贴证书，把第 2 步复制的 PEM 内容粘贴进去，读到 `-----END CERTIFICATE-----` 后自动继续。
