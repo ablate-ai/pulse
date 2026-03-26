@@ -1,24 +1,65 @@
 {{define "partial-stats"}}
-<div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-    <div class="text-2xl font-bold text-gray-100">{{.Data.UsersCount}}</div>
-    <div class="text-xs text-gray-500 mt-1">用户总数</div>
+<div class="space-y-4">
+  <!-- 系统资源 -->
+  <div class="grid grid-cols-2 gap-4">
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <div class="flex items-end justify-between mb-2">
+        <div class="text-xs text-gray-500">CPU</div>
+        <div class="text-xl font-bold text-gray-100">{{printf "%.1f" .Data.CPUPercent}}<span class="text-sm font-normal text-gray-500 ml-0.5">%</span></div>
+      </div>
+      <div class="w-full bg-gray-800 rounded-full h-1.5">
+        <div class="bg-indigo-500 h-1.5 rounded-full transition-all" style="width: {{printf "%.1f" .Data.CPUPercent}}%"></div>
+      </div>
+    </div>
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <div class="flex items-end justify-between mb-2">
+        <div class="text-xs text-gray-500">内存</div>
+        <div class="text-xl font-bold text-gray-100">{{formatBytes .Data.MemUsedBytes}}<span class="text-sm font-normal text-gray-500 ml-1">/ {{formatBytes .Data.MemTotalBytes}}</span></div>
+      </div>
+      <div class="w-full bg-gray-800 rounded-full h-1.5">
+        <div class="bg-emerald-500 h-1.5 rounded-full transition-all" style="width: {{trafficPct .Data.MemUsedBytes .Data.MemTotalBytes}}%"></div>
+      </div>
+    </div>
   </div>
-  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-    <div class="text-2xl font-bold text-gray-100">{{.Data.NodesCount}}</div>
-    <div class="text-xs text-gray-500 mt-1">节点数</div>
+
+  <!-- 用户状态 -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <div class="text-2xl font-bold text-emerald-400">{{.Data.ActiveUsersCount}}</div>
+      <div class="text-xs text-gray-500 mt-1">活跃用户</div>
+    </div>
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <div class="text-2xl font-bold text-yellow-400">{{.Data.LimitedUsersCount}}</div>
+      <div class="text-xs text-gray-500 mt-1">流量超限</div>
+    </div>
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <div class="text-2xl font-bold text-red-400">{{.Data.ExpiredUsersCount}}</div>
+      <div class="text-xs text-gray-500 mt-1">已过期</div>
+    </div>
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <div class="text-2xl font-bold text-gray-500">{{.Data.DisabledUsersCount}}</div>
+      <div class="text-xs text-gray-500 mt-1">已禁用</div>
+    </div>
   </div>
-  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-    <div class="text-2xl font-bold text-gray-100">{{formatBytes .Data.TotalUsedBytes}}</div>
-    <div class="text-xs text-gray-500 mt-1">总流量消耗</div>
-  </div>
-  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-    <div class="text-2xl font-bold text-yellow-400">{{.Data.LimitedUsersCount}}</div>
-    <div class="text-xs text-gray-500 mt-1">流量超限</div>
-  </div>
-  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-    <div class="text-2xl font-bold text-gray-500">{{.Data.DisabledUsersCount}}</div>
-    <div class="text-xs text-gray-500 mt-1">已禁用</div>
+
+  <!-- 流量 & 节点 -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <div class="text-2xl font-bold text-gray-100">{{formatBytes .Data.TotalUsedBytes}}</div>
+      <div class="text-xs text-gray-500 mt-1">总流量消耗</div>
+    </div>
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <div class="text-2xl font-bold text-sky-400">{{formatBytes .Data.TotalUploadBytes}}</div>
+      <div class="text-xs text-gray-500 mt-1">上行流量</div>
+    </div>
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <div class="text-2xl font-bold text-violet-400">{{formatBytes .Data.TotalDownloadBytes}}</div>
+      <div class="text-xs text-gray-500 mt-1">下行流量</div>
+    </div>
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <div class="text-2xl font-bold text-gray-100">{{.Data.NodesCount}} <span class="text-sm font-normal text-gray-500">节点</span></div>
+      <div class="text-xs text-gray-500 mt-1">共 {{.Data.UsersCount}} 用户</div>
+    </div>
   </div>
 </div>
 {{end}}

@@ -15,7 +15,8 @@ func TestBuild(t *testing.T) {
 	_, _ = nodeStore.Upsert(nodes.Node{ID: "node-2", Name: "node-2", BaseURL: "http://127.0.0.1:8082"})
 
 	_, _ = userStore.UpsertUser(users.User{ID: "u1", Username: "alice", Status: users.StatusActive, UploadBytes: 10, DownloadBytes: 20})
-	_, _ = userStore.UpsertUser(users.User{ID: "u2", Username: "bob", Status: users.StatusActive, TrafficLimit: 100, UploadBytes: 30, DownloadBytes: 40})
+	// bob 超限（UsedBytes=80 >= TrafficLimit=70）
+	_, _ = userStore.UpsertUser(users.User{ID: "u2", Username: "bob", Status: users.StatusActive, TrafficLimit: 70, UploadBytes: 30, DownloadBytes: 50})
 	_, _ = userStore.UpsertUser(users.User{ID: "u3", Username: "carol", Status: users.StatusDisabled, TrafficLimit: 50, UploadBytes: 30, DownloadBytes: 30})
 
 	_, _ = userStore.UpsertUserInbound(users.UserInbound{ID: "u1-ib0", UserID: "u1", NodeID: "node-1", UUID: "uuid-alice", Secret: "secret-alice"})
@@ -30,10 +31,10 @@ func TestBuild(t *testing.T) {
 	if summary.NodesCount != 2 || summary.UsersCount != 3 {
 		t.Fatalf("unexpected counts: %#v", summary)
 	}
-	if summary.TotalUploadBytes != 70 || summary.TotalDownloadBytes != 90 || summary.TotalUsedBytes != 160 {
+	if summary.TotalUploadBytes != 70 || summary.TotalDownloadBytes != 100 || summary.TotalUsedBytes != 170 {
 		t.Fatalf("unexpected byte totals: %#v", summary)
 	}
-	if summary.LimitedUsersCount != 2 || summary.DisabledUsersCount != 1 {
-		t.Fatalf("unexpected limited/disabled counts: %#v", summary)
+	if summary.ActiveUsersCount != 1 || summary.LimitedUsersCount != 1 || summary.DisabledUsersCount != 1 || summary.ExpiredUsersCount != 0 {
+		t.Fatalf("unexpected status counts: %#v", summary)
 	}
 }

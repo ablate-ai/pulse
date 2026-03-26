@@ -18,11 +18,13 @@ import (
 	"pulse/internal/panel"
 	"pulse/internal/serverapi"
 	sqliteStore "pulse/internal/store/sqlite"
+	"pulse/internal/sysinfo"
 	"pulse/internal/usage"
 	"pulse/internal/users"
 )
 
 func Run() error {
+	sysinfo.Start()
 	cfg := config.Load()
 	if err := cert.EnsureSelfSignedKeyPair(cfg.ServerNodeClientCertFile, cfg.ServerNodeClientKeyFile, "pulse-server-node-client"); err != nil {
 		return err
@@ -96,14 +98,16 @@ func Run() error {
 			"addr":                 cfg.ServerAddr,
 			"nodes_count":          summary.NodesCount,
 			"users_count":          summary.UsersCount,
-			"protocols":            summary.Protocols,
-			"total_apply_count":    summary.TotalApplyCount,
 			"total_upload_bytes":   summary.TotalUploadBytes,
 			"total_download_bytes": summary.TotalDownloadBytes,
 			"total_used_bytes":     summary.TotalUsedBytes,
+			"active_users_count":   summary.ActiveUsersCount,
 			"limited_users_count":  summary.LimitedUsersCount,
 			"disabled_users_count": summary.DisabledUsersCount,
-			"last_applied_at":      summary.LastAppliedAt,
+			"expired_users_count":  summary.ExpiredUsersCount,
+			"cpu_percent":          summary.CPUPercent,
+			"mem_used_bytes":       summary.MemUsedBytes,
+			"mem_total_bytes":      summary.MemTotalBytes,
 		})
 	})
 	// 公开订阅端点，无需认证

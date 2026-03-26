@@ -1,23 +1,32 @@
 package usage
 
 import (
-	"time"
-
 	"pulse/internal/nodes"
+	"pulse/internal/sysinfo"
 	"pulse/internal/users"
 )
 
+// Summary 仪表盘统计摘要。
 type Summary struct {
-	NodesCount         int            `json:"nodes_count"`
-	UsersCount         int            `json:"users_count"`
-	Protocols          map[string]int `json:"protocols"`
-	TotalApplyCount    int            `json:"total_apply_count"`
-	TotalUploadBytes   int64          `json:"total_upload_bytes"`
-	TotalDownloadBytes int64          `json:"total_download_bytes"`
-	TotalUsedBytes     int64          `json:"total_used_bytes"`
-	LimitedUsersCount  int            `json:"limited_users_count"`
-	DisabledUsersCount int            `json:"disabled_users_count"`
-	LastAppliedAt      time.Time      `json:"last_applied_at,omitempty"`
+	// 系统资源
+	CPUPercent    float64 `json:"cpu_percent"`
+	MemTotalBytes int64   `json:"mem_total_bytes"`
+	MemUsedBytes  int64   `json:"mem_used_bytes"`
+
+	// 节点
+	NodesCount int `json:"nodes_count"`
+
+	// 用户（按有效状态分组）
+	UsersCount         int `json:"users_count"`
+	ActiveUsersCount   int `json:"active_users_count"`
+	DisabledUsersCount int `json:"disabled_users_count"`
+	ExpiredUsersCount  int `json:"expired_users_count"`
+	LimitedUsersCount  int `json:"limited_users_count"`
+
+	// 流量
+	TotalUploadBytes   int64 `json:"total_upload_bytes"`
+	TotalDownloadBytes int64 `json:"total_download_bytes"`
+	TotalUsedBytes     int64 `json:"total_used_bytes"`
 }
 
 func Build(nodeStore nodes.Store, userStore users.Store) (Summary, error) {
@@ -31,23 +40,32 @@ func Build(nodeStore nodes.Store, userStore users.Store) (Summary, error) {
 		return Summary{}, err
 	}
 
-	summary := Summary{
-		NodesCount: len(nodesList),
-		UsersCount: len(usersList),
-		Protocols:  make(map[string]int),
+	sys := sysinfo.Get()
+
+	s := Summary{
+		CPUPercent:    sys.CPUPercent,
+		MemTotalBytes: sys.MemTotalBytes,
+		MemUsedBytes:  sys.MemUsedBytes,
+		NodesCount:    len(nodesList),
+		UsersCount:    len(usersList),
 	}
 
-	for _, user := range usersList {
-		summary.TotalUploadBytes += user.UploadBytes
-		summary.TotalDownloadBytes += user.DownloadBytes
-		summary.TotalUsedBytes += user.UsedBytes
-		if user.TrafficLimit > 0 {
-			summary.LimitedUsersCount++
-		}
-		if !user.EffectiveEnabled() {
-			summary.DisabledUsersCount++
+	for _, u := range usersList {
+		s.TotalUploadBytes += u.UploadBytes
+		s.TotalDownloadBytes += u.DownloadBytes
+		s.TotalUsedBytes += u.UsedBytes
+
+		switch u.EffectiveStatus() {
+		case users.StatusActive:
+			s.ActiveUsersCount++
+		case users.StatusDisabled:
+			s.DisabledUsersCount++
+		case users.StatusExpired:
+			s.ExpiredUsersCount++
+		case users.StatusLimited:
+			s.LimitedUsersCount++
 		}
 	}
 
-	return summary, nil
+	return s, nil
 }
