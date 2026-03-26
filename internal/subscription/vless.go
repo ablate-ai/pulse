@@ -20,15 +20,21 @@ func Link(nodeInbound inbounds.Inbound, host inbounds.Host, access users.UserInb
 		port = nodeInbound.Port
 	}
 
+	// 节点显示名称：优先用 Inbound Tag，否则用连接地址
+	name := nodeInbound.Tag
+	if name == "" {
+		name = addr
+	}
+
 	switch nodeInbound.Protocol {
 	case "vmess":
-		return vmessLink(nodeInbound, host, access, user.Username, addr, port)
+		return vmessLink(nodeInbound, host, access, name, addr, port)
 	case "trojan":
-		return trojanLink(nodeInbound, host, access, user.Username, addr, port)
+		return trojanLink(nodeInbound, host, access, name, addr, port)
 	case "shadowsocks":
-		return shadowsocksLink(nodeInbound, host, access, user.Username, addr, port)
+		return shadowsocksLink(nodeInbound, host, access, name, addr, port)
 	default: // vless
-		return vlessLink(nodeInbound, host, access, user.Username, addr, port)
+		return vlessLink(nodeInbound, host, access, name, addr, port)
 	}
 }
 
