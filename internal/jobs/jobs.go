@@ -79,10 +79,17 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			prevEnabled := user.EffectiveEnabled()
 
 			if stats, ok := usageByUser[user.Username]; ok {
-				user.UploadBytes += usageDelta(stats.UploadTotal, acc.SyncedUploadBytes)
-				user.DownloadBytes += usageDelta(stats.DownloadTotal, acc.SyncedDownloadBytes)
+				uploadDelta := usageDelta(stats.UploadTotal, acc.SyncedUploadBytes)
+				downloadDelta := usageDelta(stats.DownloadTotal, acc.SyncedDownloadBytes)
+				user.UploadBytes += uploadDelta
+				user.DownloadBytes += downloadDelta
 				acc.SyncedUploadBytes = stats.UploadTotal
 				acc.SyncedDownloadBytes = stats.DownloadTotal
+				// 有新增流量则更新在线时间
+				if uploadDelta > 0 || downloadDelta > 0 {
+					now := time.Now().UTC()
+					user.OnlineAt = &now
+				}
 				// 保存更新后的游标
 				if _, err := store.UpsertUserInbound(acc); err != nil {
 					result.Errors = append(result.Errors, node.ID+": "+err.Error())

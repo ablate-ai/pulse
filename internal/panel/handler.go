@@ -1080,6 +1080,23 @@ func templateFuncs() template.FuncMap {
 			}
 			return t.Format("2006-01-02")
 		},
+		// formatOnlineAt 格式化最后在线时间，nil 表示从未在线。
+		"formatOnlineAt": func(t *time.Time) string {
+			if t == nil || t.IsZero() {
+				return ""
+			}
+			d := time.Since(*t)
+			switch {
+			case d < time.Minute:
+				return "刚刚"
+			case d < time.Hour:
+				return fmt.Sprintf("%d 分钟前", int(d.Minutes()))
+			case d < 24*time.Hour:
+				return fmt.Sprintf("%d 小时前", int(d.Hours()))
+			default:
+				return t.Format("01-02 15:04")
+			}
+		},
 		// statusClass 根据用户状态返回对应 Tailwind CSS class。
 		"statusClass": func(s string) string {
 			switch s {

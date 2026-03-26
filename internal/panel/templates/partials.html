@@ -87,6 +87,9 @@
     </div>
   </td>
   <td class="px-4 py-3 text-sm text-gray-400">{{formatExpire .ExpireAt}}</td>
+  <td class="px-4 py-3 text-xs text-gray-500">
+    {{if formatOnlineAt .OnlineAt}}<span class="text-emerald-500/80">● </span>{{formatOnlineAt .OnlineAt}}{{else}}<span class="text-gray-600">从未</span>{{end}}
+  </td>
   <td class="px-4 py-3">
     <div class="flex items-center gap-1">
       <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
@@ -109,7 +112,7 @@
   </td>
 </tr>
 {{else}}
-<tr><td colspan="6" class="px-4 py-10 text-center text-sm text-gray-500">暂无用户</td></tr>
+<tr><td colspan="7" class="px-4 py-10 text-center text-sm text-gray-500">暂无用户</td></tr>
 {{end}}
 {{end}}
 

@@ -37,6 +37,7 @@ type User struct {
 	DownloadBytes          int64      `json:"download_bytes"`
 	UsedBytes              int64      `json:"used_bytes"`
 	LastTrafficResetAt     *time.Time `json:"last_traffic_reset_at,omitempty"`
+	OnlineAt               *time.Time `json:"online_at,omitempty"`
 	CreatedAt              time.Time  `json:"created_at"`
 	SubToken               string     `json:"sub_token,omitempty"`
 }

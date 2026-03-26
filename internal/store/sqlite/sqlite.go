@@ -102,6 +102,7 @@ func (db *DB) init() error {
 			download_bytes INTEGER NOT NULL DEFAULT 0,
 			used_bytes INTEGER NOT NULL DEFAULT 0,
 			last_traffic_reset_at TEXT,
+			online_at TEXT,
 			created_at TEXT NOT NULL
 		);`,
 		// user_inbounds：用户对节点的访问凭据（一条记录对应一个 user+node 对）
@@ -212,6 +213,12 @@ func (db *DB) migrateUsersTable() error {
 	if _, ok := columns["note"]; !ok {
 		if _, err := db.conn.Exec(`ALTER TABLE users ADD COLUMN note TEXT NOT NULL DEFAULT ''`); err != nil {
 			return fmt.Errorf("migrate users add note: %w", err)
+		}
+	}
+
+	if _, ok := columns["online_at"]; !ok {
+		if _, err := db.conn.Exec(`ALTER TABLE users ADD COLUMN online_at TEXT`); err != nil {
+			return fmt.Errorf("migrate users add online_at: %w", err)
 		}
 	}
 
@@ -352,6 +359,7 @@ func (db *DB) rebuildUsersTable(columns map[string]struct{}) error {
 			download_bytes INTEGER NOT NULL DEFAULT 0,
 			used_bytes INTEGER NOT NULL DEFAULT 0,
 			last_traffic_reset_at TEXT,
+			online_at TEXT,
 			created_at TEXT NOT NULL,
 			sub_token TEXT NOT NULL DEFAULT ''
 		)
