@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -17,11 +18,18 @@ type SessionStore interface {
 	Delete(token string) error
 }
 
+// SettingsStore 用于持久化管理员密码等认证配置。
+type SettingsStore interface {
+	GetSetting(key string) (string, bool)
+	SetSetting(key, value string) error
+}
+
 type Manager struct {
 	mu       sync.RWMutex
 	username string
 	password string
 	sessions SessionStore
+	settings SettingsStore
 }
 
 type loginRequest struct {
@@ -29,12 +37,20 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-func NewManager(username, password string, sessions SessionStore) *Manager {
-	return &Manager{
+func NewManager(username, password string, sessions SessionStore, settings SettingsStore) *Manager {
+	m := &Manager{
 		username: username,
 		password: password,
 		sessions: sessions,
+		settings: settings,
 	}
+	// 优先使用数据库中持久化的密码（用户通过面板修改后写入）
+	if settings != nil {
+		if pw, ok := settings.GetSetting("admin_password"); ok && pw != "" {
+			m.password = pw
+		}
+	}
+	return m
 }
 
 func (m *Manager) Middleware(next http.Handler) http.Handler {
@@ -105,7 +121,7 @@ func (m *Manager) valid(token string) bool {
 	return ok
 }
 
-// ChangePassword 校验旧密码后更新密码（内存生效，重启后恢复为环境变量值）。
+// ChangePassword 校验旧密码后更新密码，同时持久化到数据库。
 func (m *Manager) ChangePassword(current, newPw string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -114,6 +130,11 @@ func (m *Manager) ChangePassword(current, newPw string) error {
 	}
 	if len(newPw) < 6 {
 		return errors.New("新密码至少 6 位")
+	}
+	if m.settings != nil {
+		if err := m.settings.SetSetting("admin_password", newPw); err != nil {
+			return fmt.Errorf("保存密码失败: %w", err)
+		}
 	}
 	m.password = newPw
 	return nil

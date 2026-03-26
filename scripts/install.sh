@@ -289,7 +289,11 @@ if [ "$component" = "server" ] && [ "${is_new_install:-0}" = "1" ]; then
   if [ -n "${PULSE_PANEL_DOMAIN:-}" ]; then
     echo "  面板地址: https://${PULSE_PANEL_DOMAIN}"
   else
-    echo "  面板地址: http://<IP>${PULSE_SERVER_ADDR}"
+    _port="${PULSE_SERVER_ADDR#:}"
+    _ip="$(ip -4 addr show scope global 2>/dev/null | awk '/inet/{gsub(/\/.*/, "", $2); print $2; exit}' \
+          || hostname -I 2>/dev/null | awk '{print $1}' \
+          || echo "<your-ip>")"
+    echo "  面板地址: http://${_ip}:${_port}"
   fi
   echo "  管理员:   ${PULSE_ADMIN_USERNAME:-admin}"
   echo "  密码:     ${PULSE_ADMIN_PASSWORD}"

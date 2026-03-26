@@ -41,7 +41,7 @@ func (s *memSessionStore) Delete(token string) error {
 }
 
 func TestLoginMeLogout(t *testing.T) {
-	manager := NewManager("admin", "secret", newMemStore())
+	manager := NewManager("admin", "secret", newMemStore(), nil)
 
 	loginBody := []byte(`{"username":"admin","password":"secret"}`)
 	req := httptest.NewRequest(http.MethodPost, "/v1/auth/login", bytes.NewReader(loginBody))

@@ -574,7 +574,7 @@ func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, `<div class="text-sm text-emerald-400 py-2">密码已更新（重启后恢复为环境变量值）</div>`)
+	fmt.Fprint(w, `<div class="text-sm text-emerald-400 py-2">密码已更新并持久化</div>`)
 }
 
 // renderUsersListFromStore 从 store 拉取最新用户列表并渲染 partial。

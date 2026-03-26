@@ -36,7 +36,7 @@ func Run() error {
 	var store nodes.Store = db.NodeStore()
 	var userStore users.Store = db.UserStore()
 	var inboundStore inbounds.InboundStore = db.InboundStore()
-	authManager := auth.NewManager(cfg.AdminUsername, cfg.AdminPassword, db.SessionStore())
+	authManager := auth.NewManager(cfg.AdminUsername, cfg.AdminPassword, db.SessionStore(), db.SettingsStore())
 	clientOptions := nodes.ClientOptions{
 		ClientCertFile: cfg.ServerNodeClientCertFile,
 		ClientKeyFile:  cfg.ServerNodeClientKeyFile,

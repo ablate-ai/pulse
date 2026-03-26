@@ -42,6 +42,10 @@ func (db *DB) SessionStore() *SessionStore {
 	return &SessionStore{db: db.conn}
 }
 
+func (db *DB) SettingsStore() *SettingsStore {
+	return &SettingsStore{db: db.conn}
+}
+
 func (db *DB) init() error {
 	stmts := []string{
 		// inbounds：节点上的监听入站，含服务端 TLS/Reality 配置
@@ -118,6 +122,11 @@ func (db *DB) init() error {
 			token      TEXT PRIMARY KEY,
 			username   TEXT NOT NULL,
 			created_at TEXT NOT NULL
+		);`,
+		// settings：系统配置 KV 表（如持久化管理员密码）
+		`CREATE TABLE IF NOT EXISTS settings (
+			key   TEXT PRIMARY KEY,
+			value TEXT NOT NULL DEFAULT ''
 		);`,
 	}
 
