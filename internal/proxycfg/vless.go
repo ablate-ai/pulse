@@ -41,6 +41,19 @@ type BuildOptions struct {
 // nodeInbounds 是节点上定义的 inbound 列表（协议/端口/TLS 等服务端配置）。
 // userAccesses 是有访问权限的用户凭据（UUID/Secret），每条对应一个 (user, node) 对。
 // 只有 userMap 中对应用户 EffectiveEnabled() 为 true 的用户才会被写入配置。
+// idleConfig 序列化一次后复用，内容固定无需每次重新生成。
+var idleConfig = func() string {
+	b, _ := json.Marshal(singboxConfig{
+		Log:       map[string]any{"level": "warn", "output": "stderr"},
+		Inbounds:  []inboundBlock{},
+		Outbounds: []map[string]any{{"type": "direct", "tag": "direct"}},
+	})
+	return string(b)
+}()
+
+// BuildIdleConfig 返回无 inbound 的最小 sing-box 配置，保持进程存活用。
+func BuildIdleConfig() string { return idleConfig }
+
 func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.UserInbound, userMap map[string]users.User, opts BuildOptions) (string, error) {
 	if len(nodeInbounds) == 0 {
 		return "", fmt.Errorf("at least one inbound is required")

@@ -261,11 +261,21 @@
   <div class="flex-1 min-w-0 mr-4">
     <div class="font-medium text-gray-100 text-sm">{{.Node.Name}}</div>
     <div class="text-xs text-gray-500 mt-0.5 truncate">{{.Node.BaseURL}}</div>
+    {{if or .SingboxVer .NodeVer}}
+    <div class="flex items-center gap-2 mt-1">
+      {{if .NodeVer}}<span class="text-xs text-gray-600">node {{.NodeVer}}</span>{{end}}
+      {{if .SingboxVer}}<span class="text-xs text-gray-600">sing-box {{.SingboxVer}}</span>{{end}}
+    </div>
+    {{end}}
   </div>
   <div class="flex items-center gap-3 flex-shrink-0">
     {{if eq .Status "online"}}
     <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/15 text-emerald-400">
       <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>Online
+    </span>
+    {{else if eq .Status "idle"}}
+    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-yellow-500/15 text-yellow-400">
+      <span class="w-1.5 h-1.5 rounded-full bg-yellow-400"></span>未配置
     </span>
     {{else}}
     <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-red-500/15 text-red-400">
@@ -280,10 +290,11 @@
             hx-get="/panel/nodes/{{.Node.ID}}/config"
             hx-target="#modal-body"
             hx-on::after-request="var m=document.getElementById('app-modal'); m.style.maxWidth='56rem'; m.showModal(); m.addEventListener('close',function(){m.style.maxWidth='';},{once:true})">查看配置</button>
-    <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+    <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-wait"
             hx-post="/panel/nodes/{{.Node.ID}}/restart"
             hx-target="#nodes-list"
-            hx-swap="innerHTML">重启</button>
+            hx-swap="innerHTML"
+            hx-disabled-elt="this">重启</button>
     <button class="text-xs text-red-500 hover:text-red-400 px-2 py-1 rounded hover:bg-red-500/10 transition-colors"
             hx-delete="/panel/nodes/{{.Node.ID}}"
             hx-target="#nodes-list"
@@ -397,21 +408,31 @@
         {{end}}
       </select>
     </div>
-    <div class="grid grid-cols-2 gap-3">
-      <div>
-        <label class="block text-xs font-medium text-gray-400 mb-1.5">协议</label>
-        <select name="protocol" required onchange="ibSync(this.form)"
-                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-          <option value="vless">VLESS + Reality</option>
-          <option value="trojan">Trojan + TLS</option>
-          <option value="shadowsocks">Shadowsocks</option>
-        </select>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">协议</label>
+      <div class="grid grid-cols-3 gap-1.5 bg-gray-800 p-1 rounded-lg" id="ib-proto-tabs">
+        <label class="relative cursor-pointer">
+          <input type="radio" name="protocol" value="vless" required checked
+                 class="sr-only peer" onchange="ibSync(this.form)">
+          <span class="block text-center text-xs font-medium py-1.5 px-2 rounded-md transition-colors text-gray-400 peer-checked:bg-indigo-600 peer-checked:text-white hover:text-gray-200">VLESS</span>
+        </label>
+        <label class="relative cursor-pointer">
+          <input type="radio" name="protocol" value="trojan"
+                 class="sr-only peer" onchange="ibSync(this.form)">
+          <span class="block text-center text-xs font-medium py-1.5 px-2 rounded-md transition-colors text-gray-400 peer-checked:bg-indigo-600 peer-checked:text-white hover:text-gray-200">Trojan</span>
+        </label>
+        <label class="relative cursor-pointer">
+          <input type="radio" name="protocol" value="shadowsocks"
+                 class="sr-only peer" onchange="ibSync(this.form)">
+          <span class="block text-center text-xs font-medium py-1.5 px-2 rounded-md transition-colors text-gray-400 peer-checked:bg-indigo-600 peer-checked:text-white hover:text-gray-200">SS</span>
+        </label>
       </div>
-      <div>
-        <label class="block text-xs font-medium text-gray-400 mb-1.5">端口</label>
-        <input type="number" name="port" required min="1" max="65535" value="443"
-               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-      </div>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">端口</label>
+      <input type="number" name="port" required min="1" max="65535" value="443"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
     </div>
     <div>
       <label class="block text-xs font-medium text-gray-400 mb-1.5">标签 (Tag)</label>

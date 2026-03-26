@@ -24,8 +24,11 @@ document.addEventListener('htmx:afterRequest', function(e) {
     showToast(msg, 'error');
   }
 });
-document.addEventListener('htmx:responseError', function(e) {
-  showToast('请求失败，请重试', 'error');
+document.addEventListener('htmx:sendError', function(e) {
+  showToast('网络请求失败，请重试', 'error');
+});
+document.addEventListener('pulseToast', function(e) {
+  showToast(e.detail.value, 'success');
 });
 // Reality 密钥对生成
 async function ibGenReality(form) {
@@ -137,6 +140,7 @@ document.addEventListener('htmx:afterSettle', updateBatchBar);
         <button type="submit" class="text-xs text-gray-500 hover:text-red-400 transition-colors">退出</button>
       </form>
     </div>
+    {{if .Version}}<div class="text-xs text-gray-600 mt-1">v{{.Version}}</div>{{end}}
   </div>
 </div>
 {{end}}

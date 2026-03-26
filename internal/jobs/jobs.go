@@ -334,13 +334,15 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []in
 	// 过滤出已启用用户
 	activeAccesses := filterEnabled(userAccesses, userMap)
 	if len(activeAccesses) == 0 || len(nodeInbounds) == 0 {
-		status, err := client.Stop(ctx)
+		// 没有活跃用户或 Inbound 时，用最小配置保持 sing-box 进程存活
+		idleCfg := proxycfg.BuildIdleConfig()
+		status, err := client.Restart(ctx, nodes.ConfigRequest{Config: idleCfg})
 		if err == nil && applyOpts.SingboxWSLocalPort > 0 {
 			if syncErr := client.SyncCaddyRoutes(ctx, nil, applyOpts.SingboxWSLocalPort); syncErr != nil {
-				log.Printf("warn: caddy sync (stop): %v", syncErr)
+				log.Printf("warn: caddy sync (idle): %v", syncErr)
 			}
 		}
-		return status, "", err
+		return status, idleCfg, err
 	}
 
 	cfg, err := proxycfg.BuildSingboxConfig(nodeInbounds, userAccesses, userMap, proxycfg.BuildOptions{
