@@ -69,8 +69,6 @@ document.addEventListener('htmx:afterSettle', function() {
   if (privKey && !privKey.value) ibGenReality(form);
   const ssPw = form.querySelector('[name=ss_password]');
   if (ssPw && !ssPw.value) ibGenPassword('ss_password', form);
-  const trojanPw = form.querySelector('[name=trojan_password]');
-  if (trojanPw && !trojanPw.value) ibGenPassword('trojan_password', form);
 });
 // 批量操作：收集选中的用户 ID 并发送
 async function batchAction(action) {

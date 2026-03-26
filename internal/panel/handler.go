@@ -234,16 +234,6 @@ func generateRealityShortID() string {
 	return hex.EncodeToString(b[:])
 }
 
-// firstNonEmpty 返回第一个非空字符串。
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
-}
-
 // generateSSPassword 根据 SS 加密方式生成对应长度的 base64 PSK。
 func generateSSPassword(method string) string {
 	size := 32
@@ -1065,7 +1055,7 @@ func (h *Handler) createInbound(w http.ResponseWriter, r *http.Request) {
 		Tag:                  tag,
 		Port:                 port,
 		Method:               r.FormValue("method"),
-		Password:             firstNonEmpty(r.FormValue("ss_password"), r.FormValue("trojan_password")),
+		Password:             r.FormValue("ss_password"),
 		Security:             r.FormValue("security"),
 		TLSCertPath:          r.FormValue("tls_cert_path"),
 		TLSKeyPath:           r.FormValue("tls_key_path"),
@@ -1096,10 +1086,7 @@ func (h *Handler) createInbound(w http.ResponseWriter, r *http.Request) {
 	if protocol == "shadowsocks" && ib.Password == "" {
 		ib.Password = generateSSPassword(ib.Method)
 	}
-	// Trojan：密码为空时自动生成 32 字节随机 base64
-	if protocol == "trojan" && ib.Password == "" {
-		ib.Password = generateSSPassword("2022-blake3-aes-256-gcm")
-	}
+
 
 	if _, err := h.ibStore.UpsertInbound(ib); err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to create inbound: "+err.Error())

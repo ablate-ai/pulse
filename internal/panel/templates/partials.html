@@ -475,15 +475,6 @@
     <div class="ib-trojan hidden space-y-3">
       <input type="hidden" name="security" value="tls">
       <div>
-        <label class="block text-xs font-medium text-gray-400 mb-1.5">密码</label>
-        <div class="flex gap-2">
-          <input type="text" name="trojan_password"
-                 class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono focus:outline-none focus:border-indigo-500 transition-colors">
-          <button type="button" onclick="ibGenPassword('trojan_password', this.form)"
-                  class="px-3 py-2 text-xs text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-700 transition-colors whitespace-nowrap">生成</button>
-        </div>
-      </div>
-      <div>
         <label class="block text-xs font-medium text-gray-400 mb-1.5">TLS 证书路径</label>
         <input type="text" name="tls_cert_path" placeholder="/etc/ssl/cert.pem"
                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
