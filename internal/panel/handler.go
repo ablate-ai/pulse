@@ -368,9 +368,12 @@ func (h *Handler) usersListPartial(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) userNewForm(w http.ResponseWriter, r *http.Request) {
 	ibList, err := h.ibStore.ListInbounds()
 	if err != nil {
-		ibList = nil // 加载失败时继续显示表单，inbound 列表为空
+		ibList = nil
 	}
-	h.renderPartial(w, "partial-user-new-form", userFormData{Inbounds: ibList})
+	h.renderPartial(w, "partial-user-new-form", userFormData{
+		Inbounds: ibList,
+		NodeMap:  h.buildNodeMap(),
+	})
 }
 
 func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
@@ -454,6 +457,7 @@ func (h *Handler) userEditForm(w http.ResponseWriter, r *http.Request) {
 		User:        &user,
 		Inbounds:    ibList,
 		UserNodeIDs: userNodeIDs,
+		NodeMap:     h.buildNodeMap(),
 	})
 }
 
@@ -465,6 +469,9 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if username := r.FormValue("username"); username != "" {
+		user.Username = username
+	}
 	if status := r.FormValue("status"); status != "" {
 		user.Status = status
 	}
@@ -892,7 +899,21 @@ func (h *Handler) renderNodesListFromStore(w http.ResponseWriter, r *http.Reques
 type userFormData struct {
 	User        *users.User
 	Inbounds    []inbounds.Inbound
-	UserNodeIDs map[string]bool // nodeID → true，用于编辑表单回显已选中状态
+	UserNodeIDs map[string]bool   // nodeID → true，用于编辑表单回显已选中状态
+	NodeMap     map[string]string // nodeID → 节点名称，用于 inbound 列表显示
+}
+
+// buildNodeMap 返回 nodeID → 节点名称的映射，加载失败时返回空 map。
+func (h *Handler) buildNodeMap() map[string]string {
+	nodeList, err := h.nodeStore.List()
+	m := make(map[string]string, len(nodeList))
+	if err != nil {
+		return m
+	}
+	for _, n := range nodeList {
+		m[n.ID] = n.Name
+	}
+	return m
 }
 
 // syncUserInbounds 根据选中的 inbound ID 列表同步用户的节点关联记录。

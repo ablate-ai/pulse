@@ -18,13 +18,11 @@ import (
 	"pulse/internal/panel"
 	"pulse/internal/serverapi"
 	sqliteStore "pulse/internal/store/sqlite"
-	"pulse/internal/sysinfo"
 	"pulse/internal/usage"
 	"pulse/internal/users"
 )
 
 func Run() error {
-	sysinfo.Start()
 	cfg := config.Load()
 	if err := cert.EnsureSelfSignedKeyPair(cfg.ServerNodeClientCertFile, cfg.ServerNodeClientKeyFile, "pulse-server-node-client"); err != nil {
 		return err
@@ -112,10 +110,7 @@ func Run() error {
 			"limited_users_count":  summary.LimitedUsersCount,
 			"disabled_users_count": summary.DisabledUsersCount,
 			"expired_users_count":  summary.ExpiredUsersCount,
-			"cpu_percent":          summary.CPUPercent,
-			"mem_used_bytes":       summary.MemUsedBytes,
-			"mem_total_bytes":      summary.MemTotalBytes,
-		})
+			})
 	})
 	// 公开订阅端点，无需认证
 	serverapi.RegisterSubAPI(mux, userStore, inboundStore)

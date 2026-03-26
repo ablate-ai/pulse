@@ -1,27 +1,5 @@
 {{define "partial-stats"}}
 <div class="space-y-4">
-  <!-- 系统资源 -->
-  <div class="grid grid-cols-2 gap-4">
-    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-      <div class="flex items-end justify-between mb-2">
-        <div class="text-xs text-gray-500">CPU</div>
-        <div class="text-xl font-bold text-gray-100">{{printf "%.1f" .Data.CPUPercent}}<span class="text-sm font-normal text-gray-500 ml-0.5">%</span></div>
-      </div>
-      <div class="w-full bg-gray-800 rounded-full h-1.5">
-        <div class="bg-indigo-500 h-1.5 rounded-full transition-all" style="width: {{printf "%.1f" .Data.CPUPercent}}%"></div>
-      </div>
-    </div>
-    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-      <div class="flex items-end justify-between mb-2">
-        <div class="text-xs text-gray-500">内存</div>
-        <div class="text-xl font-bold text-gray-100">{{formatBytes .Data.MemUsedBytes}}<span class="text-sm font-normal text-gray-500 ml-1">/ {{formatBytes .Data.MemTotalBytes}}</span></div>
-      </div>
-      <div class="w-full bg-gray-800 rounded-full h-1.5">
-        <div class="bg-emerald-500 h-1.5 rounded-full transition-all" style="width: {{trafficPct .Data.MemUsedBytes .Data.MemTotalBytes}}%"></div>
-      </div>
-    </div>
-  </div>
-
   <!-- 用户状态 -->
   <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
     <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
@@ -168,7 +146,7 @@
         <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-700 rounded px-1 py-0.5">
           <input type="checkbox" name="inbound_ids" value="{{.ID}}"
                  class="rounded border-gray-600 bg-gray-700 text-indigo-500 focus:ring-indigo-500">
-          <span class="text-xs text-gray-300">{{.Tag}} <span class="text-gray-500">({{.Protocol}}:{{.Port}})</span></span>
+          <span class="text-xs text-gray-300"><span class="text-sky-400">{{index $.Data.NodeMap .NodeID}}</span> — {{.Tag}} <span class="text-gray-500">({{.Protocol}}:{{.Port}})</span></span>
         </label>
         {{end}}
       </div>
@@ -197,6 +175,11 @@
     </button>
   </div>
   <div class="px-5 py-4 space-y-4">
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">用户名</label>
+      <input type="text" name="username" required value="{{.Data.User.Username}}"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
     <div>
       <label class="block text-xs font-medium text-gray-400 mb-1.5">状态</label>
       <select name="status"
@@ -255,7 +238,7 @@
           <input type="checkbox" name="inbound_ids" value="{{.ID}}"
                  {{if index $nodeIDs .NodeID}}checked{{end}}
                  class="rounded border-gray-600 bg-gray-700 text-indigo-500 focus:ring-indigo-500">
-          <span class="text-xs text-gray-300">{{.Tag}} <span class="text-gray-500">({{.Protocol}}:{{.Port}})</span></span>
+          <span class="text-xs text-gray-300"><span class="text-sky-400">{{index $.Data.NodeMap .NodeID}}</span> — {{.Tag}} <span class="text-gray-500">({{.Protocol}}:{{.Port}})</span></span>
         </label>
         {{end}}
       </div>
@@ -293,6 +276,10 @@
             hx-get="/panel/nodes/{{.Node.ID}}/edit"
             hx-target="#modal-body"
             hx-on::after-request="document.getElementById('app-modal').showModal()">编辑</button>
+    <button class="text-xs text-gray-400 hover:text-sky-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+            hx-get="/panel/nodes/{{.Node.ID}}/config"
+            hx-target="#modal-body"
+            hx-on::after-request="var m=document.getElementById('app-modal'); m.style.maxWidth='56rem'; m.showModal(); m.addEventListener('close',function(){m.style.maxWidth='';},{once:true})">查看配置</button>
     <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
             hx-post="/panel/nodes/{{.Node.ID}}/restart"
             hx-target="#nodes-list"
@@ -502,6 +489,37 @@
             class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">创建</button>
   </div>
 </form>
+{{end}}
+
+
+{{define "partial-node-config"}}
+<div>
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+    <h3 class="text-sm font-semibold text-gray-100">
+      sing-box 配置 — <span class="text-sky-400">{{.Data.NodeName}}</span>
+    </h3>
+    <div class="flex items-center gap-2">
+      <button type="button"
+              onclick="navigator.clipboard.writeText(document.getElementById('node-config-text').textContent).then(()=>{ this.textContent='已复制'; setTimeout(()=>{ this.textContent='复制'; },1500) })"
+              class="text-xs text-gray-400 hover:text-sky-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors">复制</button>
+      <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="px-5 py-4">
+    {{if .Data.Config}}
+    <pre id="node-config-text"
+         class="bg-gray-800 border border-gray-700 rounded-lg p-3 text-xs text-gray-300 font-mono overflow-auto max-h-[60vh] whitespace-pre">{{.Data.Config}}</pre>
+    {{else}}
+    <p class="text-sm text-gray-500 text-center py-6">节点未运行或暂无配置</p>
+    {{end}}
+  </div>
+  <div class="flex justify-end px-5 py-4 border-t border-gray-700">
+    <button type="button" onclick="document.getElementById('app-modal').close()"
+            class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">关闭</button>
+  </div>
+</div>
 {{end}}
 
 

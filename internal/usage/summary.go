@@ -2,17 +2,11 @@ package usage
 
 import (
 	"pulse/internal/nodes"
-	"pulse/internal/sysinfo"
 	"pulse/internal/users"
 )
 
 // Summary 仪表盘统计摘要。
 type Summary struct {
-	// 系统资源
-	CPUPercent    float64 `json:"cpu_percent"`
-	MemTotalBytes int64   `json:"mem_total_bytes"`
-	MemUsedBytes  int64   `json:"mem_used_bytes"`
-
 	// 节点
 	NodesCount int `json:"nodes_count"`
 
@@ -40,13 +34,8 @@ func Build(nodeStore nodes.Store, userStore users.Store) (Summary, error) {
 		return Summary{}, err
 	}
 
-	sys := sysinfo.Get()
-
 	s := Summary{
-		CPUPercent:    sys.CPUPercent,
-		MemTotalBytes: sys.MemTotalBytes,
-		MemUsedBytes:  sys.MemUsedBytes,
-		NodesCount:    len(nodesList),
+		NodesCount: len(nodesList),
 		UsersCount:    len(usersList),
 	}
 
