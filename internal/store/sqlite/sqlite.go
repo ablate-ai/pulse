@@ -101,6 +101,7 @@ func (db *DB) init() error {
 			upload_bytes INTEGER NOT NULL DEFAULT 0,
 			download_bytes INTEGER NOT NULL DEFAULT 0,
 			used_bytes INTEGER NOT NULL DEFAULT 0,
+			on_hold_expire_at TEXT,
 			last_traffic_reset_at TEXT,
 			online_at TEXT,
 			created_at TEXT NOT NULL
@@ -219,6 +220,12 @@ func (db *DB) migrateUsersTable() error {
 	if _, ok := columns["online_at"]; !ok {
 		if _, err := db.conn.Exec(`ALTER TABLE users ADD COLUMN online_at TEXT`); err != nil {
 			return fmt.Errorf("migrate users add online_at: %w", err)
+		}
+	}
+
+	if _, ok := columns["on_hold_expire_at"]; !ok {
+		if _, err := db.conn.Exec(`ALTER TABLE users ADD COLUMN on_hold_expire_at TEXT`); err != nil {
+			return fmt.Errorf("migrate users add on_hold_expire_at: %w", err)
 		}
 	}
 
@@ -358,6 +365,7 @@ func (db *DB) rebuildUsersTable(columns map[string]struct{}) error {
 			upload_bytes INTEGER NOT NULL DEFAULT 0,
 			download_bytes INTEGER NOT NULL DEFAULT 0,
 			used_bytes INTEGER NOT NULL DEFAULT 0,
+			on_hold_expire_at TEXT,
 			last_traffic_reset_at TEXT,
 			online_at TEXT,
 			created_at TEXT NOT NULL,

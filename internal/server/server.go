@@ -66,6 +66,13 @@ func Run() error {
 			return err
 		},
 	})
+	scheduler.Add(jobs.Job{
+		Name:     "activate-on-hold",
+		Interval: 1 * time.Minute,
+		Fn: func(ctx context.Context) error {
+			return jobs.ActivateExpiredOnHold(ctx, userStore, store, inboundStore, nodeAPI.Dial, applyOpts)
+		},
+	})
 
 	ctx, cancelCtx := context.WithCancel(context.Background())
 	defer cancelCtx()

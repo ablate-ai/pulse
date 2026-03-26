@@ -36,6 +36,7 @@ type User struct {
 	UploadBytes            int64      `json:"upload_bytes"`
 	DownloadBytes          int64      `json:"download_bytes"`
 	UsedBytes              int64      `json:"used_bytes"`
+	OnHoldExpireAt         *time.Time `json:"on_hold_expire_at,omitempty"`
 	LastTrafficResetAt     *time.Time `json:"last_traffic_reset_at,omitempty"`
 	OnlineAt               *time.Time `json:"online_at,omitempty"`
 	CreatedAt              time.Time  `json:"created_at"`
@@ -78,7 +79,14 @@ type Store interface {
 
 // EffectiveStatus 计算用户的实际运行时状态（不写库，仅计算）。
 func (u User) EffectiveStatus() string {
-	if u.Status == StatusDisabled || u.Status == StatusOnHold {
+	if u.Status == StatusDisabled {
+		return u.Status
+	}
+	if u.Status == StatusOnHold {
+		// OnHoldExpireAt 到期则自动视为 active（实际状态更新由 job 负责）
+		if u.OnHoldExpireAt != nil && !u.OnHoldExpireAt.IsZero() && time.Now().After(*u.OnHoldExpireAt) {
+			return StatusActive
+		}
 		return u.Status
 	}
 	if u.ExpireAt != nil && !u.ExpireAt.IsZero() && time.Now().After(*u.ExpireAt) {

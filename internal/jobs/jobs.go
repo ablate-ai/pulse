@@ -143,6 +143,61 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 	return result, nil
 }
 
+// ─── ActivateExpiredOnHold ────────────────────────────────────────────────────
+
+// ActivateExpiredOnHold 将 on_hold_expire_at 已到期的 on_hold 用户状态改为 active，
+// 并对涉及的节点重新下发配置。
+func ActivateExpiredOnHold(ctx context.Context, store users.Store, nodeStore nodes.Store, ibStore inbounds.InboundStore, dial NodeDialer, applyOpts ApplyOptions) error {
+	allUsers, err := store.ListUsers()
+	if err != nil {
+		return err
+	}
+
+	now := time.Now().UTC()
+	dirtyNodes := make(map[string]struct{})
+
+	for _, u := range allUsers {
+		if u.Status != users.StatusOnHold {
+			continue
+		}
+		if u.OnHoldExpireAt == nil || u.OnHoldExpireAt.IsZero() || now.Before(*u.OnHoldExpireAt) {
+			continue
+		}
+		u.Status = users.StatusActive
+		u.OnHoldExpireAt = nil
+		if _, err := store.UpsertUser(u); err != nil {
+			continue
+		}
+		accesses, _ := store.ListUserInboundsByUser(u.ID)
+		for _, acc := range accesses {
+			dirtyNodes[acc.NodeID] = struct{}{}
+		}
+	}
+
+	for nodeID := range dirtyNodes {
+		client, err := dial(nodeID)
+		if err != nil {
+			continue
+		}
+		nodeInbounds, err := ibStore.ListInboundsByNode(nodeID)
+		if err != nil {
+			continue
+		}
+		nodeAccesses, err := store.ListUserInboundsByNode(nodeID)
+		if err != nil {
+			continue
+		}
+		userIDs := collectUserIDs(nodeAccesses)
+		userMap, err := store.GetUsersByIDs(userIDs)
+		if err != nil {
+			continue
+		}
+		ApplyNodeUsers(ctx, client, nodeInbounds, nodeAccesses, userMap, ibStore, applyOpts) //nolint:errcheck
+	}
+
+	return nil
+}
+
 // ─── ResetTraffic ─────────────────────────────────────────────────────────────
 
 // ResetTrafficResult 记录一次流量重置的结果摘要。

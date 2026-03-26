@@ -206,6 +206,18 @@
         <option value="on_hold" {{if eq .Data.User.Status "on_hold"}}selected{{end}}>On Hold</option>
       </select>
     </div>
+    <div id="on-hold-expire-section" {{if ne .Data.User.Status "on_hold"}}style="display:none"{{end}}>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">On Hold 到期自动激活（留空 = 永久暂停）</label>
+      <input type="datetime-local" name="on_hold_expire_at" value="{{formatExpire .Data.User.OnHoldExpireAt}}"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+    <script>
+    (function(){
+      var sel = document.querySelector('select[name="status"]');
+      var sec = document.getElementById('on-hold-expire-section');
+      if(sel && sec) sel.addEventListener('change', function(){ sec.style.display = sel.value === 'on_hold' ? '' : 'none'; });
+    })();
+    </script>
     <div>
       <label class="block text-xs font-medium text-gray-400 mb-1.5">流量上限 GB（0 = 不限）</label>
       <input type="number" name="traffic_limit_gb" value="{{formatGB .Data.User.TrafficLimit}}" min="0" step="0.1"

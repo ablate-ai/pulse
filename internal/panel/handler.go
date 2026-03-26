@@ -466,9 +466,21 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 		}
 		user.ExpireAt = &t
 	} else {
-		// 明确清空过期时间
 		if r.Form.Has("expire_at") {
 			user.ExpireAt = nil
+		}
+	}
+
+	if onHoldExpireStr := r.FormValue("on_hold_expire_at"); onHoldExpireStr != "" {
+		t, err := time.ParseInLocation("2006-01-02T15:04", onHoldExpireStr, time.Local)
+		if err != nil {
+			htmxError(w, http.StatusBadRequest, "On Hold 到期时间格式无效")
+			return
+		}
+		user.OnHoldExpireAt = &t
+	} else {
+		if r.Form.Has("on_hold_expire_at") {
+			user.OnHoldExpireAt = nil
 		}
 	}
 
