@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"pulse/internal/inbounds"
 	"pulse/internal/jobs"
 	"pulse/internal/nodes"
+	"pulse/internal/panel"
 	"pulse/internal/serverapi"
 	sqliteStore "pulse/internal/store/sqlite"
 	"pulse/internal/usage"
@@ -106,7 +108,13 @@ func Run() error {
 	})
 	// 公开订阅端点，无需认证
 	serverapi.RegisterSubAPI(mux, userStore, inboundStore)
-	registerWeb(mux, cfg.WebDir)
+
+	// 面板（HTMX + 服务端模板）
+	panelHandler, err := panel.New(authManager, userStore, store, inboundStore, nodeAPI.Dial, applyOpts)
+	if err != nil {
+		return fmt.Errorf("初始化面板: %w", err)
+	}
+	panelHandler.Register(mux)
 	serverapi.NewWithUsers(store, userStore, inboundStore, clientOptions, applyOpts).Register(protectedV1)
 	serverapi.RegisterUsersAPI(protectedV1, userStore, store, inboundStore, clientOptions, applyOpts)
 	serverapi.RegisterSystemAPIWithInbounds(protectedV1, userStore, store, inboundStore, clientOptions, applyOpts)

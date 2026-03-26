@@ -1,0 +1,561 @@
+{{define "partial-stats"}}
+<div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+    <div class="text-2xl font-bold text-gray-100">{{.Data.UsersCount}}</div>
+    <div class="text-xs text-gray-500 mt-1">用户总数</div>
+  </div>
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+    <div class="text-2xl font-bold text-gray-100">{{.Data.NodesCount}}</div>
+    <div class="text-xs text-gray-500 mt-1">节点数</div>
+  </div>
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+    <div class="text-2xl font-bold text-gray-100">{{formatBytes .Data.TotalUsedBytes}}</div>
+    <div class="text-xs text-gray-500 mt-1">总流量消耗</div>
+  </div>
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+    <div class="text-2xl font-bold text-yellow-400">{{.Data.LimitedUsersCount}}</div>
+    <div class="text-xs text-gray-500 mt-1">流量超限</div>
+  </div>
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+    <div class="text-2xl font-bold text-gray-500">{{.Data.DisabledUsersCount}}</div>
+    <div class="text-xs text-gray-500 mt-1">已禁用</div>
+  </div>
+</div>
+{{end}}
+
+
+{{define "partial-user-rows"}}
+{{range .Data}}
+<tr class="border-b border-gray-800 hover:bg-gray-800/40 transition-colors">
+  <td class="px-4 py-3 font-medium text-gray-100">{{.Username}}</td>
+  <td class="px-4 py-3">
+    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium {{statusClass .Status}}">{{statusLabel .Status}}</span>
+  </td>
+  <td class="px-4 py-3">
+    <div class="space-y-1.5">
+      <div class="w-28 bg-gray-700 rounded-full h-1">
+        <div class="bg-indigo-500 h-1 rounded-full transition-all" style="width: {{trafficPct .UsedBytes .TrafficLimit}}%"></div>
+      </div>
+      <span class="text-xs text-gray-400">{{formatBytes .UsedBytes}} / {{if gt0 .TrafficLimit}}{{formatBytes .TrafficLimit}}{{else}}∞{{end}}</span>
+    </div>
+  </td>
+  <td class="px-4 py-3 text-sm text-gray-400">{{formatExpire .ExpireAt}}</td>
+  <td class="px-4 py-3">
+    <div class="flex items-center gap-1">
+      <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+              hx-get="/panel/users/{{.ID}}/edit"
+              hx-target="#modal-body"
+              hx-on::after-request="document.getElementById('app-modal').showModal()">编辑</button>
+      <button class="text-xs text-gray-400 hover:text-emerald-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+              onclick="copySubLink('{{.SubToken}}')">订阅</button>
+      <button class="text-xs text-gray-400 hover:text-sky-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+              hx-post="/panel/users/{{.ID}}/reset-traffic"
+              hx-target="#users-tbody"
+              hx-swap="innerHTML"
+              hx-confirm="确定重置 {{.Username}} 的流量？">重置</button>
+      <button class="text-xs text-red-500 hover:text-red-400 px-2 py-1 rounded hover:bg-red-500/10 transition-colors"
+              hx-delete="/panel/users/{{.ID}}"
+              hx-target="#users-tbody"
+              hx-swap="innerHTML"
+              hx-confirm="确定删除用户 {{.Username}}？">删除</button>
+    </div>
+  </td>
+</tr>
+{{else}}
+<tr><td colspan="5" class="px-4 py-10 text-center text-sm text-gray-500">暂无用户</td></tr>
+{{end}}
+{{end}}
+
+
+{{define "partial-user-new-form"}}
+<form hx-post="/panel/users"
+      hx-target="#users-tbody"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful) { document.getElementById('app-modal').close(); this.reset(); }">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+    <h3 class="text-sm font-semibold text-gray-100">添加用户</h3>
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="px-5 py-4 space-y-4">
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">用户名</label>
+      <input type="text" name="username" required
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors">
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">流量上限 GB（0 = 不限）</label>
+      <input type="number" name="traffic_limit_gb" value="0" min="0" step="0.1"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">流量重置策略</label>
+      <select name="reset_strategy"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+        <option value="no_reset">不重置</option>
+        <option value="day">每天</option>
+        <option value="week">每周</option>
+        <option value="month">每月</option>
+        <option value="year">每年</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">过期时间（可选）</label>
+      <input type="datetime-local" name="expire_at"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+    {{if .Data.Inbounds}}
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">关联 Inbound（可多选，TODO: 后端暂未处理）</label>
+      <div class="space-y-1.5 max-h-32 overflow-y-auto bg-gray-800 border border-gray-700 rounded-lg p-2">
+        {{range .Data.Inbounds}}
+        <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-700 rounded px-1 py-0.5">
+          <input type="checkbox" name="inbound_ids" value="{{.ID}}"
+                 class="rounded border-gray-600 bg-gray-700 text-indigo-500 focus:ring-indigo-500">
+          <span class="text-xs text-gray-300">{{.Tag}} <span class="text-gray-500">({{.Protocol}}:{{.Port}})</span></span>
+        </label>
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+  </div>
+  <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
+    <button type="button" onclick="document.getElementById('app-modal').close()"
+            class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">取消</button>
+    <button type="submit"
+            class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">创建</button>
+  </div>
+</form>
+{{end}}
+
+
+{{define "partial-user-edit-form"}}
+<form hx-put="/panel/users/{{.Data.User.ID}}"
+      hx-target="#users-tbody"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful) document.getElementById('app-modal').close()">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+    <h3 class="text-sm font-semibold text-gray-100">编辑用户 — <span class="text-indigo-400">{{.Data.User.Username}}</span></h3>
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="px-5 py-4 space-y-4">
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">状态</label>
+      <select name="status"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+        <option value="active" {{if eq .Data.User.Status "active"}}selected{{end}}>Active</option>
+        <option value="disabled" {{if eq .Data.User.Status "disabled"}}selected{{end}}>Disabled</option>
+        <option value="on_hold" {{if eq .Data.User.Status "on_hold"}}selected{{end}}>On Hold</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">流量上限 GB（0 = 不限）</label>
+      <input type="number" name="traffic_limit_gb" value="{{formatGB .Data.User.TrafficLimit}}" min="0" step="0.1"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">流量重置策略</label>
+      <select name="reset_strategy"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+        <option value="no_reset" {{if eq .Data.User.DataLimitResetStrategy "no_reset"}}selected{{end}}>不重置</option>
+        <option value="day" {{if eq .Data.User.DataLimitResetStrategy "day"}}selected{{end}}>每天</option>
+        <option value="week" {{if eq .Data.User.DataLimitResetStrategy "week"}}selected{{end}}>每周</option>
+        <option value="month" {{if eq .Data.User.DataLimitResetStrategy "month"}}selected{{end}}>每月</option>
+        <option value="year" {{if eq .Data.User.DataLimitResetStrategy "year"}}selected{{end}}>每年</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">过期时间（留空 = 永不）</label>
+      <input type="datetime-local" name="expire_at" value="{{formatExpire .Data.User.ExpireAt}}"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+    {{if .Data.Inbounds}}
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">关联 Inbound（可多选，TODO: 后端暂未处理）</label>
+      <div class="space-y-1.5 max-h-32 overflow-y-auto bg-gray-800 border border-gray-700 rounded-lg p-2">
+        {{range .Data.Inbounds}}
+        <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-700 rounded px-1 py-0.5">
+          <input type="checkbox" name="inbound_ids" value="{{.ID}}"
+                 class="rounded border-gray-600 bg-gray-700 text-indigo-500 focus:ring-indigo-500">
+          <span class="text-xs text-gray-300">{{.Tag}} <span class="text-gray-500">({{.Protocol}}:{{.Port}})</span></span>
+        </label>
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+  </div>
+  <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
+    <button type="button" onclick="document.getElementById('app-modal').close()"
+            class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">取消</button>
+    <button type="submit"
+            class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">保存</button>
+  </div>
+</form>
+{{end}}
+
+
+{{define "partial-node-rows"}}
+{{range .Data}}
+<div class="bg-gray-900 rounded-xl border border-gray-800 px-5 py-4 flex items-center justify-between" id="node-{{.Node.ID}}">
+  <div class="flex-1 min-w-0 mr-4">
+    <div class="font-medium text-gray-100 text-sm">{{.Node.Name}}</div>
+    <div class="text-xs text-gray-500 mt-0.5 truncate">{{.Node.BaseURL}}</div>
+  </div>
+  <div class="flex items-center gap-3 flex-shrink-0">
+    {{if eq .Status "online"}}
+    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/15 text-emerald-400">
+      <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>Online
+    </span>
+    {{else}}
+    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-red-500/15 text-red-400">
+      <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span>Offline
+    </span>
+    {{end}}
+    <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+            hx-get="/panel/nodes/{{.Node.ID}}/edit"
+            hx-target="#modal-body"
+            hx-on::after-request="document.getElementById('app-modal').showModal()">编辑</button>
+    <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+            hx-post="/panel/nodes/{{.Node.ID}}/restart"
+            hx-target="#nodes-list"
+            hx-swap="innerHTML">重启</button>
+    <button class="text-xs text-red-500 hover:text-red-400 px-2 py-1 rounded hover:bg-red-500/10 transition-colors"
+            hx-delete="/panel/nodes/{{.Node.ID}}"
+            hx-target="#nodes-list"
+            hx-swap="innerHTML"
+            hx-confirm="确定删除节点 {{.Node.Name}}？">删除</button>
+  </div>
+</div>
+{{else}}
+<div class="text-center text-sm text-gray-500 py-10">暂无节点</div>
+{{end}}
+{{end}}
+
+
+{{define "partial-node-new-form"}}
+<form hx-post="/panel/nodes"
+      hx-target="#nodes-list"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful) { document.getElementById('app-modal').close(); this.reset(); }">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+    <h3 class="text-sm font-semibold text-gray-100">添加节点</h3>
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="px-5 py-4 space-y-4">
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">节点名称</label>
+      <input type="text" name="name" required placeholder="如：香港节点"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">节点地址</label>
+      <input type="url" name="base_url" required placeholder="https://127.0.0.1:8081"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+  </div>
+  <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
+    <button type="button" onclick="document.getElementById('app-modal').close()"
+            class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">取消</button>
+    <button type="submit"
+            class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">添加</button>
+  </div>
+</form>
+{{end}}
+
+
+{{define "modal-container"}}
+<dialog id="app-modal" class="bg-gray-900 rounded-xl border border-gray-700 shadow-2xl p-0 w-full max-w-md backdrop:bg-black/60">
+  <div id="modal-body"></div>
+</dialog>
+{{end}}
+
+
+{{define "toast"}}
+<div id="toast" class="fixed bottom-4 right-4 z-50 space-y-2" aria-live="polite"></div>
+{{end}}
+
+
+{{define "partial-inbound-rows"}}
+{{range .Data}}
+<tr class="border-b border-gray-800 hover:bg-gray-800/40 transition-colors">
+  <td class="px-4 py-3 font-medium text-gray-100">{{.Tag}}</td>
+  <td class="px-4 py-3">
+    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-indigo-500/15 text-indigo-400">{{.Protocol}}{{if eq .Security "reality"}}+Reality{{else if eq .Security "tls"}}+TLS{{end}}</span>
+  </td>
+  <td class="px-4 py-3 text-sm text-gray-400">{{.Port}}</td>
+  <td class="px-4 py-3 text-sm text-gray-500 font-mono text-xs">{{.NodeID}}</td>
+  <td class="px-4 py-3">
+    <div class="flex items-center gap-1">
+      <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+              hx-get="/panel/inbounds/{{.ID}}/edit"
+              hx-target="#modal-body"
+              hx-on::after-request="document.getElementById('app-modal').showModal()">编辑</button>
+      <button class="text-xs text-red-500 hover:text-red-400 px-2 py-1 rounded hover:bg-red-500/10 transition-colors"
+              hx-delete="/panel/inbounds/{{.ID}}"
+              hx-target="#inbounds-tbody"
+              hx-swap="innerHTML"
+              hx-confirm="确定删除该 Inbound？">删除</button>
+    </div>
+  </td>
+</tr>
+{{else}}
+<tr><td colspan="5" class="px-4 py-10 text-center text-sm text-gray-500">暂无 Inbound</td></tr>
+{{end}}
+{{end}}
+
+
+{{define "partial-inbound-new-form"}}
+<form id="ib-new-form" hx-post="/panel/inbounds"
+      hx-target="#inbounds-tbody"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful) { document.getElementById('app-modal').close(); this.reset(); ibSync(this); }">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+    <h3 class="text-sm font-semibold text-gray-100">添加 Inbound</h3>
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="px-5 py-4 space-y-4 overflow-y-auto max-h-[70vh]">
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">节点</label>
+      <select name="node_id" required
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+        <option value="">选择节点</option>
+        {{range .Data}}
+        <option value="{{.ID}}">{{.Name}}</option>
+        {{end}}
+      </select>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">协议</label>
+        <select name="protocol" required onchange="ibSync(this.form)"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+          <option value="vless">VLESS + Reality</option>
+          <option value="trojan">Trojan + TLS</option>
+          <option value="shadowsocks">Shadowsocks</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">端口</label>
+        <input type="number" name="port" required min="1" max="65535" value="443"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">标签 (Tag)</label>
+      <input type="text" name="tag" required placeholder="如：vless-reality-hk"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+
+    <!-- VLESS Reality 字段 -->
+    <div class="ib-vless space-y-3">
+      <input type="hidden" name="security" value="reality">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">握手地址 <span class="text-gray-500">(伪装域名:443)</span></label>
+        <input type="text" name="reality_handshake_addr" value="yahoo.com:443"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-1.5">
+          <label class="text-xs font-medium text-gray-400">密钥对 & Short ID</label>
+          <button type="button" onclick="ibGenReality(this.closest('form'))"
+                  class="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">⟳ 生成</button>
+        </div>
+        <div class="bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-2.5 space-y-1.5 text-xs">
+          <div class="flex items-center gap-2">
+            <span class="text-gray-500 w-16 flex-shrink-0">私钥</span>
+            <span class="ib-priv text-gray-500 italic">点击生成</span>
+            <input type="hidden" name="reality_private_key">
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-gray-500 w-16 flex-shrink-0">公钥</span>
+            <span class="ib-pub text-gray-500 italic">点击生成</span>
+            <input type="hidden" name="reality_public_key">
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-gray-500 w-16 flex-shrink-0">Short ID</span>
+            <span class="ib-sid text-gray-500 italic">点击生成</span>
+            <input type="hidden" name="reality_short_id">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Trojan TLS 字段 -->
+    <div class="ib-trojan hidden space-y-3">
+      <input type="hidden" name="security" value="tls">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">TLS 证书路径</label>
+        <input type="text" name="tls_cert_path" placeholder="/etc/ssl/cert.pem"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">TLS 私钥路径</label>
+        <input type="text" name="tls_key_path" placeholder="/etc/ssl/key.pem"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+    </div>
+
+    <!-- Shadowsocks 字段 -->
+    <div class="ib-ss hidden">
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">加密方式</label>
+      <select name="method"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+        <option value="2022-blake3-aes-128-gcm">2022-blake3-aes-128-gcm（推荐）</option>
+        <option value="2022-blake3-aes-256-gcm">2022-blake3-aes-256-gcm</option>
+        <option value="2022-blake3-chacha20-poly1305">2022-blake3-chacha20-poly1305</option>
+      </select>
+    </div>
+  </div>
+  <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
+    <button type="button" onclick="document.getElementById('app-modal').close()"
+            class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">取消</button>
+    <button type="submit"
+            class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">创建</button>
+  </div>
+</form>
+{{end}}
+
+
+{{define "partial-node-edit-form"}}
+<form hx-put="/panel/nodes/{{.Data.ID}}"
+      hx-target="#nodes-list"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful) document.getElementById('app-modal').close()">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+    <h3 class="text-sm font-semibold text-gray-100">编辑节点 — <span class="text-indigo-400">{{.Data.Name}}</span></h3>
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="px-5 py-4 space-y-4">
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">节点名称</label>
+      <input type="text" name="name" value="{{.Data.Name}}" required
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">节点地址</label>
+      <input type="url" name="base_url" value="{{.Data.BaseURL}}" required
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+  </div>
+  <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
+    <button type="button" onclick="document.getElementById('app-modal').close()"
+            class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">取消</button>
+    <button type="submit"
+            class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">保存</button>
+  </div>
+</form>
+{{end}}
+
+
+{{define "partial-inbound-edit-form"}}
+<form id="ib-edit-form" hx-put="/panel/inbounds/{{.Data.ID}}"
+      hx-target="#inbounds-tbody"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful) document.getElementById('app-modal').close()">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+    <h3 class="text-sm font-semibold text-gray-100">编辑 Inbound — <span class="text-indigo-400">{{.Data.Tag}}</span></h3>
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="px-5 py-4 space-y-4 overflow-y-auto max-h-[70vh]">
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">协议</label>
+        <select name="protocol" disabled
+                class="w-full bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-400 cursor-not-allowed">
+          <option value="vless" {{if eq .Data.Protocol "vless"}}selected{{end}}>VLESS + Reality</option>
+          <option value="trojan" {{if eq .Data.Protocol "trojan"}}selected{{end}}>Trojan + TLS</option>
+          <option value="shadowsocks" {{if eq .Data.Protocol "shadowsocks"}}selected{{end}}>Shadowsocks</option>
+        </select>
+        <!-- disabled 字段不会提交，用 hidden 补充 -->
+        <input type="hidden" name="protocol" value="{{.Data.Protocol}}">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">端口</label>
+        <input type="number" name="port" value="{{.Data.Port}}" required min="1" max="65535"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">标签 (Tag)</label>
+      <input type="text" name="tag" value="{{.Data.Tag}}" required
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+
+    <!-- VLESS Reality -->
+    {{if eq .Data.Protocol "vless"}}
+    <input type="hidden" name="security" value="reality">
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">握手地址</label>
+        <input type="text" name="reality_handshake_addr" value="{{.Data.RealityHandshakeAddr}}"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">私钥</label>
+          <input type="text" name="reality_private_key" value="{{.Data.RealityPrivateKey}}"
+                 class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono text-xs focus:outline-none focus:border-indigo-500 transition-colors">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">Short ID</label>
+          <input type="text" name="reality_short_id" value="{{.Data.RealityShortID}}"
+                 class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono text-xs focus:outline-none focus:border-indigo-500 transition-colors">
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">公钥 <span class="text-gray-500">(只读，用于订阅链接)</span></label>
+        <input type="text" name="reality_public_key" value="{{.Data.RealityPublicKey}}" readonly
+               class="w-full bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-400 font-mono text-xs cursor-default">
+      </div>
+    </div>
+    {{end}}
+
+    <!-- Trojan TLS -->
+    {{if eq .Data.Protocol "trojan"}}
+    <input type="hidden" name="security" value="tls">
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">TLS 证书路径</label>
+        <input type="text" name="tls_cert_path" value="{{.Data.TLSCertPath}}" placeholder="/etc/ssl/cert.pem"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">TLS 私钥路径</label>
+        <input type="text" name="tls_key_path" value="{{.Data.TLSKeyPath}}" placeholder="/etc/ssl/key.pem"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+    </div>
+    {{end}}
+
+    <!-- Shadowsocks -->
+    {{if eq .Data.Protocol "shadowsocks"}}
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">加密方式</label>
+      <select name="method"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+        <option value="2022-blake3-aes-128-gcm" {{if eq .Data.Method "2022-blake3-aes-128-gcm"}}selected{{end}}>2022-blake3-aes-128-gcm（推荐）</option>
+        <option value="2022-blake3-aes-256-gcm" {{if eq .Data.Method "2022-blake3-aes-256-gcm"}}selected{{end}}>2022-blake3-aes-256-gcm</option>
+        <option value="2022-blake3-chacha20-poly1305" {{if eq .Data.Method "2022-blake3-chacha20-poly1305"}}selected{{end}}>2022-blake3-chacha20-poly1305</option>
+      </select>
+    </div>
+    {{end}}
+  </div>
+  <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
+    <button type="button" onclick="document.getElementById('app-modal').close()"
+            class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">取消</button>
+    <button type="submit"
+            class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">保存</button>
+  </div>
+</form>
+{{end}}

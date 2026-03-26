@@ -1,0 +1,33 @@
+{{define "dashboard"}}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>{{template "head" .}}</head>
+<body class="bg-gray-950 text-gray-100">
+<div class="flex h-screen overflow-hidden">
+  <aside class="w-60 bg-gray-900 border-r border-gray-800 flex-shrink-0">
+    {{template "nav" .}}
+  </aside>
+  <div class="flex-1 overflow-auto">
+    <div class="p-6">
+      <div class="mb-6">
+        <h1 class="text-xl font-semibold text-gray-100">Overview</h1>
+        <p class="text-sm text-gray-500 mt-0.5">系统概览</p>
+      </div>
+
+      <div hx-get="/panel/stats" hx-trigger="load, every 30s" hx-swap="innerHTML">
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+            <div class="text-2xl font-bold text-gray-100">—</div>
+            <div class="text-xs text-gray-500 mt-1">加载中...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{{template "modal-container" .}}
+{{template "toast" .}}
+</body>
+</html>
+{{end}}

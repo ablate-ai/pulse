@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 )
@@ -120,4 +121,32 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+// Login 验证凭据并创建新的 session token。
+func (m *Manager) Login(username, password string) (string, error) {
+	if username != m.username || password != m.password {
+		return "", errors.New("invalid credentials")
+	}
+	token := randomToken()
+	if err := m.sessions.Create(token, username); err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+// ValidateToken 检查 token 是否有效。
+func (m *Manager) ValidateToken(token string) bool {
+	return m.valid(token)
+}
+
+// DeleteToken 使 token 失效。
+func (m *Manager) DeleteToken(token string) error {
+	return m.sessions.Delete(token)
+}
+
+// GetUsernameByToken 根据 token 返回用户名，token 无效时返回空字符串。
+func (m *Manager) GetUsernameByToken(token string) string {
+	username, _ := m.sessions.GetUsername(token)
+	return username
 }

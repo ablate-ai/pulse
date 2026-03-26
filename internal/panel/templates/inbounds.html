@@ -1,0 +1,53 @@
+{{define "inbounds"}}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>{{template "head" .}}</head>
+<body class="bg-gray-950 text-gray-100">
+<div class="flex h-screen overflow-hidden">
+  <aside class="w-60 bg-gray-900 border-r border-gray-800 flex-shrink-0">
+    {{template "nav" .}}
+  </aside>
+  <div class="flex-1 overflow-auto">
+    <div class="p-6">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h1 class="text-xl font-semibold text-gray-100">Inbounds</h1>
+          <p class="text-sm text-gray-500 mt-0.5">入站管理</p>
+        </div>
+        <button class="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                hx-get="/panel/inbounds/new"
+                hx-target="#modal-body"
+                hx-on::after-request="document.getElementById('app-modal').showModal()">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          添加入站
+        </button>
+      </div>
+
+      <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-gray-800">
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">标签(Tag)</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">协议</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">端口</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">节点</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+            </tr>
+          </thead>
+          <tbody id="inbounds-tbody"
+                 hx-get="/panel/inbounds/list"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+            <tr><td colspan="5" class="px-4 py-10 text-center text-sm text-gray-500">加载中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{{template "modal-container" .}}
+{{template "toast" .}}
+</body>
+</html>
+{{end}}

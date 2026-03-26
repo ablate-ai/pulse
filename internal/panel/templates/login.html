@@ -1,0 +1,34 @@
+{{define "login"}}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>{{template "head" .}}</head>
+<body class="bg-gray-950 min-h-screen flex items-center justify-center">
+  <div class="w-full max-w-sm px-4">
+    <div class="text-center mb-8">
+      <div class="text-indigo-400 text-4xl font-bold mb-2">◈</div>
+      <h1 class="text-white text-2xl font-bold">Pulse</h1>
+      <p class="text-gray-500 text-sm mt-1">控制面板</p>
+    </div>
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-8 shadow-2xl">
+      <form action="/login" method="POST" class="space-y-4">
+        <div>
+          <input type="text" name="username" placeholder="用户名" required autocomplete="username"
+                 class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-gray-100 placeholder-gray-500 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors">
+        </div>
+        <div>
+          <input type="password" name="password" placeholder="密码" required autocomplete="current-password"
+                 class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-gray-100 placeholder-gray-500 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors">
+        </div>
+        {{if .Data}}
+        <div class="text-red-400 text-sm text-center bg-red-500/10 rounded-lg py-2">{{.Data}}</div>
+        {{end}}
+        <button type="submit"
+                class="w-full bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-medium py-2.5 rounded-lg text-sm transition-colors">
+          登录
+        </button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>
+{{end}}
