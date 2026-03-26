@@ -102,7 +102,8 @@ dev: build-server build-node
 	@mkdir -p dev-data/server dev-data/node
 	@echo "→ server  http://localhost:8080  (admin/admin123)"
 	@echo "→ node    :8081"
-	@( PULSE_SERVER_ADDR=:8080 \
+	@( trap 'kill $$(jobs -p) 2>/dev/null; wait' INT TERM; \
+	   PULSE_SERVER_ADDR=:8080 \
 	   PULSE_ADMIN_USERNAME=admin \
 	   PULSE_ADMIN_PASSWORD=admin123 \
 	   PULSE_DB_PATH=./dev-data/pulse.db \
