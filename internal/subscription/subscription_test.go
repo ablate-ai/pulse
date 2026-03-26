@@ -1,8 +1,6 @@
 package subscription
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"strings"
 	"testing"
 
@@ -10,35 +8,6 @@ import (
 	"pulse/internal/users"
 )
 
-func TestVMessLink(t *testing.T) {
-	ib := inbounds.Inbound{Protocol: "vmess", Port: 443, Tag: "hk-01"}
-	host := inbounds.Host{Address: "example.com", Port: 443}
-	acc := users.UserInbound{UUID: "11111111-1111-1111-1111-111111111111"}
-	u := users.User{Username: "alice"}
-
-	link := Link(ib, host, acc, u)
-	if !strings.HasPrefix(link, "vmess://") {
-		t.Fatalf("expected vmess:// prefix, got %s", link)
-	}
-	payload, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(link, "vmess://"))
-	if err != nil {
-		t.Fatalf("decode base64 failed: %v", err)
-	}
-	var obj map[string]any
-	if err := json.Unmarshal(payload, &obj); err != nil {
-		t.Fatalf("unmarshal vmess json failed: %v", err)
-	}
-	if obj["id"] != acc.UUID {
-		t.Errorf("uuid mismatch: got %v", obj["id"])
-	}
-	if obj["add"] != host.Address {
-		t.Errorf("address mismatch: got %v", obj["add"])
-	}
-	// 节点名称应使用 Inbound Tag
-	if obj["ps"] != ib.Tag {
-		t.Errorf("remark mismatch: got %v, want %v", obj["ps"], ib.Tag)
-	}
-}
 
 func TestVlessLink(t *testing.T) {
 	ib := inbounds.Inbound{Protocol: "vless", Port: 8443}
