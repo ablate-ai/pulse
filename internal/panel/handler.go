@@ -432,6 +432,7 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 		DataLimitResetStrategy: resetStrategy,
 		ExpireAt:               expireAt,
 		CreatedAt:              time.Now(),
+		SubToken:               panelRandomToken(16),
 	}
 
 	if _, err := h.userStore.UpsertUser(newUser); err != nil {
