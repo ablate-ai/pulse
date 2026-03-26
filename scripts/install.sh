@@ -45,6 +45,13 @@ prompt_panel_domain() {
 
 prompt_node_client_cert_pem() {
   target_file="$1"
+  force="${2:-0}"
+
+  # 更新场景：证书已存在且未强制，直接跳过
+  if [ -f "$target_file" ] && [ "$force" != "1" ]; then
+    return
+  fi
+
   if ! tty_available; then
     echo "无法交互输入证书，请确保在终端中运行安装脚本" >&2
     exit 1
@@ -52,13 +59,11 @@ prompt_node_client_cert_pem() {
 
   cert_tmp="$(mktemp)"
   printf "请粘贴 node 需要信任的 server 客户端证书 PEM 内容。\n" > /dev/tty
-  printf "脚本会在读取到 -----END CERTIFICATE----- 后自动继续。\n" > /dev/tty
+  printf "粘贴完成后，按两次回车（输入空行）确认。\n" > /dev/tty
   : > "$cert_tmp"
   while IFS= read -r line < /dev/tty; do
+    [ -z "$line" ] && break
     printf "%s\n" "$line" >> "$cert_tmp"
-    if [ "$line" = "-----END CERTIFICATE-----" ]; then
-      break
-    fi
   done
   if [ ! -s "$cert_tmp" ]; then
     rm -f "$cert_tmp"
@@ -143,21 +148,32 @@ arch() {
   esac
 }
 
-component="${1:-}"
-version="${2:-latest}"
+force=0
+component=""
+version="latest"
+for _arg in "$@"; do
+  case "$_arg" in
+    --force|-f) force=1 ;;
+    -h|--help) usage; exit 0 ;;
+    server|node)
+      component="$_arg"
+      ;;
+    *)
+      if [ -n "$component" ]; then
+        version="$_arg"
+      else
+        echo "未知参数: $_arg" >&2
+        usage
+        exit 1
+      fi
+      ;;
+  esac
+done
 
-case "$component" in
-  server|node) ;;
-  -h|--help|"")
-    usage
-    exit 0
-    ;;
-  *)
-    echo "未知组件: $component" >&2
-    usage
-    exit 1
-    ;;
-esac
+if [ -z "$component" ]; then
+  usage
+  exit 0
+fi
 
 need_cmd curl
 need_cmd tar
@@ -246,7 +262,8 @@ else
     run_as_root install -m 0644 "${package_dir}/etc/pulse/pulse-node.env.example" "$env_target"
   fi
   cert_target="${etc_dir}/server_client_cert.pem"
-  prompt_node_client_cert_pem "$cert_target"
+  prompt_node_client_cert_pem "$cert_target" "$force"
+  # 无论新装还是更新，都确保 env 中记录证书路径
   set_env_file_value "$env_target" "PULSE_NODE_TLS_CLIENT_CERT_FILE" "$cert_target"
   if [ "${PULSE_NODE_TLS_CERT_FILE+x}" = "x" ]; then
     set_env_file_value "$env_target" "PULSE_NODE_TLS_CERT_FILE" "$PULSE_NODE_TLS_CERT_FILE"
