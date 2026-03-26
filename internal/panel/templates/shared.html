@@ -56,7 +56,7 @@ async function ibGenReality(form) {
 // 新建 Inbound 表单协议字段动态显隐
 function ibSync(form) {
   if (!form) return;
-  const p = form.querySelector('[name=protocol]')?.value || 'vless';
+  const p = form.querySelector('[name=protocol]:checked')?.value || form.querySelector('[name=protocol]')?.value || 'vless';
   form.querySelectorAll('.ib-vless').forEach(el => el.classList.toggle('hidden', p !== 'vless'));
   form.querySelectorAll('.ib-trojan').forEach(el => el.classList.toggle('hidden', p !== 'trojan'));
   form.querySelectorAll('.ib-ss').forEach(el => el.classList.toggle('hidden', p !== 'shadowsocks'));
