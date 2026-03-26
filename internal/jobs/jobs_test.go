@@ -153,8 +153,8 @@ func TestSyncUsage_UpdatesBytesAndReloads(t *testing.T) {
 					{"user": "alice", "upload_total": 80, "download_total": 30},
 				},
 			})
-		case "/v1/node/runtime/stop":
-			_ = json.NewEncoder(w).Encode(map[string]any{"running": false})
+		case "/v1/node/runtime/restart":
+			_ = json.NewEncoder(w).Encode(map[string]any{"running": true})
 		}
 	})
 
@@ -162,7 +162,7 @@ func TestSyncUsage_UpdatesBytesAndReloads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SyncUsage() error = %v", err)
 	}
-	if result.UsersUpdated != 1 || result.NodesStopped != 1 {
+	if result.UsersUpdated != 1 || result.NodesReloaded != 1 {
 		t.Fatalf("unexpected result: %+v", result)
 	}
 
