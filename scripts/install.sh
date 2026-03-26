@@ -276,8 +276,9 @@ else
   fi
 fi
 
+_installed_version="$("${bin_dir}/pulse-${component}" --version 2>/dev/null || echo "$version")"
 echo ""
-echo "安装完成: pulse-${component}"
+echo "安装完成: pulse-${component} ${_installed_version}"
 echo "配置文件: ${env_target}"
 echo "工作目录: ${state_dir}"
 if [ "$component" = "server" ]; then
