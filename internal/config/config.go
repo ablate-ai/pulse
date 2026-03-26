@@ -23,6 +23,8 @@ type Config struct {
 	// Caddy 集成：Trojan 改为本地 WS，由外部 Caddy 终止 TLS
 	// 0 = 直连模式（sing-box 自管 TLS），>0 = WS 模式（Caddy 反代）
 	SingboxWSLocalPort int // PULSE_SINGBOX_WS_PORT，如 10443
+	// sing-box 最近一次配置快照路径（调试用）
+	SingboxLastConfigFile string // PULSE_SINGBOX_LAST_CONFIG_FILE
 }
 
 func Load() Config {
@@ -40,7 +42,8 @@ func Load() Config {
 		NodeTLSClientCertFile:    envOrDefault("PULSE_NODE_TLS_CLIENT_CERT_FILE", ""),
 		CertDir:            envOrDefault("PULSE_CERT_DIR", "./certs"),
 		ACMEEmail:          envOrDefault("PULSE_ACME_EMAIL", ""),
-		SingboxWSLocalPort: envInt("PULSE_SINGBOX_WS_PORT", 0),
+		SingboxWSLocalPort:    envInt("PULSE_SINGBOX_WS_PORT", 0),
+		SingboxLastConfigFile: envOrDefault("PULSE_SINGBOX_LAST_CONFIG_FILE", ""),
 	}
 }
 

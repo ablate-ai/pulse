@@ -62,6 +62,44 @@ document.addEventListener('htmx:afterSettle', function() {
   const form = document.getElementById('ib-new-form');
   if (form) ibSync(form);
 });
+// 批量操作：收集选中的用户 ID 并发送
+async function batchAction(action) {
+  const checked = Array.from(document.querySelectorAll('input.user-cb:checked'));
+  if (checked.length === 0) { showToast('请先选择用户', 'error'); return; }
+  if (action === 'delete' && !confirm('确定删除所选 ' + checked.length + ' 个用户？')) return;
+  const params = new URLSearchParams();
+  params.append('action', action);
+  checked.forEach(cb => params.append('ids', cb.value));
+  const res = await fetch('/panel/users/batch', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: params.toString(),
+    credentials: 'same-origin',
+  });
+  const html = await res.text();
+  if (res.ok) {
+    document.getElementById('users-tbody').innerHTML = html;
+    htmx.process(document.getElementById('users-tbody'));
+    updateBatchBar();
+  } else {
+    try { showToast(JSON.parse(html).error, 'error'); } catch { showToast('操作失败', 'error'); }
+  }
+}
+// 更新批量操作工具栏显隐
+function updateBatchBar() {
+  const bar = document.getElementById('batch-bar');
+  if (!bar) return;
+  const count = document.querySelectorAll('input.user-cb:checked').length;
+  bar.classList.toggle('hidden', count === 0);
+  const label = bar.querySelector('#batch-count');
+  if (label) label.textContent = '已选 ' + count + ' 个';
+}
+// select-all 联动
+function toggleSelectAll(master) {
+  document.querySelectorAll('input.user-cb').forEach(cb => cb.checked = master.checked);
+  updateBatchBar();
+}
+document.addEventListener('htmx:afterSettle', updateBatchBar);
 </script>
 {{end}}
 
@@ -86,6 +124,10 @@ document.addEventListener('htmx:afterSettle', function() {
     <a href="/users" class="flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors {{if eq .Page "users"}}bg-indigo-600/20 text-indigo-400{{else}}text-gray-400 hover:bg-gray-800 hover:text-gray-100{{end}}">
       <svg class="w-4 h-4 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
       Users
+    </a>
+    <a href="/settings" class="flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors {{if eq .Page "settings"}}bg-indigo-600/20 text-indigo-400{{else}}text-gray-400 hover:bg-gray-800 hover:text-gray-100{{end}}">
+      <svg class="w-4 h-4 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      Settings
     </a>
   </nav>
   <div class="px-4 py-4 border-t border-gray-800">

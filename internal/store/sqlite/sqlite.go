@@ -90,6 +90,7 @@ func (db *DB) init() error {
 			id TEXT PRIMARY KEY,
 			username TEXT NOT NULL,
 			status TEXT NOT NULL DEFAULT 'active',
+			note TEXT NOT NULL DEFAULT '',
 			expire_at TEXT,
 			data_limit_reset_strategy TEXT NOT NULL DEFAULT 'no_reset',
 			traffic_limit_bytes INTEGER NOT NULL DEFAULT 0,
@@ -196,6 +197,12 @@ func (db *DB) migrateUsersTable() error {
 		}
 		if _, err := db.conn.Exec(`UPDATE users SET sub_token = lower(hex(randomblob(16))) WHERE sub_token = ''`); err != nil {
 			return fmt.Errorf("migrate users generate sub_token: %w", err)
+		}
+	}
+
+	if _, ok := columns["note"]; !ok {
+		if _, err := db.conn.Exec(`ALTER TABLE users ADD COLUMN note TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("migrate users add note: %w", err)
 		}
 	}
 
@@ -328,6 +335,7 @@ func (db *DB) rebuildUsersTable(columns map[string]struct{}) error {
 			id TEXT PRIMARY KEY,
 			username TEXT NOT NULL,
 			status TEXT NOT NULL DEFAULT 'active',
+			note TEXT NOT NULL DEFAULT '',
 			expire_at TEXT,
 			data_limit_reset_strategy TEXT NOT NULL DEFAULT 'no_reset',
 			traffic_limit_bytes INTEGER NOT NULL DEFAULT 0,

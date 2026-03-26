@@ -18,7 +18,7 @@ NEXT_PATCH   := $(MAJOR).$(MINOR).$(shell echo $$(($(PATCH)+1)))
 NEXT_MINOR   := $(MAJOR).$(shell echo $$(($(MINOR)+1))).0
 NEXT_MAJOR   := $(shell echo $$(($(MAJOR)+1))).0.0
 
-.PHONY: build build-server build-node build-cli test package-server package-node checksums clean clean-dev run-server run-node dev stop release _do_release
+.PHONY: build build-server build-node build-cli test package-server package-node checksums clean clean-dev dev stop release _do_release
 
 build: build-cli build-server build-node
 
@@ -117,32 +117,3 @@ dev: build-server build-node
 	   PULSE_NODE_TLS_CLIENT_CERT_FILE=./dev-data/server/server_client_cert.pem \
 	   ./dist/pulse-node & \
 	   wait )
-
-# 开发模式运行 server（模板已 embed，无需 PULSE_WEB_DIR）
-run-server: build-server
-	@echo "Starting development server..."
-	@mkdir -p dev-data/server
-	@PULSE_SERVER_ADDR=:8080 \
-	 PULSE_ADMIN_USERNAME=admin \
-	 PULSE_ADMIN_PASSWORD=admin123 \
-	 PULSE_DB_PATH=./dev-data/pulse.db \
-	 PULSE_SERVER_NODE_CLIENT_CERT_FILE=./dev-data/server/server_client_cert.pem \
-	 PULSE_SERVER_NODE_CLIENT_KEY_FILE=./dev-data/server/server_client_key.pem \
-	 ./dist/pulse-server
-
-# 开发模式运行 node
-run-node: build-node
-	@echo "Starting development node..."
-	@if [ ! -f dev-data/server/server_client_cert.pem ]; then \
-		echo "Error: dev-data/server/server_client_cert.pem not found"; \
-		echo "Please run 'make run-server' first"; \
-		exit 1; \
-	fi
-	@mkdir -p dev-data/node
-	@PULSE_NODE_ADDR=:8081 \
-	 PULSE_NODE_SERVER_URL=http://localhost:8080 \
-	 PULSE_NODE_NAME=dev-node \
-	 PULSE_NODE_TLS_CERT_FILE=./dev-data/node/node_cert.pem \
-	 PULSE_NODE_TLS_KEY_FILE=./dev-data/node/node_key.pem \
-	 PULSE_NODE_TLS_CLIENT_CERT_FILE=./dev-data/server/server_client_cert.pem \
-	 ./dist/pulse-node

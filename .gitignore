@@ -6,6 +6,7 @@ pulse
 pulse.db
 cache.db
 *.pem
+singbox_last.json
 dev-data/
 Marzban/
 Marzban-node/

@@ -29,6 +29,7 @@ type User struct {
 	ID                     string     `json:"id"`
 	Username               string     `json:"username"`
 	Status                 string     `json:"status"`
+	Note                   string     `json:"note,omitempty"`
 	ExpireAt               *time.Time `json:"expire_at,omitempty"`
 	DataLimitResetStrategy string     `json:"data_limit_reset_strategy"`
 	TrafficLimit           int64      `json:"traffic_limit_bytes"`

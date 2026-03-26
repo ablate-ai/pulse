@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 // SessionStore 定义 session 持久化接口。
@@ -17,6 +18,7 @@ type SessionStore interface {
 }
 
 type Manager struct {
+	mu       sync.RWMutex
 	username string
 	password string
 	sessions SessionStore
@@ -103,6 +105,20 @@ func (m *Manager) valid(token string) bool {
 	return ok
 }
 
+// ChangePassword 校验旧密码后更新密码（内存生效，重启后恢复为环境变量值）。
+func (m *Manager) ChangePassword(current, newPw string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.password != current {
+		return errors.New("当前密码不正确")
+	}
+	if len(newPw) < 6 {
+		return errors.New("新密码至少 6 位")
+	}
+	m.password = newPw
+	return nil
+}
+
 func bearerToken(header string) string {
 	const prefix = "Bearer "
 	if !strings.HasPrefix(header, prefix) {
@@ -125,7 +141,10 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 
 // Login 验证凭据并创建新的 session token。
 func (m *Manager) Login(username, password string) (string, error) {
-	if username != m.username || password != m.password {
+	m.mu.RLock()
+	match := username == m.username && password == m.password
+	m.mu.RUnlock()
+	if !match {
 		return "", errors.New("invalid credentials")
 	}
 	token := randomToken()

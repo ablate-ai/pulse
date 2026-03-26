@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"pulse/internal/cert"
@@ -18,12 +19,22 @@ import (
 	"pulse/internal/singbox"
 )
 
-// singboxConfigFile 保存 sing-box 最近一次配置的文件路径，与节点 TLS key 同目录。
-const singboxConfigFile = "./singbox_last.json"
+// singboxConfigPath 根据配置计算 sing-box 快照文件路径。
+// 优先使用环境变量 PULSE_SINGBOX_LAST_CONFIG_FILE；
+// 否则与节点 TLS key 同目录，避免落在程序工作目录。
+func singboxConfigPath(cfg config.Config) string {
+	if cfg.SingboxLastConfigFile != "" {
+		return cfg.SingboxLastConfigFile
+	}
+	if cfg.NodeTLSKeyFile != "" {
+		return filepath.Join(filepath.Dir(cfg.NodeTLSKeyFile), "singbox_last.json")
+	}
+	return "./singbox_last.json"
+}
 
 func Run() error {
 	cfg := config.Load()
-	manager := singbox.NewManagerWithPersistence(singboxConfigFile)
+	manager := singbox.NewManagerWithPersistence(singboxConfigPath(cfg))
 	runtimeInfo := manager.RuntimeInfo(context.Background())
 
 	cm := certmgr.New(cfg.CertDir, cfg.ACMEEmail)

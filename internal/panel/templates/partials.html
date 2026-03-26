@@ -27,7 +27,13 @@
 {{define "partial-user-rows"}}
 {{range .Data}}
 <tr class="border-b border-gray-800 hover:bg-gray-800/40 transition-colors">
-  <td class="px-4 py-3 font-medium text-gray-100">{{.Username}}</td>
+  <td class="px-4 py-3 w-8">
+    <input type="checkbox" name="ids" value="{{.ID}}" class="user-cb rounded border-gray-600 bg-gray-800 text-indigo-500 focus:ring-indigo-500" onchange="updateBatchBar()">
+  </td>
+  <td class="px-4 py-3">
+    <div class="font-medium text-gray-100">{{.Username}}</div>
+    {{if .Note}}<div class="text-xs text-gray-500 mt-0.5 truncate max-w-[14rem]" title="{{.Note}}">{{.Note}}</div>{{end}}
+  </td>
   <td class="px-4 py-3">
     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium {{statusClass .Status}}">{{statusLabel .Status}}</span>
   </td>
@@ -62,7 +68,7 @@
   </td>
 </tr>
 {{else}}
-<tr><td colspan="5" class="px-4 py-10 text-center text-sm text-gray-500">暂无用户</td></tr>
+<tr><td colspan="6" class="px-4 py-10 text-center text-sm text-gray-500">暂无用户</td></tr>
 {{end}}
 {{end}}
 
@@ -105,9 +111,14 @@
       <input type="datetime-local" name="expire_at"
              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
     </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">备注（可选）</label>
+      <input type="text" name="note" placeholder="用于标识用户的备注信息"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
     {{if .Data.Inbounds}}
     <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">关联 Inbound（可多选，TODO: 后端暂未处理）</label>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">关联 Inbound（可多选）</label>
       <div class="space-y-1.5 max-h-32 overflow-y-auto bg-gray-800 border border-gray-700 rounded-lg p-2">
         {{range .Data.Inbounds}}
         <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-700 rounded px-1 py-0.5">
@@ -172,13 +183,21 @@
       <input type="datetime-local" name="expire_at" value="{{formatExpire .Data.User.ExpireAt}}"
              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
     </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">备注（可选）</label>
+      <input type="text" name="note" value="{{.Data.User.Note}}" placeholder="用于标识用户的备注信息"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
     {{if .Data.Inbounds}}
     <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">关联 Inbound（可多选，TODO: 后端暂未处理）</label>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">关联 Inbound（可多选）</label>
+      <input type="hidden" name="inbound_sync" value="1">
       <div class="space-y-1.5 max-h-32 overflow-y-auto bg-gray-800 border border-gray-700 rounded-lg p-2">
+        {{$nodeIDs := .Data.UserNodeIDs}}
         {{range .Data.Inbounds}}
         <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-700 rounded px-1 py-0.5">
           <input type="checkbox" name="inbound_ids" value="{{.ID}}"
+                 {{if index $nodeIDs .NodeID}}checked{{end}}
                  class="rounded border-gray-600 bg-gray-700 text-indigo-500 focus:ring-indigo-500">
           <span class="text-xs text-gray-300">{{.Tag}} <span class="text-gray-500">({{.Protocol}}:{{.Port}})</span></span>
         </label>

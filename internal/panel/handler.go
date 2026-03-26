@@ -91,6 +91,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /dashboard", h.requireAuth(h.dashboardPage))
 	mux.HandleFunc("GET /users", h.requireAuth(h.usersPage))
 	mux.HandleFunc("GET /nodes", h.requireAuth(h.nodesPage))
+	mux.HandleFunc("GET /settings", h.requireAuth(h.settingsPage))
 
 	// HTMX partials（需要认证）
 	mux.HandleFunc("GET /panel/stats", h.requireAuth(h.statsPartial))
@@ -102,6 +103,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /panel/users/{id}", h.requireAuth(h.updateUser))
 	mux.HandleFunc("DELETE /panel/users/{id}", h.requireAuth(h.deleteUser))
 	mux.HandleFunc("POST /panel/users/{id}/reset-traffic", h.requireAuth(h.resetUserTraffic))
+	mux.HandleFunc("POST /panel/users/batch", h.requireAuth(h.batchUsers))
+	mux.HandleFunc("POST /panel/settings/password", h.requireAuth(h.changePassword))
 
 	mux.HandleFunc("GET /inbounds", h.requireAuth(h.inboundsPage))
 	mux.HandleFunc("GET /panel/inbounds/list", h.requireAuth(h.inboundsListPartial))
@@ -348,6 +351,7 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 	trafficLimitGBStr := r.FormValue("traffic_limit_gb")
 	resetStrategy := r.FormValue("reset_strategy")
 	expireAtStr := r.FormValue("expire_at")
+	note := r.FormValue("note")
 
 	if username == "" {
 		htmxError(w, http.StatusBadRequest, "用户名不能为空")
@@ -378,6 +382,7 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 		ID:                     idgen.NextString(),
 		Username:               username,
 		Status:                 users.StatusActive,
+		Note:                   note,
 		TrafficLimit:           trafficLimit,
 		DataLimitResetStrategy: resetStrategy,
 		ExpireAt:               expireAt,
@@ -387,6 +392,14 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.userStore.UpsertUser(newUser); err != nil {
 		htmxError(w, http.StatusInternalServerError, "创建用户失败: "+err.Error())
 		return
+	}
+
+	// 处理 inbound 关联
+	if selectedIDs := r.Form["inbound_ids"]; len(selectedIDs) > 0 {
+		if err := h.syncUserInbounds(newUser.ID, selectedIDs); err != nil {
+			htmxError(w, http.StatusInternalServerError, "关联 Inbound 失败: "+err.Error())
+			return
+		}
 	}
 
 	// 返回更新后的用户列表
@@ -404,7 +417,17 @@ func (h *Handler) userEditForm(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		ibList = nil
 	}
-	h.renderPartial(w, "partial-user-edit-form", userFormData{User: &user, Inbounds: ibList})
+	// 加载用户已关联的节点，用于表单回显勾选状态
+	userAccesses, _ := h.userStore.ListUserInboundsByUser(id)
+	userNodeIDs := make(map[string]bool, len(userAccesses))
+	for _, acc := range userAccesses {
+		userNodeIDs[acc.NodeID] = true
+	}
+	h.renderPartial(w, "partial-user-edit-form", userFormData{
+		User:        &user,
+		Inbounds:    ibList,
+		UserNodeIDs: userNodeIDs,
+	})
 }
 
 func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
@@ -417,6 +440,9 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 
 	if status := r.FormValue("status"); status != "" {
 		user.Status = status
+	}
+	if r.Form.Has("note") {
+		user.Note = r.FormValue("note")
 	}
 
 	if trafficLimitGBStr := r.FormValue("traffic_limit_gb"); trafficLimitGBStr != "" {
@@ -451,6 +477,14 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 有提交 inbound_sync 标记时（无论是否选中），都同步 inbound 关联
+	if r.Form.Has("inbound_sync") {
+		if err := h.syncUserInbounds(user.ID, r.Form["inbound_ids"]); err != nil {
+			htmxError(w, http.StatusInternalServerError, "关联 Inbound 失败: "+err.Error())
+			return
+		}
+	}
+
 	h.renderUsersListFromStore(w)
 }
 
@@ -482,6 +516,65 @@ func (h *Handler) resetUserTraffic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.renderUsersListFromStore(w)
+}
+
+// batchUsers 批量操作用户（enable/disable/delete）。
+func (h *Handler) batchUsers(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		htmxError(w, http.StatusBadRequest, "参数解析失败")
+		return
+	}
+	action := r.FormValue("action")
+	ids := r.Form["ids"]
+	if len(ids) == 0 {
+		htmxError(w, http.StatusBadRequest, "未选择任何用户")
+		return
+	}
+	for _, id := range ids {
+		switch action {
+		case "delete":
+			_ = h.userStore.DeleteUser(id)
+		case "enable":
+			if u, err := h.userStore.GetUser(id); err == nil {
+				u.Status = users.StatusActive
+				_, _ = h.userStore.UpsertUser(u)
+			}
+		case "disable":
+			if u, err := h.userStore.GetUser(id); err == nil {
+				u.Status = users.StatusDisabled
+				_, _ = h.userStore.UpsertUser(u)
+			}
+		default:
+			htmxError(w, http.StatusBadRequest, "未知操作: "+action)
+			return
+		}
+	}
+	h.renderUsersListFromStore(w)
+}
+
+// settingsPage 渲染设置页面。
+func (h *Handler) settingsPage(w http.ResponseWriter, r *http.Request) {
+	h.renderPage(w, "settings", pageData{
+		Page:     "settings",
+		Username: h.currentUsername(r),
+	})
+}
+
+// changePassword 修改管理员密码。
+func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
+	current := r.FormValue("current_password")
+	newPw := r.FormValue("new_password")
+	confirm := r.FormValue("confirm_password")
+	if newPw != confirm {
+		htmxError(w, http.StatusBadRequest, "两次输入的新密码不一致")
+		return
+	}
+	if err := h.auth.ChangePassword(current, newPw); err != nil {
+		htmxError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, `<div class="text-sm text-emerald-400 py-2">密码已更新（重启后恢复为环境变量值）</div>`)
 }
 
 // renderUsersListFromStore 从 store 拉取最新用户列表并渲染 partial。
@@ -718,8 +811,60 @@ func (h *Handler) renderNodesListFromStore(w http.ResponseWriter, r *http.Reques
 
 // userFormData 用户表单页面数据，包含 inbound 列表。
 type userFormData struct {
-	User     *users.User
-	Inbounds []inbounds.Inbound
+	User        *users.User
+	Inbounds    []inbounds.Inbound
+	UserNodeIDs map[string]bool // nodeID → true，用于编辑表单回显已选中状态
+}
+
+// syncUserInbounds 根据选中的 inbound ID 列表同步用户的节点关联记录。
+// 新增：为没有凭据的节点创建 UserInbound；删除：移除未选中节点的旧记录。
+func (h *Handler) syncUserInbounds(userID string, selectedInboundIDs []string) error {
+	// 收集选中 inbound 对应的 nodeID（去重）
+	wantedNodeIDs := make(map[string]struct{})
+	for _, ibID := range selectedInboundIDs {
+		ib, err := h.ibStore.GetInbound(ibID)
+		if err != nil {
+			continue
+		}
+		wantedNodeIDs[ib.NodeID] = struct{}{}
+	}
+
+	// 获取该用户现有凭据
+	existing, err := h.userStore.ListUserInboundsByUser(userID)
+	if err != nil {
+		return err
+	}
+	existingByNode := make(map[string]users.UserInbound, len(existing))
+	for _, acc := range existing {
+		existingByNode[acc.NodeID] = acc
+	}
+
+	// 创建新增节点的凭据
+	for nodeID := range wantedNodeIDs {
+		if _, ok := existingByNode[nodeID]; !ok {
+			acc := users.UserInbound{
+				ID:     idgen.NextString(),
+				UserID: userID,
+				NodeID: nodeID,
+				UUID:   panelRandomUUID(),
+				Secret: panelRandomToken(12),
+			}
+			if _, err := h.userStore.UpsertUserInbound(acc); err != nil {
+				return err
+			}
+		}
+	}
+
+	// 删除不再选中节点的凭据
+	for nodeID, acc := range existingByNode {
+		if _, wanted := wantedNodeIDs[nodeID]; !wanted {
+			if err := h.userStore.DeleteUserInbound(acc.ID); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
 
 // collectUserIDs 从 userAccesses 列表中提取去重后的 UserID。
@@ -978,4 +1123,22 @@ func templateFuncs() template.FuncMap {
 			return n > 0
 		},
 	}
+}
+
+func panelRandomUUID() string {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Sprintf("pulse-%d", time.Now().UnixNano())
+	}
+	buf[6] = (buf[6] & 0x0f) | 0x40
+	buf[8] = (buf[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", buf[0:4], buf[4:6], buf[6:8], buf[8:10], buf[10:16])
+}
+
+func panelRandomToken(size int) string {
+	buf := make([]byte, size)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Sprintf("pulse-secret-%d", time.Now().UnixNano())
+	}
+	return fmt.Sprintf("%x", buf)
 }
