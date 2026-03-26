@@ -490,6 +490,9 @@
         <option value="2022-blake3-aes-256-gcm">2022-blake3-aes-256-gcm</option>
         <option value="2022-blake3-chacha20-poly1305">2022-blake3-chacha20-poly1305</option>
       </select>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5 mt-3">服务端 PSK（留空自动生成）</label>
+      <input type="text" name="ss_password" placeholder="留空自动生成"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono focus:outline-none focus:border-indigo-500 transition-colors">
     </div>
   </div>
   <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
@@ -627,6 +630,9 @@
         <option value="2022-blake3-aes-256-gcm" {{if eq .Data.Method "2022-blake3-aes-256-gcm"}}selected{{end}}>2022-blake3-aes-256-gcm</option>
         <option value="2022-blake3-chacha20-poly1305" {{if eq .Data.Method "2022-blake3-chacha20-poly1305"}}selected{{end}}>2022-blake3-chacha20-poly1305</option>
       </select>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5 mt-3">服务端 PSK</label>
+      <input type="text" name="ss_password" value="{{.Data.Password}}"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono focus:outline-none focus:border-indigo-500 transition-colors">
     </div>
     {{end}}
   </div>

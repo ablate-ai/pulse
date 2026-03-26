@@ -56,6 +56,7 @@ func (db *DB) init() error {
 			tag                   TEXT NOT NULL,
 			port                  INTEGER NOT NULL,
 			method                TEXT NOT NULL DEFAULT '',
+			password              TEXT NOT NULL DEFAULT '',
 			security              TEXT NOT NULL DEFAULT '',
 			reality_private_key   TEXT NOT NULL DEFAULT '',
 			reality_public_key    TEXT NOT NULL DEFAULT '',
@@ -240,6 +241,7 @@ func (db *DB) migrateInboundsTable() error {
 	}
 	additions := map[string]string{
 		"method":                 `ALTER TABLE inbounds ADD COLUMN method TEXT NOT NULL DEFAULT ''`,
+		"password":               `ALTER TABLE inbounds ADD COLUMN password TEXT NOT NULL DEFAULT ''`,
 		"security":               `ALTER TABLE inbounds ADD COLUMN security TEXT NOT NULL DEFAULT ''`,
 		"reality_private_key":    `ALTER TABLE inbounds ADD COLUMN reality_private_key TEXT NOT NULL DEFAULT ''`,
 		"reality_public_key":     `ALTER TABLE inbounds ADD COLUMN reality_public_key TEXT NOT NULL DEFAULT ''`,

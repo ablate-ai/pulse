@@ -16,6 +16,8 @@ type Inbound struct {
 	Port     int    `json:"port"`
 	// Shadowsocks 加密方式
 	Method string `json:"method,omitempty"`
+	// Shadowsocks 2022 服务端 PSK（仅 2022-blake3-* 系列需要）
+	Password string `json:"password,omitempty"`
 	// TLS / Reality 服务端配置
 	Security             string `json:"security,omitempty"`              // "reality" / "tls"
 	RealityPrivateKey    string `json:"reality_private_key,omitempty"`   // 服务端私钥

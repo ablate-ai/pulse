@@ -22,16 +22,17 @@ func (s *InboundStore) UpsertInbound(inbound inbounds.Inbound) (inbounds.Inbound
 	_, err := s.db.Exec(`
 		INSERT INTO inbounds (
 			id, node_id, protocol, tag, port,
-			method, security, reality_private_key, reality_public_key,
+			method, password, security, reality_private_key, reality_public_key,
 			reality_handshake_addr, reality_short_id,
 			tls_cert_path, tls_key_path
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			node_id                = excluded.node_id,
 			protocol               = excluded.protocol,
 			tag                    = excluded.tag,
 			port                   = excluded.port,
 			method                 = excluded.method,
+			password               = excluded.password,
 			security               = excluded.security,
 			reality_private_key    = excluded.reality_private_key,
 			reality_public_key     = excluded.reality_public_key,
@@ -41,7 +42,7 @@ func (s *InboundStore) UpsertInbound(inbound inbounds.Inbound) (inbounds.Inbound
 			tls_key_path           = excluded.tls_key_path
 	`,
 		inbound.ID, inbound.NodeID, inbound.Protocol, inbound.Tag, inbound.Port,
-		inbound.Method, inbound.Security, inbound.RealityPrivateKey, inbound.RealityPublicKey,
+		inbound.Method, inbound.Password, inbound.Security, inbound.RealityPrivateKey, inbound.RealityPublicKey,
 		inbound.RealityHandshakeAddr, inbound.RealityShortID,
 		inbound.TLSCertPath, inbound.TLSKeyPath,
 	)
@@ -54,7 +55,7 @@ func (s *InboundStore) UpsertInbound(inbound inbounds.Inbound) (inbounds.Inbound
 func (s *InboundStore) GetInbound(id string) (inbounds.Inbound, error) {
 	row := s.db.QueryRow(`
 		SELECT id, node_id, protocol, tag, port,
-		       method, security, reality_private_key, reality_public_key,
+		       method, password, security, reality_private_key, reality_public_key,
 		       reality_handshake_addr, reality_short_id,
 		       tls_cert_path, tls_key_path
 		FROM inbounds WHERE id = ?
@@ -65,7 +66,7 @@ func (s *InboundStore) GetInbound(id string) (inbounds.Inbound, error) {
 func (s *InboundStore) ListInbounds() ([]inbounds.Inbound, error) {
 	rows, err := s.db.Query(`
 		SELECT id, node_id, protocol, tag, port,
-		       method, security, reality_private_key, reality_public_key,
+		       method, password, security, reality_private_key, reality_public_key,
 		       reality_handshake_addr, reality_short_id,
 		       tls_cert_path, tls_key_path
 		FROM inbounds ORDER BY id
@@ -80,7 +81,7 @@ func (s *InboundStore) ListInbounds() ([]inbounds.Inbound, error) {
 func (s *InboundStore) ListInboundsByNode(nodeID string) ([]inbounds.Inbound, error) {
 	rows, err := s.db.Query(`
 		SELECT id, node_id, protocol, tag, port,
-		       method, security, reality_private_key, reality_public_key,
+		       method, password, security, reality_private_key, reality_public_key,
 		       reality_handshake_addr, reality_short_id,
 		       tls_cert_path, tls_key_path
 		FROM inbounds WHERE node_id = ? ORDER BY id
@@ -108,7 +109,7 @@ func scanInbound(row *sql.Row) (inbounds.Inbound, error) {
 	var in inbounds.Inbound
 	err := row.Scan(
 		&in.ID, &in.NodeID, &in.Protocol, &in.Tag, &in.Port,
-		&in.Method, &in.Security, &in.RealityPrivateKey, &in.RealityPublicKey,
+		&in.Method, &in.Password, &in.Security, &in.RealityPrivateKey, &in.RealityPublicKey,
 		&in.RealityHandshakeAddr, &in.RealityShortID,
 		&in.TLSCertPath, &in.TLSKeyPath,
 	)
@@ -124,7 +125,7 @@ func collectInbounds(rows *sql.Rows) ([]inbounds.Inbound, error) {
 		var in inbounds.Inbound
 		if err := rows.Scan(
 			&in.ID, &in.NodeID, &in.Protocol, &in.Tag, &in.Port,
-			&in.Method, &in.Security, &in.RealityPrivateKey, &in.RealityPublicKey,
+			&in.Method, &in.Password, &in.Security, &in.RealityPrivateKey, &in.RealityPublicKey,
 			&in.RealityHandshakeAddr, &in.RealityShortID,
 			&in.TLSCertPath, &in.TLSKeyPath,
 		); err != nil {

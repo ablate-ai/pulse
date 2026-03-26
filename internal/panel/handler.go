@@ -7,6 +7,7 @@ import (
 	"embed"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"math"
@@ -137,6 +138,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /panel/nodes/{id}/restart", h.requireAuth(h.restartNode))
 	mux.HandleFunc("POST /panel/nodes/{id}/start", h.requireAuth(h.startNode))
 	mux.HandleFunc("POST /panel/nodes/{id}/stop", h.requireAuth(h.stopNode))
+	mux.HandleFunc("GET /panel/nodes/{id}/config", h.requireAuth(h.nodeConfigModal))
 }
 
 // ─── 认证中间件 ──────────────────────────────────────────────────────────────
@@ -226,6 +228,19 @@ func generateRealityShortID() string {
 	var b [8]byte
 	_, _ = rand.Read(b[:])
 	return hex.EncodeToString(b[:])
+}
+
+// generateSSPassword 根据 SS 加密方式生成对应长度的 base64 PSK。
+func generateSSPassword(method string) string {
+	size := 32
+	if method == "2022-blake3-aes-128-gcm" {
+		size = 16
+	}
+	b := make([]byte, size)
+	if _, err := rand.Read(b); err != nil {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(b)
 }
 
 func htmxError(w http.ResponseWriter, status int, msg string) {
@@ -784,6 +799,46 @@ func (h *Handler) nodeEditForm(w http.ResponseWriter, r *http.Request) {
 	h.renderPartial(w, "partial-node-edit-form", node)
 }
 
+// nodeConfigData 传给配置弹窗模板的数据。
+type nodeConfigData struct {
+	NodeName string
+	Config   string
+}
+
+func (h *Handler) nodeConfigModal(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	node, err := h.nodeStore.Get(id)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "节点不存在")
+		return
+	}
+	client, err := h.dial(id)
+	if err != nil {
+		htmxError(w, http.StatusBadGateway, "连接节点失败: "+err.Error())
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	resp, err := client.Config(ctx)
+	if err != nil {
+		htmxError(w, http.StatusBadGateway, "获取配置失败: "+err.Error())
+		return
+	}
+	// 格式化 JSON
+	config := resp.Config
+	var pretty []byte
+	var buf interface{}
+	if jsonErr := json.Unmarshal([]byte(config), &buf); jsonErr == nil {
+		if pretty, jsonErr = json.MarshalIndent(buf, "", "  "); jsonErr == nil {
+			config = string(pretty)
+		}
+	}
+	h.renderPartial(w, "partial-node-config", nodeConfigData{
+		NodeName: node.Name,
+		Config:   config,
+	})
+}
+
 func (h *Handler) updateNode(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	node, err := h.nodeStore.Get(id)
@@ -957,6 +1012,7 @@ func (h *Handler) createInbound(w http.ResponseWriter, r *http.Request) {
 		Tag:                  tag,
 		Port:                 port,
 		Method:               r.FormValue("method"),
+		Password:             r.FormValue("ss_password"),
 		Security:             r.FormValue("security"),
 		TLSCertPath:          r.FormValue("tls_cert_path"),
 		TLSKeyPath:           r.FormValue("tls_key_path"),
@@ -981,6 +1037,11 @@ func (h *Handler) createInbound(w http.ResponseWriter, r *http.Request) {
 		if ib.RealityShortID == "" {
 			ib.RealityShortID = generateRealityShortID()
 		}
+	}
+
+	// Shadowsocks 2022：服务端 PSK 为空时自动生成
+	if protocol == "shadowsocks" && ib.Password == "" {
+		ib.Password = generateSSPassword(ib.Method)
 	}
 
 	if _, err := h.ibStore.UpsertInbound(ib); err != nil {
@@ -1024,6 +1085,9 @@ func (h *Handler) updateInbound(w http.ResponseWriter, r *http.Request) {
 	}
 	ib.Security = r.FormValue("security")
 	ib.Method = r.FormValue("method")
+	if pw := r.FormValue("ss_password"); pw != "" {
+		ib.Password = pw
+	}
 	ib.TLSCertPath = r.FormValue("tls_cert_path")
 	ib.TLSKeyPath = r.FormValue("tls_key_path")
 	ib.RealityPrivateKey = r.FormValue("reality_private_key")

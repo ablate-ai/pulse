@@ -6,6 +6,7 @@ import (
 	"net"
 	"sort"
 	"strconv"
+	"strings"
 
 	"pulse/internal/inbounds"
 	"pulse/internal/users"
@@ -84,21 +85,40 @@ func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.Us
 
 		method := ""
 		password := ""
+		var userList []map[string]any
 		if ib.Protocol == "shadowsocks" {
 			method = ib.Method
 			if method == "" {
-				method = "aes-128-gcm"
+				method = "2022-blake3-aes-128-gcm"
 			}
-			password = "pulse-shared-secret"
-		}
-
-		userList := make([]map[string]any, 0, len(activeAccesses))
-		for _, acc := range activeAccesses {
-			u, ok := userMap[acc.UserID]
-			if !ok {
-				continue
+			if strings.HasPrefix(method, "2022-") {
+				// SS 2022 多用户：服务端 PSK + 每人独立密码
+				password = ib.Password
+				userList = make([]map[string]any, 0, len(activeAccesses))
+				for _, acc := range activeAccesses {
+					u, ok := userMap[acc.UserID]
+					if !ok {
+						continue
+					}
+					userList = append(userList, map[string]any{
+						"name":     u.Username,
+						"password": acc.Secret,
+					})
+				}
+			} else {
+				// 旧版 SS：单一共享密码
+				password = "pulse-shared-secret"
+				userList = nil
 			}
-			userList = append(userList, buildInboundUser(ib, acc, u.Username))
+		} else {
+			userList = make([]map[string]any, 0, len(activeAccesses))
+			for _, acc := range activeAccesses {
+				u, ok := userMap[acc.UserID]
+				if !ok {
+					continue
+				}
+				userList = append(userList, buildInboundUser(ib, acc, u.Username))
+			}
 		}
 
 		blocks = append(blocks, inboundBlock{
