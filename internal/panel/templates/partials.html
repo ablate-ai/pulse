@@ -447,28 +447,26 @@
         <input type="text" name="reality_handshake_addr" value="yahoo.com:443"
                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
       </div>
-      <div>
-        <div class="flex items-center justify-between mb-1.5">
+      <div class="space-y-2">
+        <div class="flex items-center justify-between">
           <label class="text-xs font-medium text-gray-400">密钥对 & Short ID</label>
           <button type="button" onclick="ibGenReality(this.closest('form'))"
-                  class="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">⟳ 生成</button>
+                  class="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">⟳ 重新生成</button>
         </div>
-        <div class="bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-2.5 space-y-1.5 text-xs">
-          <div class="flex items-center gap-2">
-            <span class="text-gray-500 w-16 flex-shrink-0">私钥</span>
-            <span class="ib-priv text-gray-500 italic">点击生成</span>
-            <input type="hidden" name="reality_private_key">
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="text-gray-500 w-16 flex-shrink-0">公钥</span>
-            <span class="ib-pub text-gray-500 italic">点击生成</span>
-            <input type="hidden" name="reality_public_key">
-          </div>
-          <div class="flex items-center gap-2">
-            <span class="text-gray-500 w-16 flex-shrink-0">Short ID</span>
-            <span class="ib-sid text-gray-500 italic">点击生成</span>
-            <input type="hidden" name="reality_short_id">
-          </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">私钥</label>
+          <input type="text" name="reality_private_key" readonly placeholder="生成中..."
+                 class="w-full bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-300 font-mono focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">公钥</label>
+          <input type="text" name="reality_public_key" readonly placeholder="生成中..."
+                 class="w-full bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-300 font-mono focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Short ID</label>
+          <input type="text" name="reality_short_id" readonly placeholder="生成中..."
+                 class="w-full bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-300 font-mono focus:outline-none">
         </div>
       </div>
     </div>
@@ -476,6 +474,15 @@
     <!-- Trojan TLS 字段 -->
     <div class="ib-trojan hidden space-y-3">
       <input type="hidden" name="security" value="tls">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">密码</label>
+        <div class="flex gap-2">
+          <input type="text" name="trojan_password"
+                 class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono focus:outline-none focus:border-indigo-500 transition-colors">
+          <button type="button" onclick="ibGenPassword('trojan_password', this.form)"
+                  class="px-3 py-2 text-xs text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-700 transition-colors whitespace-nowrap">生成</button>
+        </div>
+      </div>
       <div>
         <label class="block text-xs font-medium text-gray-400 mb-1.5">TLS 证书路径</label>
         <input type="text" name="tls_cert_path" placeholder="/etc/ssl/cert.pem"
@@ -489,14 +496,25 @@
     </div>
 
     <!-- Shadowsocks 字段 -->
-    <div class="ib-ss hidden">
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">加密方式</label>
-      <select name="method"
-              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-        <option value="2022-blake3-aes-128-gcm">2022-blake3-aes-128-gcm（推荐）</option>
-        <option value="2022-blake3-aes-256-gcm">2022-blake3-aes-256-gcm</option>
-        <option value="2022-blake3-chacha20-poly1305">2022-blake3-chacha20-poly1305</option>
-      </select>
+    <div class="ib-ss hidden space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">加密方式</label>
+        <select name="method"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+          <option value="2022-blake3-aes-128-gcm">2022-blake3-aes-128-gcm（推荐）</option>
+          <option value="2022-blake3-aes-256-gcm">2022-blake3-aes-256-gcm</option>
+          <option value="2022-blake3-chacha20-poly1305">2022-blake3-chacha20-poly1305</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">服务端 PSK</label>
+        <div class="flex gap-2">
+          <input type="text" name="ss_password"
+                 class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono focus:outline-none focus:border-indigo-500 transition-colors">
+          <button type="button" onclick="ibGenPassword('ss_password', this.form)"
+                  class="px-3 py-2 text-xs text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-700 transition-colors whitespace-nowrap">生成</button>
+        </div>
+      </div>
     </div>
   </div>
   <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">

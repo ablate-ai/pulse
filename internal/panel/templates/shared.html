@@ -33,25 +33,25 @@ document.addEventListener('pulseToast', function(e) {
 // Reality 密钥对生成
 async function ibGenReality(form) {
   const btn = form.querySelector('button[onclick*="ibGenReality"]');
-  if (btn) btn.textContent = '生成中...';
+  if (btn) btn.disabled = true;
   try {
     const res = await fetch('/panel/tools/reality-keypair', {credentials: 'same-origin'});
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(res.status + ': ' + text.slice(0, 100));
-    }
+    if (!res.ok) throw new Error(res.status + ': ' + (await res.text()).slice(0, 100));
     const d = await res.json();
     form.querySelector('[name=reality_private_key]').value = d.private_key;
     form.querySelector('[name=reality_public_key]').value = d.public_key;
     form.querySelector('[name=reality_short_id]').value = d.short_id;
-    form.querySelector('.ib-priv').textContent = d.private_key.slice(0,16)+'…';
-    form.querySelector('.ib-pub').textContent = d.public_key.slice(0,16)+'…';
-    form.querySelector('.ib-sid').textContent = d.short_id;
-    if (btn) btn.textContent = '✓ 已生成';
   } catch(e) {
-    if (btn) btn.textContent = '⟳ 生成';
     showToast('密钥生成失败: ' + e.message, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
   }
+}
+// 生成随机 base64 密码（32 字节）并填入指定字段
+function ibGenPassword(fieldName, form) {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  form.querySelector('[name=' + fieldName + ']').value = btoa(String.fromCharCode(...bytes));
 }
 // 新建 Inbound 表单协议字段动态显隐
 function ibSync(form) {
@@ -63,7 +63,14 @@ function ibSync(form) {
 }
 document.addEventListener('htmx:afterSettle', function() {
   const form = document.getElementById('ib-new-form');
-  if (form) ibSync(form);
+  if (!form) return;
+  ibSync(form);
+  const privKey = form.querySelector('[name=reality_private_key]');
+  if (privKey && !privKey.value) ibGenReality(form);
+  const ssPw = form.querySelector('[name=ss_password]');
+  if (ssPw && !ssPw.value) ibGenPassword('ss_password', form);
+  const trojanPw = form.querySelector('[name=trojan_password]');
+  if (trojanPw && !trojanPw.value) ibGenPassword('trojan_password', form);
 });
 // 批量操作：收集选中的用户 ID 并发送
 async function batchAction(action) {
