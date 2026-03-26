@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"pulse/internal/auth"
+	"pulse/internal/buildinfo"
 	"pulse/internal/idgen"
 	"pulse/internal/inbounds"
 	"pulse/internal/jobs"
@@ -45,13 +46,16 @@ type Handler struct {
 type pageData struct {
 	Page     string // "dashboard", "users", "nodes"
 	Username string
+	Version  string
 	Data     any
 }
 
 // nodeWithStatus 节点及其运行状态。
 type nodeWithStatus struct {
-	Node   nodes.Node
-	Status string // "online" / "offline"
+	Node        nodes.Node
+	Status      string // "online" / "offline" / "idle"
+	SingboxVer  string // sing-box 版本
+	NodeVer     string // pulse-node 编译版本
 }
 
 // inboundHostsData 传给 Host 相关模板的数据结构。
@@ -80,7 +84,7 @@ func New(
 
 	tmpl, err := template.New("").Funcs(templateFuncs()).ParseFS(embedFS, "templates/*.html")
 	if err != nil {
-		return nil, fmt.Errorf("解析模板: %w", err)
+		return nil, fmt.Errorf("parse template: %w", err)
 	}
 	h.tmpl = tmpl
 	return h, nil
@@ -245,14 +249,25 @@ func generateSSPassword(method string) string {
 
 func htmxError(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("HX-Reswap", "none")
-	http.Error(w, msg, status)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	b, _ := json.Marshal(map[string]string{"error": msg})
+	w.Write(b) //nolint:errcheck
+}
+
+// setHXTriggerToast 将 pulseToast 消息写入 HX-Trigger header，
+// 用 JSON 编码确保中文字符被转义为 \uXXXX，避免 HTTP header 乱码。
+func setHXTriggerToast(w http.ResponseWriter, msg string) {
+	b, _ := json.Marshal(map[string]string{"pulseToast": msg})
+	w.Header().Set("HX-Trigger", string(b))
 }
 
 // renderPage 使用完整 layout 模板渲染页面。
 func (h *Handler) renderPage(w http.ResponseWriter, name string, data pageData) {
+	data.Version = buildinfo.Version
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.tmpl.ExecuteTemplate(w, name, data); err != nil {
-		http.Error(w, "模板渲染错误: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "template render error: "+err.Error(), http.StatusInternalServerError)
 	}
 }
 
@@ -260,7 +275,7 @@ func (h *Handler) renderPage(w http.ResponseWriter, name string, data pageData) 
 func (h *Handler) renderPartial(w http.ResponseWriter, name string, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.tmpl.ExecuteTemplate(w, name, pageData{Data: data}); err != nil {
-		http.Error(w, "模板渲染错误: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "template render error: "+err.Error(), http.StatusInternalServerError)
 	}
 }
 
@@ -277,7 +292,7 @@ func (h *Handler) processLogin(w http.ResponseWriter, r *http.Request) {
 	token, err := h.auth.Login(username, password)
 	if err != nil {
 		if isHTMX(r) {
-			htmxError(w, http.StatusUnauthorized, "用户名或密码错误")
+			htmxError(w, http.StatusUnauthorized, "invalid username or password")
 			return
 		}
 		http.Redirect(w, r, "/login?error=1", http.StatusFound)
@@ -334,7 +349,7 @@ func (h *Handler) nodesPage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) statsPartial(w http.ResponseWriter, r *http.Request) {
 	summary, err := usage.Build(h.nodeStore, h.userStore)
 	if err != nil {
-		htmxError(w, http.StatusInternalServerError, "获取统计数据失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to get stats: "+err.Error())
 		return
 	}
 	h.renderPartial(w, "partial-stats", summary)
@@ -346,7 +361,7 @@ func (h *Handler) usersListPartial(w http.ResponseWriter, r *http.Request) {
 
 	allUsers, err := h.userStore.ListUsers()
 	if err != nil {
-		htmxError(w, http.StatusInternalServerError, "获取用户列表失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to get user list: "+err.Error())
 		return
 	}
 
@@ -384,7 +399,7 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 	note := r.FormValue("note")
 
 	if username == "" {
-		htmxError(w, http.StatusBadRequest, "用户名不能为空")
+		htmxError(w, http.StatusBadRequest, "username is required")
 		return
 	}
 
@@ -392,7 +407,7 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 	if trafficLimitGBStr != "" {
 		gb, err := strconv.ParseFloat(trafficLimitGBStr, 64)
 		if err != nil {
-			htmxError(w, http.StatusBadRequest, "流量限制格式无效")
+			htmxError(w, http.StatusBadRequest, "invalid traffic limit format")
 			return
 		}
 		trafficLimit = int64(math.Round(gb * 1024 * 1024 * 1024))
@@ -402,7 +417,7 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 	if expireAtStr != "" {
 		t, err := time.ParseInLocation("2006-01-02T15:04", expireAtStr, time.Local)
 		if err != nil {
-			htmxError(w, http.StatusBadRequest, "过期时间格式无效")
+			htmxError(w, http.StatusBadRequest, "invalid expiry format")
 			return
 		}
 		expireAt = &t
@@ -420,14 +435,14 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := h.userStore.UpsertUser(newUser); err != nil {
-		htmxError(w, http.StatusInternalServerError, "创建用户失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to create user: "+err.Error())
 		return
 	}
 
 	// 处理 inbound 关联
 	if selectedIDs := r.Form["inbound_ids"]; len(selectedIDs) > 0 {
 		if err := h.syncUserInbounds(newUser.ID, selectedIDs); err != nil {
-			htmxError(w, http.StatusInternalServerError, "关联 Inbound 失败: "+err.Error())
+			htmxError(w, http.StatusInternalServerError, "failed to sync inbounds: "+err.Error())
 			return
 		}
 	}
@@ -440,7 +455,7 @@ func (h *Handler) userEditForm(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	user, err := h.userStore.GetUser(id)
 	if err != nil {
-		htmxError(w, http.StatusNotFound, "用户不存在")
+		htmxError(w, http.StatusNotFound, "user not found")
 		return
 	}
 	ibList, err := h.ibStore.ListInbounds()
@@ -465,7 +480,7 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	user, err := h.userStore.GetUser(id)
 	if err != nil {
-		htmxError(w, http.StatusNotFound, "用户不存在")
+		htmxError(w, http.StatusNotFound, "user not found")
 		return
 	}
 
@@ -482,7 +497,7 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 	if trafficLimitGBStr := r.FormValue("traffic_limit_gb"); trafficLimitGBStr != "" {
 		gb, err := strconv.ParseFloat(trafficLimitGBStr, 64)
 		if err != nil {
-			htmxError(w, http.StatusBadRequest, "流量限制格式无效")
+			htmxError(w, http.StatusBadRequest, "invalid traffic limit format")
 			return
 		}
 		user.TrafficLimit = int64(math.Round(gb * 1024 * 1024 * 1024))
@@ -495,7 +510,7 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 	if expireAtStr := r.FormValue("expire_at"); expireAtStr != "" {
 		t, err := time.ParseInLocation("2006-01-02T15:04", expireAtStr, time.Local)
 		if err != nil {
-			htmxError(w, http.StatusBadRequest, "过期时间格式无效")
+			htmxError(w, http.StatusBadRequest, "invalid expiry format")
 			return
 		}
 		user.ExpireAt = &t
@@ -508,7 +523,7 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 	if onHoldExpireStr := r.FormValue("on_hold_expire_at"); onHoldExpireStr != "" {
 		t, err := time.ParseInLocation("2006-01-02T15:04", onHoldExpireStr, time.Local)
 		if err != nil {
-			htmxError(w, http.StatusBadRequest, "On Hold 到期时间格式无效")
+			htmxError(w, http.StatusBadRequest, "invalid on-hold expiry format")
 			return
 		}
 		user.OnHoldExpireAt = &t
@@ -519,14 +534,14 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := h.userStore.UpsertUser(user); err != nil {
-		htmxError(w, http.StatusInternalServerError, "更新用户失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to update user: "+err.Error())
 		return
 	}
 
 	// 有提交 inbound_sync 标记时（无论是否选中），都同步 inbound 关联
 	if r.Form.Has("inbound_sync") {
 		if err := h.syncUserInbounds(user.ID, r.Form["inbound_ids"]); err != nil {
-			htmxError(w, http.StatusInternalServerError, "关联 Inbound 失败: "+err.Error())
+			htmxError(w, http.StatusInternalServerError, "failed to sync inbounds: "+err.Error())
 			return
 		}
 	}
@@ -537,7 +552,7 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) deleteUser(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := h.userStore.DeleteUser(id); err != nil {
-		htmxError(w, http.StatusInternalServerError, "删除用户失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to delete user: "+err.Error())
 		return
 	}
 	h.renderUsersListFromStore(w)
@@ -547,7 +562,7 @@ func (h *Handler) resetUserTraffic(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	user, err := h.userStore.GetUser(id)
 	if err != nil {
-		htmxError(w, http.StatusNotFound, "用户不存在")
+		htmxError(w, http.StatusNotFound, "user not found")
 		return
 	}
 
@@ -558,7 +573,7 @@ func (h *Handler) resetUserTraffic(w http.ResponseWriter, r *http.Request) {
 	user.LastTrafficResetAt = &now
 
 	if _, err := h.userStore.UpsertUser(user); err != nil {
-		htmxError(w, http.StatusInternalServerError, "重置流量失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to reset traffic: "+err.Error())
 		return
 	}
 	h.renderUsersListFromStore(w)
@@ -567,13 +582,13 @@ func (h *Handler) resetUserTraffic(w http.ResponseWriter, r *http.Request) {
 // batchUsers 批量操作用户（enable/disable/delete）。
 func (h *Handler) batchUsers(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		htmxError(w, http.StatusBadRequest, "参数解析失败")
+		htmxError(w, http.StatusBadRequest, "failed to parse form")
 		return
 	}
 	action := r.FormValue("action")
 	ids := r.Form["ids"]
 	if len(ids) == 0 {
-		htmxError(w, http.StatusBadRequest, "未选择任何用户")
+		htmxError(w, http.StatusBadRequest, "no users selected")
 		return
 	}
 	for _, id := range ids {
@@ -591,7 +606,7 @@ func (h *Handler) batchUsers(w http.ResponseWriter, r *http.Request) {
 				_, _ = h.userStore.UpsertUser(u)
 			}
 		default:
-			htmxError(w, http.StatusBadRequest, "未知操作: "+action)
+			htmxError(w, http.StatusBadRequest, "unknown action: "+action)
 			return
 		}
 	}
@@ -612,7 +627,7 @@ func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
 	newPw := r.FormValue("new_password")
 	confirm := r.FormValue("confirm_password")
 	if newPw != confirm {
-		htmxError(w, http.StatusBadRequest, "两次输入的新密码不一致")
+		htmxError(w, http.StatusBadRequest, "passwords do not match")
 		return
 	}
 	if err := h.auth.ChangePassword(current, newPw); err != nil {
@@ -627,34 +642,49 @@ func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) renderUsersListFromStore(w http.ResponseWriter) {
 	allUsers, err := h.userStore.ListUsers()
 	if err != nil {
-		htmxError(w, http.StatusInternalServerError, "获取用户列表失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to get user list: "+err.Error())
 		return
 	}
 	h.renderPartial(w, "partial-user-rows", allUsers)
 }
 
+// fetchNodeStatus 查询单个节点的运行状态和版本信息。
+// Runtime 和 Status 各自独立 3s 超时，避免共享 deadline 时前者慢导致后者超时。
+func (h *Handler) fetchNodeStatus(ctx context.Context, n nodes.Node) nodeWithStatus {
+	ns := nodeWithStatus{Node: n, Status: "offline"}
+	client, err := h.dial(n.ID)
+	if err != nil {
+		return ns
+	}
+	rtCtx, rtCancel := context.WithTimeout(ctx, 3*time.Second)
+	rt, rtErr := client.Runtime(rtCtx)
+	rtCancel()
+	if rtErr != nil {
+		return ns
+	}
+	ns.SingboxVer = rt.Version
+	ns.NodeVer = rt.NodeVersion
+	stCtx, stCancel := context.WithTimeout(ctx, 3*time.Second)
+	status, stErr := client.Status(stCtx)
+	stCancel()
+	if stErr == nil && status.Running {
+		ns.Status = "online"
+	} else {
+		ns.Status = "idle"
+	}
+	return ns
+}
+
 func (h *Handler) nodesListPartial(w http.ResponseWriter, r *http.Request) {
 	nodeList, err := h.nodeStore.List()
 	if err != nil {
-		htmxError(w, http.StatusInternalServerError, "获取节点列表失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to get node list: "+err.Error())
 		return
 	}
-
 	result := make([]nodeWithStatus, 0, len(nodeList))
 	for _, n := range nodeList {
-		ns := nodeWithStatus{Node: n, Status: "offline"}
-		client, dialErr := h.dial(n.ID)
-		if dialErr == nil {
-			ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-			status, statusErr := client.Status(ctx)
-			cancel()
-			if statusErr == nil && status.Running {
-				ns.Status = "online"
-			}
-		}
-		result = append(result, ns)
+		result = append(result, h.fetchNodeStatus(r.Context(), n))
 	}
-
 	h.renderPartial(w, "partial-node-rows", result)
 }
 
@@ -667,7 +697,7 @@ func (h *Handler) createNode(w http.ResponseWriter, r *http.Request) {
 	baseURL := r.FormValue("base_url")
 
 	if name == "" || baseURL == "" {
-		htmxError(w, http.StatusBadRequest, "名称和地址不能为空")
+		htmxError(w, http.StatusBadRequest, "name and address are required")
 		return
 	}
 
@@ -678,7 +708,7 @@ func (h *Handler) createNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := h.nodeStore.Upsert(newNode); err != nil {
-		htmxError(w, http.StatusInternalServerError, "创建节点失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to create node: "+err.Error())
 		return
 	}
 
@@ -688,52 +718,55 @@ func (h *Handler) createNode(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) deleteNode(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := h.nodeStore.Delete(id); err != nil {
-		htmxError(w, http.StatusInternalServerError, "删除节点失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to delete node: "+err.Error())
 		return
 	}
 	h.renderNodesListFromStore(w, r)
 }
 
+// restartNode 从服务端重新生成配置并推送到节点后重启 sing-box。
 func (h *Handler) restartNode(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
 	client, err := h.dial(id)
 	if err != nil {
-		htmxError(w, http.StatusInternalServerError, "连接节点失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to connect to node: "+err.Error())
 		return
 	}
 
-	// 获取节点 inbound 列表
 	nodeInbounds, err := h.ibStore.ListInboundsByNode(id)
 	if err != nil {
-		htmxError(w, http.StatusInternalServerError, "获取 inbound 配置失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to get inbound config: "+err.Error())
 		return
 	}
 
-	// 获取节点用户凭据
 	userAccesses, err := h.userStore.ListUserInboundsByNode(id)
 	if err != nil {
-		htmxError(w, http.StatusInternalServerError, "获取用户凭据失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to get user credentials: "+err.Error())
 		return
 	}
 
-	// 批量获取用户
 	userIDs := collectUserIDs(userAccesses)
 	userMap, err := h.userStore.GetUsersByIDs(userIDs)
 	if err != nil {
-		htmxError(w, http.StatusInternalServerError, "获取用户数据失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to get user data: "+err.Error())
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	if _, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.applyOpts); err != nil {
-		htmxError(w, http.StatusInternalServerError, "重启节点失败: "+err.Error())
+	status, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.applyOpts)
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to restart node: "+err.Error())
 		return
 	}
 
-	// 返回更新后的完整节点列表
+	msg := "config applied, sing-box is running"
+	if !status.Running {
+		msg = "config applied, but sing-box failed to start"
+	}
+	setHXTriggerToast(w, msg)
 	h.nodesListPartial(w, r)
 }
 
@@ -742,26 +775,26 @@ func (h *Handler) startNode(w http.ResponseWriter, r *http.Request) {
 
 	client, err := h.dial(id)
 	if err != nil {
-		htmxError(w, http.StatusInternalServerError, "连接节点失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to connect to node: "+err.Error())
 		return
 	}
 
 	nodeInbounds, err := h.ibStore.ListInboundsByNode(id)
 	if err != nil {
-		htmxError(w, http.StatusInternalServerError, "获取 inbound 配置失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to get inbound config: "+err.Error())
 		return
 	}
 
 	userAccesses, err := h.userStore.ListUserInboundsByNode(id)
 	if err != nil {
-		htmxError(w, http.StatusInternalServerError, "获取用户凭据失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to get user credentials: "+err.Error())
 		return
 	}
 
 	userIDs := collectUserIDs(userAccesses)
 	userMap, err := h.userStore.GetUsersByIDs(userIDs)
 	if err != nil {
-		htmxError(w, http.StatusInternalServerError, "获取用户数据失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to get user data: "+err.Error())
 		return
 	}
 
@@ -769,7 +802,7 @@ func (h *Handler) startNode(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	if _, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.applyOpts); err != nil {
-		htmxError(w, http.StatusInternalServerError, "启动节点失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to start node: "+err.Error())
 		return
 	}
 
@@ -781,7 +814,7 @@ func (h *Handler) stopNode(w http.ResponseWriter, r *http.Request) {
 
 	client, err := h.dial(id)
 	if err != nil {
-		htmxError(w, http.StatusInternalServerError, "连接节点失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to connect to node: "+err.Error())
 		return
 	}
 
@@ -789,7 +822,7 @@ func (h *Handler) stopNode(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	if _, err := client.Stop(ctx); err != nil {
-		htmxError(w, http.StatusInternalServerError, "停止节点失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to stop node: "+err.Error())
 		return
 	}
 
@@ -800,7 +833,7 @@ func (h *Handler) nodeEditForm(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	node, err := h.nodeStore.Get(id)
 	if err != nil {
-		htmxError(w, http.StatusNotFound, "节点不存在")
+		htmxError(w, http.StatusNotFound, "node not found")
 		return
 	}
 	h.renderPartial(w, "partial-node-edit-form", node)
@@ -816,19 +849,19 @@ func (h *Handler) nodeConfigModal(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	node, err := h.nodeStore.Get(id)
 	if err != nil {
-		htmxError(w, http.StatusNotFound, "节点不存在")
+		htmxError(w, http.StatusNotFound, "node not found")
 		return
 	}
 	client, err := h.dial(id)
 	if err != nil {
-		htmxError(w, http.StatusBadGateway, "连接节点失败: "+err.Error())
+		htmxError(w, http.StatusBadGateway, "failed to connect to node: "+err.Error())
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	resp, err := client.Config(ctx)
 	if err != nil {
-		htmxError(w, http.StatusBadGateway, "获取配置失败: "+err.Error())
+		htmxError(w, http.StatusBadGateway, "failed to get config: "+err.Error())
 		return
 	}
 	// 格式化 JSON
@@ -850,7 +883,7 @@ func (h *Handler) updateNode(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	node, err := h.nodeStore.Get(id)
 	if err != nil {
-		htmxError(w, http.StatusNotFound, "节点不存在")
+		htmxError(w, http.StatusNotFound, "node not found")
 		return
 	}
 
@@ -862,7 +895,7 @@ func (h *Handler) updateNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := h.nodeStore.Upsert(node); err != nil {
-		htmxError(w, http.StatusInternalServerError, "更新节点失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to update node: "+err.Error())
 		return
 	}
 	h.renderNodesListFromStore(w, r)
@@ -873,25 +906,13 @@ func (h *Handler) updateNode(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) renderNodesListFromStore(w http.ResponseWriter, r *http.Request) {
 	nodeList, err := h.nodeStore.List()
 	if err != nil {
-		htmxError(w, http.StatusInternalServerError, "获取节点列表失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to get node list: "+err.Error())
 		return
 	}
-
 	result := make([]nodeWithStatus, 0, len(nodeList))
 	for _, n := range nodeList {
-		ns := nodeWithStatus{Node: n, Status: "offline"}
-		client, dialErr := h.dial(n.ID)
-		if dialErr == nil {
-			ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-			status, statusErr := client.Status(ctx)
-			cancel()
-			if statusErr == nil && status.Running {
-				ns.Status = "online"
-			}
-		}
-		result = append(result, ns)
+		result = append(result, h.fetchNodeStatus(r.Context(), n))
 	}
-
 	h.renderPartial(w, "partial-node-rows", result)
 }
 
@@ -992,7 +1013,7 @@ func (h *Handler) inboundsPage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) inboundsListPartial(w http.ResponseWriter, r *http.Request) {
 	list, err := h.ibStore.ListInbounds()
 	if err != nil {
-		htmxError(w, http.StatusInternalServerError, "获取 Inbound 列表失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to get inbound list: "+err.Error())
 		return
 	}
 	h.renderPartial(w, "partial-inbound-rows", list)
@@ -1002,7 +1023,7 @@ func (h *Handler) inboundNewForm(w http.ResponseWriter, r *http.Request) {
 	// 获取节点列表供选择
 	nodeList, err := h.nodeStore.List()
 	if err != nil {
-		htmxError(w, http.StatusInternalServerError, "获取节点列表失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to get node list: "+err.Error())
 		return
 	}
 	h.renderPartial(w, "partial-inbound-new-form", nodeList)
@@ -1016,13 +1037,13 @@ func (h *Handler) createInbound(w http.ResponseWriter, r *http.Request) {
 	tag := r.FormValue("tag")
 
 	if protocol == "" || portStr == "" || tag == "" || nodeID == "" {
-		htmxError(w, http.StatusBadRequest, "节点、协议、端口和标签不能为空")
+		htmxError(w, http.StatusBadRequest, "node, protocol, port and tag are required")
 		return
 	}
 
 	port, err := strconv.Atoi(portStr)
 	if err != nil || port <= 0 || port > 65535 {
-		htmxError(w, http.StatusBadRequest, "端口格式无效")
+		htmxError(w, http.StatusBadRequest, "invalid port")
 		return
 	}
 
@@ -1049,7 +1070,7 @@ func (h *Handler) createInbound(w http.ResponseWriter, r *http.Request) {
 		if ib.RealityPrivateKey == "" || ib.RealityPublicKey == "" {
 			priv, pub, err := generateRealityKeypair()
 			if err != nil {
-				htmxError(w, http.StatusInternalServerError, "生成 Reality 密钥对失败: "+err.Error())
+				htmxError(w, http.StatusInternalServerError, "failed to generate Reality keypair: "+err.Error())
 				return
 			}
 			ib.RealityPrivateKey = priv
@@ -1066,7 +1087,7 @@ func (h *Handler) createInbound(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := h.ibStore.UpsertInbound(ib); err != nil {
-		htmxError(w, http.StatusInternalServerError, "创建 Inbound 失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to create inbound: "+err.Error())
 		return
 	}
 	h.renderInboundsListFromStore(w)
@@ -1076,7 +1097,7 @@ func (h *Handler) inboundEditForm(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	ib, err := h.ibStore.GetInbound(id)
 	if err != nil {
-		htmxError(w, http.StatusNotFound, "Inbound 不存在")
+		htmxError(w, http.StatusNotFound, "inbound not found")
 		return
 	}
 	h.renderPartial(w, "partial-inbound-edit-form", ib)
@@ -1086,7 +1107,7 @@ func (h *Handler) updateInbound(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	ib, err := h.ibStore.GetInbound(id)
 	if err != nil {
-		htmxError(w, http.StatusNotFound, "Inbound 不存在")
+		htmxError(w, http.StatusNotFound, "inbound not found")
 		return
 	}
 
@@ -1096,7 +1117,7 @@ func (h *Handler) updateInbound(w http.ResponseWriter, r *http.Request) {
 	if portStr := r.FormValue("port"); portStr != "" {
 		port, err := strconv.Atoi(portStr)
 		if err != nil || port <= 0 || port > 65535 {
-			htmxError(w, http.StatusBadRequest, "端口格式无效")
+			htmxError(w, http.StatusBadRequest, "invalid port")
 			return
 		}
 		ib.Port = port
@@ -1117,7 +1138,7 @@ func (h *Handler) updateInbound(w http.ResponseWriter, r *http.Request) {
 	ib.RealityShortID = r.FormValue("reality_short_id")
 
 	if _, err := h.ibStore.UpsertInbound(ib); err != nil {
-		htmxError(w, http.StatusInternalServerError, "更新 Inbound 失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to update inbound: "+err.Error())
 		return
 	}
 	h.renderInboundsListFromStore(w)
@@ -1126,7 +1147,7 @@ func (h *Handler) updateInbound(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) deleteInbound(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := h.ibStore.DeleteInbound(id); err != nil {
-		htmxError(w, http.StatusInternalServerError, "删除 Inbound 失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to delete inbound: "+err.Error())
 		return
 	}
 	h.renderInboundsListFromStore(w)
@@ -1135,7 +1156,7 @@ func (h *Handler) deleteInbound(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) renderInboundsListFromStore(w http.ResponseWriter) {
 	list, err := h.ibStore.ListInbounds()
 	if err != nil {
-		htmxError(w, http.StatusInternalServerError, "获取 Inbound 列表失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to get inbound list: "+err.Error())
 		return
 	}
 	h.renderPartial(w, "partial-inbound-rows", list)
@@ -1147,12 +1168,12 @@ func (h *Handler) hostsModal(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	ib, err := h.ibStore.GetInbound(id)
 	if err != nil {
-		htmxError(w, http.StatusNotFound, "Inbound 不存在")
+		htmxError(w, http.StatusNotFound, "inbound not found")
 		return
 	}
 	hosts, err := h.ibStore.ListHostsByInbound(id)
 	if err != nil {
-		htmxError(w, http.StatusInternalServerError, "获取 Host 列表失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to get host list: "+err.Error())
 		return
 	}
 	h.renderPartial(w, "partial-hosts-modal", inboundHostsData{Inbound: ib, Hosts: hosts})
@@ -1162,19 +1183,19 @@ func (h *Handler) createHost(w http.ResponseWriter, r *http.Request) {
 	ibID := r.PathValue("id")
 	ib, err := h.ibStore.GetInbound(ibID)
 	if err != nil {
-		htmxError(w, http.StatusNotFound, "Inbound 不存在")
+		htmxError(w, http.StatusNotFound, "inbound not found")
 		return
 	}
 	address := r.FormValue("address")
 	if address == "" {
-		htmxError(w, http.StatusBadRequest, "连接地址不能为空")
+		htmxError(w, http.StatusBadRequest, "address is required")
 		return
 	}
 	port := 0
 	if portStr := r.FormValue("port"); portStr != "" {
 		p, err := strconv.Atoi(portStr)
 		if err != nil || p < 0 || p > 65535 {
-			htmxError(w, http.StatusBadRequest, "端口格式无效")
+			htmxError(w, http.StatusBadRequest, "invalid port")
 			return
 		}
 		port = p
@@ -1193,7 +1214,7 @@ func (h *Handler) createHost(w http.ResponseWriter, r *http.Request) {
 		Fingerprint:   r.FormValue("fingerprint"),
 	}
 	if _, err := h.ibStore.UpsertHost(host); err != nil {
-		htmxError(w, http.StatusInternalServerError, "创建 Host 失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to create host: "+err.Error())
 		return
 	}
 	hosts, _ := h.ibStore.ListHostsByInbound(ibID)
@@ -1204,7 +1225,7 @@ func (h *Handler) hostEditForm(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	host, err := h.ibStore.GetHost(id)
 	if err != nil {
-		htmxError(w, http.StatusNotFound, "Host 不存在")
+		htmxError(w, http.StatusNotFound, "host not found")
 		return
 	}
 	ib, _ := h.ibStore.GetInbound(host.InboundID)
@@ -1215,7 +1236,7 @@ func (h *Handler) updateHost(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	host, err := h.ibStore.GetHost(id)
 	if err != nil {
-		htmxError(w, http.StatusNotFound, "Host 不存在")
+		htmxError(w, http.StatusNotFound, "host not found")
 		return
 	}
 	if address := r.FormValue("address"); address != "" {
@@ -1236,7 +1257,7 @@ func (h *Handler) updateHost(w http.ResponseWriter, r *http.Request) {
 		host.Port = 0
 	}
 	if _, err := h.ibStore.UpsertHost(host); err != nil {
-		htmxError(w, http.StatusInternalServerError, "更新 Host 失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to update host: "+err.Error())
 		return
 	}
 	ib, _ := h.ibStore.GetInbound(host.InboundID)
@@ -1248,13 +1269,13 @@ func (h *Handler) deleteHost(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	host, err := h.ibStore.GetHost(id)
 	if err != nil {
-		htmxError(w, http.StatusNotFound, "Host 不存在")
+		htmxError(w, http.StatusNotFound, "host not found")
 		return
 	}
 	ibID := host.InboundID
 	ib, _ := h.ibStore.GetInbound(ibID)
 	if err := h.ibStore.DeleteHost(id); err != nil {
-		htmxError(w, http.StatusInternalServerError, "删除 Host 失败: "+err.Error())
+		htmxError(w, http.StatusInternalServerError, "failed to delete host: "+err.Error())
 		return
 	}
 	hosts, _ := h.ibStore.ListHostsByInbound(ibID)
@@ -1305,7 +1326,7 @@ func templateFuncs() template.FuncMap {
 		// formatExpire 格式化过期时间，nil 或零值返回 "永不"。
 		"formatExpire": func(t *time.Time) string {
 			if t == nil || t.IsZero() {
-				return "永不"
+				return "never"
 			}
 			return t.Format("2006-01-02")
 		},
@@ -1317,11 +1338,11 @@ func templateFuncs() template.FuncMap {
 			d := time.Since(*t)
 			switch {
 			case d < time.Minute:
-				return "刚刚"
+				return "just now"
 			case d < time.Hour:
-				return fmt.Sprintf("%d 分钟前", int(d.Minutes()))
+				return fmt.Sprintf("%d min ago", int(d.Minutes()))
 			case d < 24*time.Hour:
-				return fmt.Sprintf("%d 小时前", int(d.Hours()))
+				return fmt.Sprintf("%d hr ago", int(d.Hours()))
 			default:
 				return t.Format("01-02 15:04")
 			}
@@ -1347,15 +1368,15 @@ func templateFuncs() template.FuncMap {
 		"statusLabel": func(s string) string {
 			switch s {
 			case users.StatusActive:
-				return "活跃"
+				return "active"
 			case users.StatusDisabled:
-				return "已禁用"
+				return "disabled"
 			case users.StatusLimited:
-				return "已限速"
+				return "throttled"
 			case users.StatusExpired:
-				return "已过期"
+				return "expired"
 			case users.StatusOnHold:
-				return "暂停"
+				return "on hold"
 			default:
 				return s
 			}
