@@ -60,28 +60,29 @@ checksums:
 	cd $(DIST_DIR)/release && shasum -a 256 *.tar.gz > checksums.txt
 
 release:
-	@echo "当前版本: v$(CURRENT_VERSION)"
-	@echo ""
-	@echo "  1) patch → v$(NEXT_PATCH)"
-	@echo "  2) minor → v$(NEXT_MINOR)"
-	@echo "  3) major → v$(NEXT_MAJOR)"
-	@echo ""
-	@read -p "选择 [1/2/3]: " choice; \
+	@printf "\n\033[1;34m  ◈ Pulse Release\033[0m\n"
+	@printf "  \033[2m────────────────────────────\033[0m\n"
+	@printf "  current   \033[33mv$(CURRENT_VERSION)\033[0m\n\n"
+	@printf "  \033[36m1)\033[0m patch   \033[2m→\033[0m  \033[32mv$(NEXT_PATCH)\033[0m\n"
+	@printf "  \033[36m2)\033[0m minor   \033[2m→\033[0m  \033[32mv$(NEXT_MINOR)\033[0m\n"
+	@printf "  \033[36m3)\033[0m major   \033[2m→\033[0m  \033[32mv$(NEXT_MAJOR)\033[0m\n"
+	@printf "  \033[2m────────────────────────────\033[0m\n\n"
+	@read -p "  select [1/2/3]: " choice; \
 	case $$choice in \
 	  1) $(MAKE) _do_release V=$(NEXT_PATCH) ;; \
 	  2) $(MAKE) _do_release V=$(NEXT_MINOR) ;; \
 	  3) $(MAKE) _do_release V=$(NEXT_MAJOR) ;; \
-	  *) echo "已取消"; exit 1 ;; \
+	  *) printf "\n  \033[31m✗\033[0m 已取消\n\n"; exit 1 ;; \
 	esac
 
 _do_release:
-	@echo ">>> 运行测试..."
+	@printf "\n  \033[2m·\033[0m 运行测试...\n"
 	@go test ./... || exit 1
 	@git tag v$(V)
-	@echo ">>> 推送标签 v$(V)..."
+	@printf "  \033[2m·\033[0m 推送 main + tag v$(V)...\n"
 	@git push origin main
 	@git push origin v$(V)
-	@echo ">>> 发布完成，CI 正在构建 v$(V)"
+	@printf "\n  \033[1;32m✓\033[0m 已发布 \033[1mv$(V)\033[0m，CI 构建中\n\n"
 
 stop:
 	@-pkill -f 'dist/pulse-server' 2>/dev/null || true
