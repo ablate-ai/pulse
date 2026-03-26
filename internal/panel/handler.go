@@ -53,6 +53,12 @@ type nodeWithStatus struct {
 	Status string // "online" / "offline"
 }
 
+// inboundHostsData 传给 Host 相关模板的数据结构。
+type inboundHostsData struct {
+	Inbound inbounds.Inbound
+	Hosts   []inbounds.Host
+}
+
 // New 创建 Handler 实例并解析模板。
 func New(
 	authMgr *auth.Manager,
@@ -115,6 +121,12 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /panel/inbounds/{id}", h.requireAuth(h.deleteInbound))
 
 	mux.HandleFunc("GET /panel/tools/reality-keypair", h.requireAuth(h.realityKeypair))
+
+	mux.HandleFunc("GET /panel/inbounds/{id}/hosts", h.requireAuth(h.hostsModal))
+	mux.HandleFunc("POST /panel/inbounds/{id}/hosts", h.requireAuth(h.createHost))
+	mux.HandleFunc("GET /panel/hosts/{id}/edit", h.requireAuth(h.hostEditForm))
+	mux.HandleFunc("PUT /panel/hosts/{id}", h.requireAuth(h.updateHost))
+	mux.HandleFunc("DELETE /panel/hosts/{id}", h.requireAuth(h.deleteHost))
 
 	mux.HandleFunc("GET /panel/nodes/list", h.requireAuth(h.nodesListPartial))
 	mux.HandleFunc("GET /panel/nodes/new", h.requireAuth(h.nodeNewForm))
@@ -1042,6 +1054,126 @@ func (h *Handler) renderInboundsListFromStore(w http.ResponseWriter) {
 		return
 	}
 	h.renderPartial(w, "partial-inbound-rows", list)
+}
+
+// ─── Host Handlers ────────────────────────────────────────────────────────────
+
+func (h *Handler) hostsModal(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	ib, err := h.ibStore.GetInbound(id)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "Inbound 不存在")
+		return
+	}
+	hosts, err := h.ibStore.ListHostsByInbound(id)
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "获取 Host 列表失败: "+err.Error())
+		return
+	}
+	h.renderPartial(w, "partial-hosts-modal", inboundHostsData{Inbound: ib, Hosts: hosts})
+}
+
+func (h *Handler) createHost(w http.ResponseWriter, r *http.Request) {
+	ibID := r.PathValue("id")
+	ib, err := h.ibStore.GetInbound(ibID)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "Inbound 不存在")
+		return
+	}
+	address := r.FormValue("address")
+	if address == "" {
+		htmxError(w, http.StatusBadRequest, "连接地址不能为空")
+		return
+	}
+	port := 0
+	if portStr := r.FormValue("port"); portStr != "" {
+		p, err := strconv.Atoi(portStr)
+		if err != nil || p < 0 || p > 65535 {
+			htmxError(w, http.StatusBadRequest, "端口格式无效")
+			return
+		}
+		port = p
+	}
+	host := inbounds.Host{
+		ID:            idgen.NextString(),
+		InboundID:     ibID,
+		Remark:        r.FormValue("remark"),
+		Address:       address,
+		Port:          port,
+		SNI:           r.FormValue("sni"),
+		Security:      r.FormValue("security"),
+		Path:          r.FormValue("path"),
+		AllowInsecure: r.FormValue("allow_insecure") == "1",
+		MuxEnable:     r.FormValue("mux_enable") == "1",
+		Fingerprint:   r.FormValue("fingerprint"),
+	}
+	if _, err := h.ibStore.UpsertHost(host); err != nil {
+		htmxError(w, http.StatusInternalServerError, "创建 Host 失败: "+err.Error())
+		return
+	}
+	hosts, _ := h.ibStore.ListHostsByInbound(ibID)
+	h.renderPartial(w, "partial-host-rows", inboundHostsData{Inbound: ib, Hosts: hosts})
+}
+
+func (h *Handler) hostEditForm(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	host, err := h.ibStore.GetHost(id)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "Host 不存在")
+		return
+	}
+	ib, _ := h.ibStore.GetInbound(host.InboundID)
+	h.renderPartial(w, "partial-host-edit-form", inboundHostsData{Inbound: ib, Hosts: []inbounds.Host{host}})
+}
+
+func (h *Handler) updateHost(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	host, err := h.ibStore.GetHost(id)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "Host 不存在")
+		return
+	}
+	if address := r.FormValue("address"); address != "" {
+		host.Address = address
+	}
+	host.Remark = r.FormValue("remark")
+	host.SNI = r.FormValue("sni")
+	host.Security = r.FormValue("security")
+	host.Path = r.FormValue("path")
+	host.AllowInsecure = r.FormValue("allow_insecure") == "1"
+	host.MuxEnable = r.FormValue("mux_enable") == "1"
+	host.Fingerprint = r.FormValue("fingerprint")
+	if portStr := r.FormValue("port"); portStr != "" {
+		if p, err := strconv.Atoi(portStr); err == nil && p >= 0 && p <= 65535 {
+			host.Port = p
+		}
+	} else {
+		host.Port = 0
+	}
+	if _, err := h.ibStore.UpsertHost(host); err != nil {
+		htmxError(w, http.StatusInternalServerError, "更新 Host 失败: "+err.Error())
+		return
+	}
+	ib, _ := h.ibStore.GetInbound(host.InboundID)
+	hosts, _ := h.ibStore.ListHostsByInbound(host.InboundID)
+	h.renderPartial(w, "partial-hosts-modal", inboundHostsData{Inbound: ib, Hosts: hosts})
+}
+
+func (h *Handler) deleteHost(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	host, err := h.ibStore.GetHost(id)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "Host 不存在")
+		return
+	}
+	ibID := host.InboundID
+	ib, _ := h.ibStore.GetInbound(ibID)
+	if err := h.ibStore.DeleteHost(id); err != nil {
+		htmxError(w, http.StatusInternalServerError, "删除 Host 失败: "+err.Error())
+		return
+	}
+	hosts, _ := h.ibStore.ListHostsByInbound(ibID)
+	h.renderPartial(w, "partial-host-rows", inboundHostsData{Inbound: ib, Hosts: hosts})
 }
 
 // ─── 模板函数 ─────────────────────────────────────────────────────────────────

@@ -370,6 +370,10 @@
               hx-get="/panel/inbounds/{{.ID}}/edit"
               hx-target="#modal-body"
               hx-on::after-request="document.getElementById('app-modal').showModal()">编辑</button>
+      <button class="text-xs text-gray-400 hover:text-sky-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+              hx-get="/panel/inbounds/{{.ID}}/hosts"
+              hx-target="#modal-body"
+              hx-on::after-request="document.getElementById('app-modal').showModal()">Hosts</button>
       <button class="text-xs text-red-500 hover:text-red-400 px-2 py-1 rounded hover:bg-red-500/10 transition-colors"
               hx-delete="/panel/inbounds/{{.ID}}"
               hx-target="#inbounds-tbody"
@@ -628,6 +632,193 @@
   </div>
   <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
     <button type="button" onclick="document.getElementById('app-modal').close()"
+            class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">取消</button>
+    <button type="submit"
+            class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">保存</button>
+  </div>
+</form>
+{{end}}
+
+
+{{define "partial-hosts-modal"}}
+<div>
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+    <h3 class="text-sm font-semibold text-gray-100">Hosts — <span class="text-sky-400">{{.Data.Inbound.Tag}}</span></h3>
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="px-5 py-4 space-y-4 overflow-y-auto max-h-[70vh]">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-gray-800">
+          <th class="pb-2 text-left text-xs font-medium text-gray-500">备注</th>
+          <th class="pb-2 text-left text-xs font-medium text-gray-500">连接地址</th>
+          <th class="pb-2 text-left text-xs font-medium text-gray-500">端口</th>
+          <th class="pb-2 text-left text-xs font-medium text-gray-500">安全</th>
+          <th class="pb-2 text-left text-xs font-medium text-gray-500">操作</th>
+        </tr>
+      </thead>
+      <tbody id="host-rows-{{.Data.Inbound.ID}}">
+        {{template "partial-host-rows" .}}
+      </tbody>
+    </table>
+
+    <div class="border-t border-gray-800 pt-4">
+      <p class="text-xs font-medium text-gray-400 mb-3">添加 Host</p>
+      <form hx-post="/panel/inbounds/{{.Data.Inbound.ID}}/hosts"
+            hx-target="#host-rows-{{.Data.Inbound.ID}}"
+            hx-swap="innerHTML"
+            hx-on::after-request="if(event.detail.successful) this.reset()">
+        <div class="space-y-3">
+          <div class="grid grid-cols-3 gap-2">
+            <div class="col-span-2">
+              <label class="block text-xs text-gray-500 mb-1">连接地址 *</label>
+              <input type="text" name="address" required placeholder="example.com"
+                     class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">端口（0=同入站）</label>
+              <input type="number" name="port" placeholder="0" min="0" max="65535" value="0"
+                     class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">备注</label>
+              <input type="text" name="remark" placeholder="可选"
+                     class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">SNI</label>
+              <input type="text" name="sni" placeholder="留空则继承入站握手地址"
+                     class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+            </div>
+          </div>
+          <div class="flex justify-end">
+            <button type="submit" class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">添加</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{{end}}
+
+
+{{define "partial-host-rows"}}
+{{range .Data.Hosts}}
+<tr class="border-b border-gray-800 hover:bg-gray-800/40 transition-colors">
+  <td class="py-2.5 pr-3 text-xs text-gray-400">{{if .Remark}}{{.Remark}}{{else}}<span class="text-gray-600">-</span>{{end}}</td>
+  <td class="py-2.5 pr-3 text-sm text-gray-100 font-mono">{{.Address}}</td>
+  <td class="py-2.5 pr-3 text-sm text-gray-400">{{if .Port}}{{.Port}}{{else}}<span class="text-gray-600">默认</span>{{end}}</td>
+  <td class="py-2.5 pr-3">
+    {{if .Security}}<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-sky-500/15 text-sky-400">{{.Security}}</span>{{else}}<span class="text-xs text-gray-600">继承</span>{{end}}
+  </td>
+  <td class="py-2.5">
+    <div class="flex gap-1">
+      <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+              hx-get="/panel/hosts/{{.ID}}/edit"
+              hx-target="#modal-body"
+              hx-swap="innerHTML">编辑</button>
+      <button class="text-xs text-red-500 hover:text-red-400 px-2 py-1 rounded hover:bg-red-500/10 transition-colors"
+              hx-delete="/panel/hosts/{{.ID}}"
+              hx-target="#host-rows-{{.InboundID}}"
+              hx-swap="innerHTML"
+              hx-confirm="确定删除该 Host？">删除</button>
+    </div>
+  </td>
+</tr>
+{{else}}
+<tr><td colspan="5" class="py-4 text-center text-xs text-gray-500">暂无 Host，请在下方添加</td></tr>
+{{end}}
+{{end}}
+
+
+{{define "partial-host-edit-form"}}
+{{$host := index .Data.Hosts 0}}
+<form hx-put="/panel/hosts/{{$host.ID}}"
+      hx-target="#modal-body"
+      hx-swap="innerHTML">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+    <h3 class="text-sm font-semibold text-gray-100">编辑 Host — <span class="text-sky-400">{{$host.Address}}</span></h3>
+    <button type="button"
+            hx-get="/panel/inbounds/{{.Data.Inbound.ID}}/hosts"
+            hx-target="#modal-body"
+            hx-swap="innerHTML"
+            class="text-gray-500 hover:text-gray-300 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+    </button>
+  </div>
+  <div class="px-5 py-4 space-y-4 overflow-y-auto max-h-[70vh]">
+    <div class="grid grid-cols-3 gap-2">
+      <div class="col-span-2">
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">连接地址 *</label>
+        <input type="text" name="address" value="{{$host.Address}}" required
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">端口（0=同入站）</label>
+        <input type="number" name="port" value="{{$host.Port}}" min="0" max="65535"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">备注</label>
+        <input type="text" name="remark" value="{{$host.Remark}}"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">SNI</label>
+        <input type="text" name="sni" value="{{$host.SNI}}" placeholder="留空则继承"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">安全类型</label>
+        <select name="security"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+          <option value="" {{if eq $host.Security ""}}selected{{end}}>继承入站</option>
+          <option value="none" {{if eq $host.Security "none"}}selected{{end}}>none</option>
+          <option value="tls" {{if eq $host.Security "tls"}}selected{{end}}>tls</option>
+          <option value="reality" {{if eq $host.Security "reality"}}selected{{end}}>reality</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">Path（WebSocket）</label>
+        <input type="text" name="path" value="{{$host.Path}}" placeholder="/ws"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">TLS 指纹</label>
+        <input type="text" name="fingerprint" value="{{$host.Fingerprint}}" placeholder="chrome"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+      <div class="flex items-end gap-4 pb-2">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="hidden" name="allow_insecure" value="0">
+          <input type="checkbox" name="allow_insecure" value="1" {{if $host.AllowInsecure}}checked{{end}}
+                 class="rounded border-gray-600 bg-gray-800 text-indigo-500 focus:ring-indigo-500">
+          <span class="text-xs text-gray-400">跳过证书验证</span>
+        </label>
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="hidden" name="mux_enable" value="0">
+          <input type="checkbox" name="mux_enable" value="1" {{if $host.MuxEnable}}checked{{end}}
+                 class="rounded border-gray-600 bg-gray-800 text-indigo-500 focus:ring-indigo-500">
+          <span class="text-xs text-gray-400">多路复用</span>
+        </label>
+      </div>
+    </div>
+  </div>
+  <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
+    <button type="button"
+            hx-get="/panel/inbounds/{{.Data.Inbound.ID}}/hosts"
+            hx-target="#modal-body"
+            hx-swap="innerHTML"
             class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">取消</button>
     <button type="submit"
             class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">保存</button>
