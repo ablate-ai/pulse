@@ -82,11 +82,16 @@
 <script>
 function copySubLink(subToken) {
   const url = window.location.origin + '/sub/' + subToken;
-  navigator.clipboard.writeText(url).then(() => {
-    alert('已复制: ' + url);
-  }).catch(() => {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(() => {
+      showToast('已复制订阅链接');
+    }).catch(() => {
+      prompt('订阅链接：', url);
+    });
+  } else {
+    // HTTP 环境下 clipboard API 不可用，回退到 prompt
     prompt('订阅链接：', url);
-  });
+  }
 }
 </script>
 </body>
