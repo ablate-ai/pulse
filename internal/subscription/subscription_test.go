@@ -11,7 +11,7 @@ import (
 )
 
 func TestVMessLink(t *testing.T) {
-	ib := inbounds.Inbound{Protocol: "vmess", Port: 443}
+	ib := inbounds.Inbound{Protocol: "vmess", Port: 443, Tag: "hk-01"}
 	host := inbounds.Host{Address: "example.com", Port: 443}
 	acc := users.UserInbound{UUID: "11111111-1111-1111-1111-111111111111"}
 	u := users.User{Username: "alice"}
@@ -34,8 +34,9 @@ func TestVMessLink(t *testing.T) {
 	if obj["add"] != host.Address {
 		t.Errorf("address mismatch: got %v", obj["add"])
 	}
-	if obj["ps"] != u.Username {
-		t.Errorf("remark mismatch: got %v", obj["ps"])
+	// 节点名称应使用 Inbound Tag
+	if obj["ps"] != ib.Tag {
+		t.Errorf("remark mismatch: got %v, want %v", obj["ps"], ib.Tag)
 	}
 }
 
