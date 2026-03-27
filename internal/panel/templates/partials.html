@@ -682,9 +682,8 @@
     </div>
 
     <!-- 出口绑定 -->
-    {{if .Data.Outbounds}}
     <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">出口（留空=直连）</label>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">出口</label>
       <select name="outbound_id"
               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
         <option value="">直连</option>
@@ -693,7 +692,6 @@
         {{end}}
       </select>
     </div>
-    {{end}}
   </div>
   <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
     <button type="button" onclick="document.getElementById('app-modal').close()"
@@ -895,9 +893,8 @@
     {{end}}
 
     <!-- 出口绑定 -->
-    {{if .Data.Outbounds}}
     <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">出口（留空=直连）</label>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">出口</label>
       <select name="outbound_id"
               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
         <option value="">直连</option>
@@ -906,7 +903,6 @@
         {{end}}
       </select>
     </div>
-    {{end}}
   </div>
   <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
     <button type="button" onclick="document.getElementById('app-modal').close()"
