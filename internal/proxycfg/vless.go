@@ -44,9 +44,6 @@ type inboundBlock struct {
 
 // BuildOptions 控制 BuildSingboxConfig 的可选行为。
 type BuildOptions struct {
-	// CaddyEnabled=true 时，Trojan inbound 改为 127.0.0.1 监听 + WS 传输，
-	// 由外部 Caddy 终止 TLS 并反代。false = 直连模式（sing-box 自管 TLS）。
-	CaddyEnabled bool
 	// OutboundMap 出口 ID → Outbound，用于 inbound 路由绑定。
 	OutboundMap map[string]outbounds.Outbound
 }
@@ -95,7 +92,7 @@ func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.Us
 		listenAddr := "::"
 		listenPort := ib.Port
 
-		if opts.CaddyEnabled && ib.Protocol == "trojan" {
+		if ib.Protocol == "trojan" {
 			listenAddr = "127.0.0.1"
 		}
 
@@ -279,14 +276,15 @@ func buildInboundUser(ib inbounds.Inbound, acc users.UserInbound, username strin
 }
 
 func transportFor(protocol string, opts BuildOptions) map[string]any {
-	if opts.CaddyEnabled && protocol == "trojan" {
+	if protocol == "trojan" {
 		return map[string]any{"type": "ws", "path": "/ws"}
 	}
 	return nil
 }
 
 // tlsForInbound 根据节点 inbound 配置选择 TLS 设置。
-// Trojan 只支持 Caddy 模式，TLS 由 Caddy 终止，此处始终返回 nil。
+// tlsForInbound 根据节点 inbound 配置选择 TLS 设置。
+// Trojan 始终由 Caddy 终止 TLS，此处返回 nil。
 func tlsForInbound(ib inbounds.Inbound, opts BuildOptions) map[string]any {
 	if ib.Protocol == "vless" {
 		return realityTLSFor(ib)

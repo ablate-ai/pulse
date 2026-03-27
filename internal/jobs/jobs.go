@@ -348,7 +348,7 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []in
 		// 没有活跃用户或 Inbound 时，用最小配置保持 sing-box 进程存活
 		idleCfg := proxycfg.BuildIdleConfig()
 		status, err := client.Restart(ctx, nodes.ConfigRequest{Config: idleCfg})
-		if err == nil && node.CaddyEnabled {
+		if err == nil {
 			if syncErr := client.SyncCaddyRoutes(ctx, nil); syncErr != nil {
 				log.Printf("warn: caddy sync (idle): %v", syncErr)
 			}
@@ -366,8 +366,7 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []in
 	}
 
 	cfg, err := proxycfg.BuildSingboxConfig(nodeInbounds, userAccesses, userMap, proxycfg.BuildOptions{
-		CaddyEnabled: node.CaddyEnabled,
-		OutboundMap:  outboundMap,
+		OutboundMap: outboundMap,
 	})
 	if err != nil {
 		return nodes.Status{}, "", err
@@ -378,8 +377,8 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []in
 		return status, cfg, err
 	}
 
-	// Caddy 模式：同步当前生效的 Trojan 路由
-	if node.CaddyEnabled && ibStore != nil {
+	// 同步当前生效的 Trojan 路由到 Caddy（节点无 Caddy 时 SyncCaddyRoutes 静默跳过）
+	if ibStore != nil {
 		routes := collectTrojanRoutes(nodeInbounds, ibStore)
 		if syncErr := client.SyncCaddyRoutes(ctx, routes); syncErr != nil {
 			log.Printf("warn: caddy sync: %v", syncErr)

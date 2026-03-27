@@ -316,22 +316,7 @@
         <input type="text" name="panel_domain" value="{{.Data.CaddyPanelDomain}}"
                placeholder="panel.example.com（留空则不配置）"
                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
-        <p class="text-xs text-gray-600 mt-1">Caddy 将把该域名的 HTTPS 流量反代到本机面板端口，与 Trojan WS 模式无关</p>
-      </div>
-    </div>
-    {{/* Trojan WS 模式（独立开关）*/}}
-    <div class="rounded-lg border border-gray-700/60 px-4 py-3">
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-xs font-semibold text-gray-300">Trojan WS 模式</p>
-          <p class="text-xs text-gray-600 mt-0.5">开启后 Trojan inbound 改为 127.0.0.1 监听，由 Caddy 终止 TLS</p>
-        </div>
-        <label class="relative inline-flex items-center cursor-pointer ml-4 flex-shrink-0">
-          <input type="hidden" name="caddy_enabled" value="0">
-          <input type="checkbox" name="caddy_enabled" value="1" {{if .Data.CaddyEnabled}}checked{{end}}
-                 class="sr-only peer">
-          <div class="w-9 h-5 bg-gray-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
-        </label>
+        <p class="text-xs text-gray-600 mt-1">Caddy 将把该域名的 HTTPS 流量反代到本机面板端口</p>
       </div>
     </div>
   </div>
@@ -367,13 +352,11 @@
           <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span>已停止
         </span>
         {{end}}
-        {{if .Node.CaddyEnabled}}
         <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-wait"
                 hx-post="/panel/caddy/{{.Node.ID}}/sync"
                 hx-target="#caddy-list"
                 hx-swap="innerHTML"
                 hx-disabled-elt="this">同步路由</button>
-        {{end}}
         {{if .Caddy.Caddyfile}}
         <button class="text-xs text-gray-400 hover:text-emerald-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
                 hx-get="/panel/caddy/{{.Node.ID}}/caddyfile"

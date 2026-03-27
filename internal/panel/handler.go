@@ -1728,16 +1728,10 @@ func (h *Handler) caddyListPartial(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) caddySyncNode(w http.ResponseWriter, r *http.Request) {
 	nodeID := r.PathValue("nodeID")
 
-	node, err := h.nodeStore.Get(nodeID)
-	if err != nil {
+	if _, err := h.nodeStore.Get(nodeID); err != nil {
 		htmxError(w, http.StatusNotFound, "节点不存在")
 		return
 	}
-	if !node.CaddyEnabled {
-		htmxError(w, http.StatusBadRequest, "该节点未启用 Caddy WS 模式")
-		return
-	}
-
 	client, err := h.dial(nodeID)
 	if err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to connect to node: "+err.Error())
@@ -1816,9 +1810,7 @@ func (h *Handler) caddySaveConfig(w http.ResponseWriter, r *http.Request) {
 	nodeID := r.PathValue("nodeID")
 	acmeEmail := strings.TrimSpace(r.FormValue("acme_email"))
 	panelDomain := strings.TrimSpace(r.FormValue("panel_domain"))
-	caddyEnabled := r.FormValue("caddy_enabled") == "1"
-
-	if err := h.nodeStore.UpdateCaddyConfig(nodeID, acmeEmail, panelDomain, caddyEnabled); err != nil {
+	if err := h.nodeStore.UpdateCaddyConfig(nodeID, acmeEmail, panelDomain, true); err != nil {
 		htmxError(w, http.StatusInternalServerError, "保存配置失败: "+err.Error())
 		return
 	}
@@ -1838,32 +1830,30 @@ func (h *Handler) caddySaveConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 若已启用 Caddy，顺带触发一次路由同步
-	if caddyEnabled {
-		nodeInbounds, ibErr := h.ibStore.ListInboundsByNode(nodeID)
-		if ibErr == nil {
-			seen := make(map[string]struct{})
-			var routes []nodes.TrojanRoute
-			for _, ib := range nodeInbounds {
-				if ib.Protocol != "trojan" {
-					continue
-				}
-				hosts, hErr := h.ibStore.ListHostsByInbound(ib.ID)
-				if hErr != nil {
-					continue
-				}
-				for _, host := range hosts {
-					if host.Address != "" {
-						if _, ok := seen[host.Address]; !ok {
-							seen[host.Address] = struct{}{}
-							routes = append(routes, nodes.TrojanRoute{Domain: host.Address, Port: ib.Port})
-						}
+	// 顺带触发一次 Trojan 路由同步
+	nodeInbounds, ibErr := h.ibStore.ListInboundsByNode(nodeID)
+	if ibErr == nil {
+		seen := make(map[string]struct{})
+		var routes []nodes.TrojanRoute
+		for _, ib := range nodeInbounds {
+			if ib.Protocol != "trojan" {
+				continue
+			}
+			hosts, hErr := h.ibStore.ListHostsByInbound(ib.ID)
+			if hErr != nil {
+				continue
+			}
+			for _, host := range hosts {
+				if host.Address != "" {
+					if _, ok := seen[host.Address]; !ok {
+						seen[host.Address] = struct{}{}
+						routes = append(routes, nodes.TrojanRoute{Domain: host.Address, Port: ib.Port})
 					}
 				}
 			}
-			if syncErr := client.SyncCaddyRoutes(r.Context(), routes); syncErr != nil {
-				log.Printf("warn: caddy sync after save config: %v", syncErr)
-			}
+		}
+		if syncErr := client.SyncCaddyRoutes(r.Context(), routes); syncErr != nil {
+			log.Printf("warn: caddy sync after save config: %v", syncErr)
 		}
 	}
 
