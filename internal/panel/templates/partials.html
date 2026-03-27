@@ -399,14 +399,16 @@
   </div>
   <div class="px-5 py-4 space-y-4 overflow-y-auto max-h-[70vh]">
     <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">节点</label>
-      <select name="node_id" required
-              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-        <option value="">选择节点</option>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">节点 <span class="text-gray-500">（将在每个选中节点分别创建）</span></label>
+      <div class="space-y-1.5">
         {{range .Data}}
-        <option value="{{.ID}}">{{.Name}}</option>
+        <label class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 cursor-pointer hover:border-indigo-500 transition-colors">
+          <input type="checkbox" name="node_ids" value="{{.ID}}" checked
+                 class="w-3.5 h-3.5 rounded accent-indigo-500">
+          <span class="text-sm text-gray-100">{{.Name}}</span>
+        </label>
         {{end}}
-      </select>
+      </div>
     </div>
     <div>
       <label class="block text-xs font-medium text-gray-400 mb-1.5">协议</label>

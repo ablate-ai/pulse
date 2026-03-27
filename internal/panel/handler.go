@@ -1041,13 +1041,12 @@ func (h *Handler) inboundNewForm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createInbound(w http.ResponseWriter, r *http.Request) {
-	nodeID := r.FormValue("node_id")
-	remark := r.FormValue("remark")
+	nodeIDs := r.Form["node_ids"]
 	protocol := r.FormValue("protocol")
 	portStr := r.FormValue("port")
 	tag := r.FormValue("tag")
 
-	if protocol == "" || portStr == "" || tag == "" || nodeID == "" {
+	if protocol == "" || portStr == "" || tag == "" || len(nodeIDs) == 0 {
 		htmxError(w, http.StatusBadRequest, "node, protocol, port and tag are required")
 		return
 	}
@@ -1058,27 +1057,23 @@ func (h *Handler) createInbound(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ib := inbounds.Inbound{
-		ID:                   idgen.NextString(),
-		NodeID:               nodeID,
-		Protocol:             protocol,
-		Tag:                  tag,
-		Port:                 port,
-		Method:               r.FormValue("method"),
-		Password:             r.FormValue("ss_password"),
-		Security:             r.FormValue("security"),
-		TLSCertPath:          r.FormValue("tls_cert_path"),
-		TLSKeyPath:           r.FormValue("tls_key_path"),
-		RealityPrivateKey:    r.FormValue("reality_private_key"),
-		RealityPublicKey:     r.FormValue("reality_public_key"),
-		RealityHandshakeAddr: r.FormValue("reality_handshake_addr"),
-		RealityShortID:       r.FormValue("reality_short_id"),
-	}
-	_ = remark
+	// 在每个选中节点上分别创建 inbound（密钥独立生成）
+	for _, nodeID := range nodeIDs {
+		ib := inbounds.Inbound{
+			ID:                   idgen.NextString(),
+			NodeID:               nodeID,
+			Protocol:             protocol,
+			Tag:                  tag,
+			Port:                 port,
+			Method:               r.FormValue("method"),
+			Security:             r.FormValue("security"),
+			TLSCertPath:          r.FormValue("tls_cert_path"),
+			TLSKeyPath:           r.FormValue("tls_key_path"),
+			RealityHandshakeAddr: r.FormValue("reality_handshake_addr"),
+		}
 
-	// VLESS Reality：服务端兜底生成密钥对和 Short ID
-	if protocol == "vless" && ib.Security == "reality" {
-		if ib.RealityPrivateKey == "" || ib.RealityPublicKey == "" {
+		// VLESS Reality：每个节点独立生成密钥对和 Short ID
+		if protocol == "vless" && ib.Security == "reality" {
 			priv, pub, err := generateRealityKeypair()
 			if err != nil {
 				htmxError(w, http.StatusInternalServerError, "failed to generate Reality keypair: "+err.Error())
@@ -1086,37 +1081,34 @@ func (h *Handler) createInbound(w http.ResponseWriter, r *http.Request) {
 			}
 			ib.RealityPrivateKey = priv
 			ib.RealityPublicKey = pub
-		}
-		if ib.RealityShortID == "" {
 			ib.RealityShortID = generateRealityShortID()
 		}
-	}
 
-	// Shadowsocks 2022：服务端 PSK 为空时自动生成
-	if protocol == "shadowsocks" && ib.Password == "" {
-		ib.Password = generateSSPassword(ib.Method)
-	}
-
-
-	if _, err := h.ibStore.UpsertInbound(ib); err != nil {
-		htmxError(w, http.StatusInternalServerError, "failed to create inbound: "+err.Error())
-		return
-	}
-
-	// 自动创建默认 host，从节点 BaseURL 提取地址
-	if node, err := h.nodeStore.Get(nodeID); err == nil {
-		hostAddr := nodeID // 兜底用 nodeID
-		if parsed, err := url.Parse(node.BaseURL); err == nil {
-			hostAddr = parsed.Hostname()
+		// Shadowsocks：每个节点独立生成服务端 PSK
+		if protocol == "shadowsocks" {
+			ib.Password = generateSSPassword(r.FormValue("method"))
 		}
-		defaultHost := inbounds.Host{
-			ID:        idgen.NextString(),
-			InboundID: ib.ID,
-			Remark:    tag,
-			Address:   hostAddr,
-			Port:      port,
+
+		if _, err := h.ibStore.UpsertInbound(ib); err != nil {
+			htmxError(w, http.StatusInternalServerError, "failed to create inbound: "+err.Error())
+			return
 		}
-		_, _ = h.ibStore.UpsertHost(defaultHost)
+
+		// 自动创建默认 host，从节点 BaseURL 提取地址
+		if node, err := h.nodeStore.Get(nodeID); err == nil {
+			hostAddr := nodeID
+			if parsed, err := url.Parse(node.BaseURL); err == nil {
+				hostAddr = parsed.Hostname()
+			}
+			defaultHost := inbounds.Host{
+				ID:        idgen.NextString(),
+				InboundID: ib.ID,
+				Remark:    tag,
+				Address:   hostAddr,
+				Port:      port,
+			}
+			_, _ = h.ibStore.UpsertHost(defaultHost)
+		}
 	}
 
 	h.renderInboundsListFromStore(w)
