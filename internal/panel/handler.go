@@ -152,6 +152,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /panel/caddy/{nodeID}/sync", h.requireAuth(h.caddySyncNode))
 	mux.HandleFunc("GET /panel/caddy/{nodeID}/config-form", h.requireAuth(h.caddyConfigForm))
 	mux.HandleFunc("POST /panel/caddy/{nodeID}/config", h.requireAuth(h.caddySaveConfig))
+	mux.HandleFunc("GET /panel/caddy/{nodeID}/caddyfile", h.requireAuth(h.caddyfileModal))
 }
 
 // ─── 认证中间件 ──────────────────────────────────────────────────────────────
@@ -1608,6 +1609,29 @@ func (h *Handler) caddySyncNode(w http.ResponseWriter, r *http.Request) {
 
 	setHXTriggerToast(w, "Caddy 路由同步成功")
 	h.caddyListPartial(w, r)
+}
+
+func (h *Handler) caddyfileModal(w http.ResponseWriter, r *http.Request) {
+	nodeID := r.PathValue("nodeID")
+	node, err := h.nodeStore.Get(nodeID)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "节点不存在")
+		return
+	}
+	client, err := h.dial(nodeID)
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "连接节点失败: "+err.Error())
+		return
+	}
+	status, err := client.CaddyStatus(r.Context())
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "获取 Caddy 状态失败: "+err.Error())
+		return
+	}
+	h.renderPartial(w, "partial-caddy-caddyfile", struct {
+		NodeName string
+		Content  string
+	}{NodeName: node.Name, Content: status.Caddyfile})
 }
 
 func (h *Handler) caddyConfigForm(w http.ResponseWriter, r *http.Request) {

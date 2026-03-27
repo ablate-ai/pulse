@@ -276,6 +276,18 @@
 {{end}}
 
 
+{{define "partial-caddy-caddyfile"}}
+<div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+  <h3 class="text-sm font-semibold text-gray-100">Caddyfile — <span class="text-sky-400">{{.Data.NodeName}}</span></h3>
+  <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+  </button>
+</div>
+<div class="px-5 py-4">
+  <pre class="text-xs bg-gray-950 rounded-lg px-4 py-3 text-gray-300 overflow-auto font-mono leading-relaxed max-h-[60vh] whitespace-pre">{{.Data.Content}}</pre>
+</div>
+{{end}}
+
 {{define "partial-caddy-config-form"}}
 <form hx-post="/panel/caddy/{{.Data.ID}}/config"
       hx-target="#caddy-list"
@@ -340,6 +352,12 @@
                 hx-target="#caddy-list"
                 hx-swap="innerHTML"
                 hx-disabled-elt="this">同步路由</button>
+        {{if .Caddy.Caddyfile}}
+        <button class="text-xs text-gray-400 hover:text-emerald-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+                hx-get="/panel/caddy/{{.Node.ID}}/caddyfile"
+                hx-target="#modal-body"
+                hx-on::after-request="var m=document.getElementById('app-modal'); m.style.maxWidth='52rem'; m.showModal(); m.addEventListener('close',function(){m.style.maxWidth='';},{once:true})">Caddyfile</button>
+        {{end}}
         <button class="text-xs text-gray-400 hover:text-sky-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
                 hx-get="/panel/caddy/{{.Node.ID}}/config-form"
                 hx-target="#modal-body"

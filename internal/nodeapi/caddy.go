@@ -108,10 +108,18 @@ func (a *API) handleCaddyStatus(w http.ResponseWriter, r *http.Request) {
 		running = exec.Command("systemctl", "is-active", "--quiet", "caddy").Run() == nil
 	}
 
+	caddyfile := ""
+	if installed {
+		if b, err := os.ReadFile(caddyfilePath); err == nil {
+			caddyfile = string(b)
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"installed": installed,
 		"running":   running,
 		"routes":    readCaddyRoutes(),
+		"caddyfile": caddyfile,
 	})
 }
 

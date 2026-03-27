@@ -243,6 +243,7 @@ type CaddyStatusResponse struct {
 	Installed bool         `json:"installed"`
 	Running   bool         `json:"running"`
 	Routes    []CaddyRoute `json:"routes"`
+	Caddyfile string       `json:"caddyfile"`
 }
 
 func (c *Client) CaddyStatus(ctx context.Context) (CaddyStatusResponse, error) {
