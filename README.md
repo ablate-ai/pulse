@@ -8,17 +8,31 @@ Go 重写版 Marzban + Marzban-node，控制面与节点统一在单一仓库。
 .
 ├── cmd/pulse-server          # 控制面入口
 ├── cmd/pulse-node            # 节点入口
-├── internal/server           # 控制面 HTTP 服务
-├── internal/serverapi        # 控制面 REST API
-├── internal/panel            # 管理面板（HTMX + Tailwind 服务端渲染）
-│   └── templates/            # HTML 模板
-├── internal/nodes            # 节点 store 与 RPC client
-├── internal/users            # 用户模型与 store
+├── cmd/pulse                 # 合并入口（server + node）
+├── internal/app              # 应用启动与生命周期
+├── internal/auth             # 管理员认证
+├── internal/buildinfo        # 版本信息
+├── internal/cert             # 自签证书生成
+├── internal/certmgr          # mTLS 证书管理
+├── internal/config           # 配置结构
+├── internal/idgen            # Snowflake ID 生成
 ├── internal/inbounds         # inbound / host 模型与 store
 ├── internal/jobs             # 后台调度任务
-├── internal/proxycfg         # sing-box 配置生成
-├── internal/subscription     # 订阅 URL 生成
+├── internal/node             # 节点侧服务（sing-box 管理、gRPC server）
+├── internal/nodeapi          # 节点 RPC API（含 Caddy 热重载）
+├── internal/nodeauth         # 节点认证中间件
+├── internal/nodes            # 节点 store 与 RPC client
+├── internal/panel            # 管理面板（HTMX + Tailwind 服务端渲染）
+│   └── templates/            # HTML 模板
+├── internal/proxycfg         # sing-box / 代理配置生成
+├── internal/server           # 控制面 HTTP 服务
+├── internal/serverapi        # 控制面 REST API
+├── internal/singbox          # sing-box 进程管理
 ├── internal/store/sqlite     # SQLite 持久化
+├── internal/subscription     # 订阅 URL 生成
+├── internal/usage            # 节点流量统计
+├── internal/users            # 用户模型与 store
+├── internal/xray             # xray 协议支持（预留）
 ├── scripts/install.sh        # 生产安装脚本
 ├── scripts/uninstall.sh      # 卸载脚本
 └── scripts/setup-caddy.sh    # Caddy 反代配置脚本
