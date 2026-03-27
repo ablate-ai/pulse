@@ -496,44 +496,6 @@
       <input type="url" name="base_url" required placeholder="https://127.0.0.1:8081"
              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
     </div>
-    <!-- 出口转发 -->
-    <div class="border border-gray-700 rounded-lg p-3 space-y-3">
-      <label class="flex items-center gap-2 cursor-pointer select-none">
-        <input type="checkbox" name="forward_enabled" value="1" id="new-forward-enabled"
-               onchange="document.getElementById('new-forward-fields').classList.toggle('hidden', !this.checked)"
-               class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-indigo-500 focus:ring-indigo-500">
-        <span class="text-xs font-medium text-gray-300">启用出口转发（不直连）</span>
-      </label>
-      <div id="new-forward-fields" class="hidden space-y-3">
-        <div class="grid grid-cols-3 gap-2">
-          <div class="col-span-1">
-            <label class="block text-xs font-medium text-gray-400 mb-1.5">协议</label>
-            <select name="forward_protocol"
-                    class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-              <option value="socks5">SOCKS5</option>
-              <option value="http">HTTP</option>
-            </select>
-          </div>
-          <div class="col-span-2">
-            <label class="block text-xs font-medium text-gray-400 mb-1.5">转发地址（host:port）</label>
-            <input type="text" name="forward_server" placeholder="1.2.3.4:1080"
-                   class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
-          </div>
-        </div>
-        <div class="grid grid-cols-2 gap-2">
-          <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1.5">用户名（可选）</label>
-            <input type="text" name="forward_username" placeholder=""
-                   class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1.5">密码（可选）</label>
-            <input type="password" name="forward_password" placeholder=""
-                   class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
   <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
     <button type="button" onclick="document.getElementById('app-modal').close()"
@@ -606,7 +568,7 @@
     <div>
       <label class="block text-xs font-medium text-gray-400 mb-1.5">节点 <span class="text-gray-500">（将在每个选中节点分别创建）</span></label>
       <div class="space-y-1.5">
-        {{range .Data}}
+        {{range .Data.Nodes}}
         <label class="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 cursor-pointer hover:border-indigo-500 transition-colors">
           <input type="checkbox" name="node_ids" value="{{.ID}}" checked
                  class="w-3.5 h-3.5 rounded accent-indigo-500">
@@ -718,6 +680,20 @@
         </div>
       </div>
     </div>
+
+    <!-- 出口绑定 -->
+    {{if .Data.Outbounds}}
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">出口（留空=直连）</label>
+      <select name="outbound_id"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+        <option value="">直连</option>
+        {{range .Data.Outbounds}}
+        <option value="{{.ID}}">{{.Name}} ({{.Protocol}} {{.Server}})</option>
+        {{end}}
+      </select>
+    </div>
+    {{end}}
   </div>
   <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
     <button type="button" onclick="document.getElementById('app-modal').close()"
@@ -809,45 +785,6 @@
       <input type="url" name="base_url" value="{{.Data.BaseURL}}" required
              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
     </div>
-    <!-- 出口转发 -->
-    <div class="border border-gray-700 rounded-lg p-3 space-y-3">
-      <label class="flex items-center gap-2 cursor-pointer select-none">
-        <input type="checkbox" name="forward_enabled" value="1" id="edit-forward-enabled"
-               {{if .Data.ForwardEnabled}}checked{{end}}
-               onchange="document.getElementById('edit-forward-fields').classList.toggle('hidden', !this.checked)"
-               class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-indigo-500 focus:ring-indigo-500">
-        <span class="text-xs font-medium text-gray-300">启用出口转发（不直连）</span>
-      </label>
-      <div id="edit-forward-fields" class="{{if .Data.ForwardEnabled}}{{else}}hidden {{end}}space-y-3">
-        <div class="grid grid-cols-3 gap-2">
-          <div class="col-span-1">
-            <label class="block text-xs font-medium text-gray-400 mb-1.5">协议</label>
-            <select name="forward_protocol"
-                    class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-              <option value="socks5" {{if eq .Data.ForwardProtocol "socks5"}}selected{{end}}>SOCKS5</option>
-              <option value="http" {{if eq .Data.ForwardProtocol "http"}}selected{{end}}>HTTP</option>
-            </select>
-          </div>
-          <div class="col-span-2">
-            <label class="block text-xs font-medium text-gray-400 mb-1.5">转发地址（host:port）</label>
-            <input type="text" name="forward_server" value="{{.Data.ForwardServer}}" placeholder="1.2.3.4:1080"
-                   class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
-          </div>
-        </div>
-        <div class="grid grid-cols-2 gap-2">
-          <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1.5">用户名（可选）</label>
-            <input type="text" name="forward_username" value="{{.Data.ForwardUsername}}"
-                   class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-          </div>
-          <div>
-            <label class="block text-xs font-medium text-gray-400 mb-1.5">密码（可选）</label>
-            <input type="password" name="forward_password" value="{{.Data.ForwardPassword}}"
-                   class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
   <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
     <button type="button" onclick="document.getElementById('app-modal').close()"
@@ -860,12 +797,12 @@
 
 
 {{define "partial-inbound-edit-form"}}
-<form id="ib-edit-form" hx-put="/panel/inbounds/{{.Data.ID}}"
+<form id="ib-edit-form" hx-put="/panel/inbounds/{{.Data.Inbound.ID}}"
       hx-target="#inbounds-tbody"
       hx-swap="innerHTML"
       hx-on::after-request="if(event.detail.successful) document.getElementById('app-modal').close()">
   <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
-    <h3 class="text-sm font-semibold text-gray-100">编辑 Inbound — <span class="text-indigo-400">{{.Data.Tag}}</span></h3>
+    <h3 class="text-sm font-semibold text-gray-100">编辑 Inbound — <span class="text-indigo-400">{{.Data.Inbound.Tag}}</span></h3>
     <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
     </button>
@@ -876,84 +813,98 @@
         <label class="block text-xs font-medium text-gray-400 mb-1.5">协议</label>
         <select name="protocol" disabled
                 class="w-full bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-400 cursor-not-allowed">
-          <option value="vless" {{if eq .Data.Protocol "vless"}}selected{{end}}>VLESS + Reality</option>
-          <option value="trojan" {{if eq .Data.Protocol "trojan"}}selected{{end}}>Trojan + TLS</option>
-          <option value="shadowsocks" {{if eq .Data.Protocol "shadowsocks"}}selected{{end}}>Shadowsocks</option>
+          <option value="vless" {{if eq .Data.Inbound.Protocol "vless"}}selected{{end}}>VLESS + Reality</option>
+          <option value="trojan" {{if eq .Data.Inbound.Protocol "trojan"}}selected{{end}}>Trojan + TLS</option>
+          <option value="shadowsocks" {{if eq .Data.Inbound.Protocol "shadowsocks"}}selected{{end}}>Shadowsocks</option>
         </select>
         <!-- disabled 字段不会提交，用 hidden 补充 -->
-        <input type="hidden" name="protocol" value="{{.Data.Protocol}}">
+        <input type="hidden" name="protocol" value="{{.Data.Inbound.Protocol}}">
       </div>
       <div>
         <label class="block text-xs font-medium text-gray-400 mb-1.5">端口</label>
-        <input type="number" name="port" value="{{.Data.Port}}" required min="1" max="65535"
+        <input type="number" name="port" value="{{.Data.Inbound.Port}}" required min="1" max="65535"
                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
       </div>
     </div>
     <div>
       <label class="block text-xs font-medium text-gray-400 mb-1.5">标签 (Tag)</label>
-      <input type="text" name="tag" value="{{.Data.Tag}}" required
+      <input type="text" name="tag" value="{{.Data.Inbound.Tag}}" required
              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
     </div>
 
     <!-- VLESS Reality -->
-    {{if eq .Data.Protocol "vless"}}
+    {{if eq .Data.Inbound.Protocol "vless"}}
     <input type="hidden" name="security" value="reality">
     <div class="space-y-3">
       <div>
         <label class="block text-xs font-medium text-gray-400 mb-1.5">握手地址</label>
-        <input type="text" name="reality_handshake_addr" value="{{.Data.RealityHandshakeAddr}}"
+        <input type="text" name="reality_handshake_addr" value="{{.Data.Inbound.RealityHandshakeAddr}}"
                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="block text-xs font-medium text-gray-400 mb-1.5">私钥</label>
-          <input type="text" name="reality_private_key" value="{{.Data.RealityPrivateKey}}"
+          <input type="text" name="reality_private_key" value="{{.Data.Inbound.RealityPrivateKey}}"
                  class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono text-xs focus:outline-none focus:border-indigo-500 transition-colors">
         </div>
         <div>
           <label class="block text-xs font-medium text-gray-400 mb-1.5">Short ID</label>
-          <input type="text" name="reality_short_id" value="{{.Data.RealityShortID}}"
+          <input type="text" name="reality_short_id" value="{{.Data.Inbound.RealityShortID}}"
                  class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono text-xs focus:outline-none focus:border-indigo-500 transition-colors">
         </div>
       </div>
       <div>
         <label class="block text-xs font-medium text-gray-400 mb-1.5">公钥 <span class="text-gray-500">(只读，用于订阅链接)</span></label>
-        <input type="text" name="reality_public_key" value="{{.Data.RealityPublicKey}}" readonly
+        <input type="text" name="reality_public_key" value="{{.Data.Inbound.RealityPublicKey}}" readonly
                class="w-full bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-400 font-mono text-xs cursor-default">
       </div>
     </div>
     {{end}}
 
     <!-- Trojan TLS -->
-    {{if eq .Data.Protocol "trojan"}}
+    {{if eq .Data.Inbound.Protocol "trojan"}}
     <input type="hidden" name="security" value="tls">
     <div class="space-y-3">
       <div>
         <label class="block text-xs font-medium text-gray-400 mb-1.5">TLS 证书路径</label>
-        <input type="text" name="tls_cert_path" value="{{.Data.TLSCertPath}}" placeholder="/etc/ssl/cert.pem"
+        <input type="text" name="tls_cert_path" value="{{.Data.Inbound.TLSCertPath}}" placeholder="/etc/ssl/cert.pem"
                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
       </div>
       <div>
         <label class="block text-xs font-medium text-gray-400 mb-1.5">TLS 私钥路径</label>
-        <input type="text" name="tls_key_path" value="{{.Data.TLSKeyPath}}" placeholder="/etc/ssl/key.pem"
+        <input type="text" name="tls_key_path" value="{{.Data.Inbound.TLSKeyPath}}" placeholder="/etc/ssl/key.pem"
                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
       </div>
     </div>
     {{end}}
 
     <!-- Shadowsocks -->
-    {{if eq .Data.Protocol "shadowsocks"}}
+    {{if eq .Data.Inbound.Protocol "shadowsocks"}}
     <div>
       <label class="block text-xs font-medium text-gray-400 mb-1.5">加密方式</label>
       <select name="method"
               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-        <option value="2022-blake3-aes-128-gcm" {{if eq .Data.Method "2022-blake3-aes-128-gcm"}}selected{{end}}>2022-blake3-aes-128-gcm（推荐）</option>
-        <option value="2022-blake3-aes-256-gcm" {{if eq .Data.Method "2022-blake3-aes-256-gcm"}}selected{{end}}>2022-blake3-aes-256-gcm</option>
-        <option value="2022-blake3-chacha20-poly1305" {{if eq .Data.Method "2022-blake3-chacha20-poly1305"}}selected{{end}}>2022-blake3-chacha20-poly1305</option>
+        <option value="2022-blake3-aes-128-gcm" {{if eq .Data.Inbound.Method "2022-blake3-aes-128-gcm"}}selected{{end}}>2022-blake3-aes-128-gcm（推荐）</option>
+        <option value="2022-blake3-aes-256-gcm" {{if eq .Data.Inbound.Method "2022-blake3-aes-256-gcm"}}selected{{end}}>2022-blake3-aes-256-gcm</option>
+        <option value="2022-blake3-chacha20-poly1305" {{if eq .Data.Inbound.Method "2022-blake3-chacha20-poly1305"}}selected{{end}}>2022-blake3-chacha20-poly1305</option>
       </select>
       <label class="block text-xs font-medium text-gray-400 mb-1.5 mt-3">服务端 PSK</label>
-      <input type="text" name="ss_password" value="{{.Data.Password}}"
+      <input type="text" name="ss_password" value="{{.Data.Inbound.Password}}"
              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+    {{end}}
+
+    <!-- 出口绑定 -->
+    {{if .Data.Outbounds}}
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">出口（留空=直连）</label>
+      <select name="outbound_id"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+        <option value="">直连</option>
+        {{range .Data.Outbounds}}
+        <option value="{{.ID}}" {{if eq $.Data.Inbound.OutboundID .ID}}selected{{end}}>{{.Name}} ({{.Protocol}} {{.Server}})</option>
+        {{end}}
+      </select>
     </div>
     {{end}}
   </div>
@@ -1146,6 +1097,146 @@
             hx-get="/panel/inbounds/{{.Data.Inbound.ID}}/hosts"
             hx-target="#modal-body"
             hx-swap="innerHTML"
+            class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">取消</button>
+    <button type="submit"
+            class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">保存</button>
+  </div>
+</form>
+{{end}}
+
+
+{{define "partial-outbound-rows"}}
+{{if .Data}}
+{{range .Data}}
+<tr class="border-b border-gray-800 hover:bg-gray-800/40 transition-colors">
+  <td class="px-4 py-3 font-medium text-gray-100">{{.Name}}</td>
+  <td class="px-4 py-3">
+    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-indigo-500/15 text-indigo-400">{{.Protocol}}</span>
+  </td>
+  <td class="px-4 py-3 text-sm text-gray-400 font-mono">{{.Server}}</td>
+  <td class="px-4 py-3 text-sm text-gray-500">{{if .Username}}{{.Username}}{{else}}—{{end}}</td>
+  <td class="px-4 py-3">
+    <div class="flex items-center gap-2">
+      <button hx-get="/panel/outbounds/{{.ID}}/edit"
+              hx-target="#modal-body"
+              hx-swap="innerHTML"
+              onclick="document.getElementById('app-modal').showModal()"
+              class="text-xs text-gray-400 hover:text-indigo-400 transition-colors">编辑</button>
+      <button hx-delete="/panel/outbounds/{{.ID}}"
+              hx-target="#outbounds-tbody"
+              hx-swap="innerHTML"
+              hx-confirm="确认删除出口 {{.Name}}？"
+              class="text-xs text-gray-400 hover:text-red-400 transition-colors">删除</button>
+    </div>
+  </td>
+</tr>
+{{end}}
+{{else}}
+<tr>
+  <td colspan="5" class="px-4 py-8 text-center text-sm text-gray-500">暂无出口配置</td>
+</tr>
+{{end}}
+{{end}}
+
+
+{{define "partial-outbound-new-form"}}
+<form hx-post="/panel/outbounds"
+      hx-target="#outbounds-tbody"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful) { document.getElementById('app-modal').close(); this.reset(); }">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+    <h3 class="text-sm font-semibold text-gray-100">添加出口</h3>
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="px-5 py-4 space-y-4 overflow-y-auto max-h-[70vh]">
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">名称</label>
+      <input type="text" name="name" required placeholder="如：香港落地机"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">协议</label>
+      <select name="protocol"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+        <option value="socks5">SOCKS5</option>
+        <option value="http">HTTP</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">服务器地址（host:port）</label>
+      <input type="text" name="server" required placeholder="1.2.3.4:1080"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">用户名（可选）</label>
+        <input type="text" name="username"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">密码（可选）</label>
+        <input type="password" name="password"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+    </div>
+  </div>
+  <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
+    <button type="button" onclick="document.getElementById('app-modal').close()"
+            class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">取消</button>
+    <button type="submit"
+            class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">添加</button>
+  </div>
+</form>
+{{end}}
+
+
+{{define "partial-outbound-edit-form"}}
+<form hx-put="/panel/outbounds/{{.Data.ID}}"
+      hx-target="#outbounds-tbody"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful) document.getElementById('app-modal').close()">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+    <h3 class="text-sm font-semibold text-gray-100">编辑出口 — <span class="text-indigo-400">{{.Data.Name}}</span></h3>
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="px-5 py-4 space-y-4 overflow-y-auto max-h-[70vh]">
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">名称</label>
+      <input type="text" name="name" value="{{.Data.Name}}" required
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">协议</label>
+      <select name="protocol"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+        <option value="socks5" {{if eq .Data.Protocol "socks5"}}selected{{end}}>SOCKS5</option>
+        <option value="http" {{if eq .Data.Protocol "http"}}selected{{end}}>HTTP</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">服务器地址（host:port）</label>
+      <input type="text" name="server" value="{{.Data.Server}}" required
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">用户名（可选）</label>
+        <input type="text" name="username" value="{{.Data.Username}}"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">密码（可选）</label>
+        <input type="password" name="password" value="{{.Data.Password}}"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+    </div>
+  </div>
+  <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
+    <button type="button" onclick="document.getElementById('app-modal').close()"
             class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">取消</button>
     <button type="submit"
             class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">保存</button>

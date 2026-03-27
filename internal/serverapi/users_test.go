@@ -42,7 +42,7 @@ func setupTestMux(t *testing.T, nodeHandler func(path string, w http.ResponseWri
 	}
 
 	ibStore := inbounds.NewMemoryStore()
-	userAPI := newUserAPI(users.NewMemoryStore(), nodeStore, ibStore, baseAPI, jobs.ApplyOptions{})
+	userAPI := newUserAPI(users.NewMemoryStore(), nodeStore, ibStore, nil, baseAPI, jobs.ApplyOptions{})
 	mux := http.NewServeMux()
 	userAPI.Register(mux)
 
@@ -162,7 +162,7 @@ func TestCreateUserAutoGeneratesID(t *testing.T) {
 	})
 
 	baseAPI := New(nodeStore, nodes.ClientOptions{})
-	userAPI := newUserAPI(users.NewMemoryStore(), nodeStore, inbounds.NewMemoryStore(), baseAPI, jobs.ApplyOptions{})
+	userAPI := newUserAPI(users.NewMemoryStore(), nodeStore, inbounds.NewMemoryStore(), nil, baseAPI, jobs.ApplyOptions{})
 	mux := http.NewServeMux()
 	userAPI.Register(mux)
 
@@ -292,7 +292,7 @@ func TestSyncUsageDisablesLimitedUserAndReloadsNode(t *testing.T) {
 	_, _ = userStore.UpsertUserInbound(users.UserInbound{ID: "u1-ib0", UserID: "u1", NodeID: "node-1", UUID: "uuid-alice", Secret: "secret-alice"})
 	_, _ = userStore.UpsertUserInbound(users.UserInbound{ID: "u2-ib0", UserID: "u2", NodeID: "node-1", UUID: "uuid-bob", Secret: "secret-bob"})
 
-	result, err := jobs.SyncUsage(t.Context(), userStore, nodeStore, ibStore, baseAPI.Dial, jobs.ApplyOptions{})
+	result, err := jobs.SyncUsage(t.Context(), userStore, nodeStore, ibStore, baseAPI.Dial, jobs.ApplyOptions{}, nil)
 	if err != nil {
 		t.Fatalf("SyncUsage() error = %v", err)
 	}

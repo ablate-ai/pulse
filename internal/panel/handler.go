@@ -24,6 +24,7 @@ import (
 	"pulse/internal/inbounds"
 	"pulse/internal/jobs"
 	"pulse/internal/nodes"
+	"pulse/internal/outbounds"
 	"pulse/internal/usage"
 	"pulse/internal/users"
 )
@@ -35,13 +36,14 @@ const cookieName = "pulse_token"
 
 // Handler 面板 HTTP 处理器，持有所有依赖。
 type Handler struct {
-	auth      *auth.Manager
-	userStore users.Store
-	nodeStore nodes.Store
-	ibStore   inbounds.InboundStore
-	dial      jobs.NodeDialer
-	applyOpts jobs.ApplyOptions
-	tmpl      *template.Template
+	auth          *auth.Manager
+	userStore     users.Store
+	nodeStore     nodes.Store
+	ibStore       inbounds.InboundStore
+	outboundStore outbounds.Store
+	dial          jobs.NodeDialer
+	applyOpts     jobs.ApplyOptions
+	tmpl          *template.Template
 }
 
 // pageData 传入完整页面模板的数据结构。
@@ -72,16 +74,18 @@ func New(
 	userStore users.Store,
 	nodeStore nodes.Store,
 	ibStore inbounds.InboundStore,
+	outboundStore outbounds.Store,
 	dial jobs.NodeDialer,
 	applyOpts jobs.ApplyOptions,
 ) (*Handler, error) {
 	h := &Handler{
-		auth:      authMgr,
-		userStore: userStore,
-		nodeStore: nodeStore,
-		ibStore:   ibStore,
-		dial:      dial,
-		applyOpts: applyOpts,
+		auth:          authMgr,
+		userStore:     userStore,
+		nodeStore:     nodeStore,
+		ibStore:       ibStore,
+		outboundStore: outboundStore,
+		dial:          dial,
+		applyOpts:     applyOpts,
 	}
 
 	tmpl, err := template.New("").Funcs(templateFuncs()).ParseFS(embedFS, "templates/*.html")
@@ -120,12 +124,20 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /panel/settings/password", h.requireAuth(h.changePassword))
 
 	mux.HandleFunc("GET /inbounds", h.requireAuth(h.inboundsPage))
+	mux.HandleFunc("GET /outbounds", h.requireAuth(h.outboundsPage))
 	mux.HandleFunc("GET /panel/inbounds/list", h.requireAuth(h.inboundsListPartial))
 	mux.HandleFunc("GET /panel/inbounds/new", h.requireAuth(h.inboundNewForm))
 	mux.HandleFunc("POST /panel/inbounds", h.requireAuth(h.createInbound))
 	mux.HandleFunc("GET /panel/inbounds/{id}/edit", h.requireAuth(h.inboundEditForm))
 	mux.HandleFunc("PUT /panel/inbounds/{id}", h.requireAuth(h.updateInbound))
 	mux.HandleFunc("DELETE /panel/inbounds/{id}", h.requireAuth(h.deleteInbound))
+
+	mux.HandleFunc("GET /panel/outbounds/list", h.requireAuth(h.outboundsListPartial))
+	mux.HandleFunc("GET /panel/outbounds/new", h.requireAuth(h.outboundNewForm))
+	mux.HandleFunc("POST /panel/outbounds", h.requireAuth(h.createOutbound))
+	mux.HandleFunc("GET /panel/outbounds/{id}/edit", h.requireAuth(h.outboundEditForm))
+	mux.HandleFunc("PUT /panel/outbounds/{id}", h.requireAuth(h.updateOutbound))
+	mux.HandleFunc("DELETE /panel/outbounds/{id}", h.requireAuth(h.deleteOutbound))
 
 	mux.HandleFunc("GET /panel/tools/reality-keypair", h.requireAuth(h.realityKeypair))
 
@@ -717,14 +729,9 @@ func (h *Handler) createNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	newNode := nodes.Node{
-		ID:              idgen.NextString(),
-		Name:            name,
-		BaseURL:         baseURL,
-		ForwardEnabled:  r.FormValue("forward_enabled") == "1",
-		ForwardProtocol: r.FormValue("forward_protocol"),
-		ForwardServer:   r.FormValue("forward_server"),
-		ForwardUsername: r.FormValue("forward_username"),
-		ForwardPassword: r.FormValue("forward_password"),
+		ID:      idgen.NextString(),
+		Name:    name,
+		BaseURL: baseURL,
 	}
 
 	if _, err := h.nodeStore.Upsert(newNode); err != nil {
@@ -782,7 +789,7 @@ func (h *Handler) restartNode(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	status, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.applyOpts, node)
+	status, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.outboundStore, h.applyOpts, node)
 	if err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to restart node: "+err.Error())
 		return
@@ -833,7 +840,7 @@ func (h *Handler) startNode(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	if _, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.applyOpts, node); err != nil {
+	if _, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.outboundStore, h.applyOpts, node); err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to start node: "+err.Error())
 		return
 	}
@@ -954,12 +961,6 @@ func (h *Handler) updateNode(w http.ResponseWriter, r *http.Request) {
 	if baseURL := r.FormValue("base_url"); baseURL != "" {
 		node.BaseURL = baseURL
 	}
-	node.ForwardEnabled = r.FormValue("forward_enabled") == "1"
-	node.ForwardProtocol = r.FormValue("forward_protocol")
-	node.ForwardServer = r.FormValue("forward_server")
-	node.ForwardUsername = r.FormValue("forward_username")
-	node.ForwardPassword = r.FormValue("forward_password")
-
 	if _, err := h.nodeStore.Upsert(node); err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to update node: "+err.Error())
 		return
@@ -1031,7 +1032,7 @@ func (h *Handler) applyNodes(nodeIDs []string) {
 			n, _ := h.nodeStore.Get(id)
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			if _, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.applyOpts, n); err != nil {
+			if _, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.outboundStore, h.applyOpts, n); err != nil {
 				log.Printf("applyNodes: apply %s: %v", id, err)
 			}
 		}(nodeID)
@@ -1129,6 +1130,13 @@ func (h *Handler) inboundsPage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) outboundsPage(w http.ResponseWriter, r *http.Request) {
+	h.renderPage(w, "outbounds", pageData{
+		Page:     "outbounds",
+		Username: h.currentUsername(r),
+	})
+}
+
 func (h *Handler) inboundsListPartial(w http.ResponseWriter, r *http.Request) {
 	list, err := h.ibStore.ListInbounds()
 	if err != nil {
@@ -1138,14 +1146,24 @@ func (h *Handler) inboundsListPartial(w http.ResponseWriter, r *http.Request) {
 	h.renderPartial(w, "partial-inbound-rows", inboundListData{Inbounds: list, NodeMap: h.buildNodeMap()})
 }
 
+// inboundFormData 传给 Inbound 表单模板的数据。
+type inboundFormData struct {
+	Inbound   *inbounds.Inbound
+	Nodes     []nodes.Node
+	Outbounds []outbounds.Outbound
+}
+
 func (h *Handler) inboundNewForm(w http.ResponseWriter, r *http.Request) {
-	// 获取节点列表供选择
 	nodeList, err := h.nodeStore.List()
 	if err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to get node list: "+err.Error())
 		return
 	}
-	h.renderPartial(w, "partial-inbound-new-form", nodeList)
+	obList, _ := h.outboundStore.List()
+	h.renderPartial(w, "partial-inbound-new-form", inboundFormData{
+		Nodes:     nodeList,
+		Outbounds: obList,
+	})
 }
 
 func (h *Handler) createInbound(w http.ResponseWriter, r *http.Request) {
@@ -1182,6 +1200,7 @@ func (h *Handler) createInbound(w http.ResponseWriter, r *http.Request) {
 			TLSCertPath:          r.FormValue("tls_cert_path"),
 			TLSKeyPath:           r.FormValue("tls_key_path"),
 			RealityHandshakeAddr: r.FormValue("reality_handshake_addr"),
+			OutboundID:           r.FormValue("outbound_id"),
 		}
 
 		// VLESS Reality：每个节点独立生成密钥对和 Short ID
@@ -1233,7 +1252,11 @@ func (h *Handler) inboundEditForm(w http.ResponseWriter, r *http.Request) {
 		htmxError(w, http.StatusNotFound, "inbound not found")
 		return
 	}
-	h.renderPartial(w, "partial-inbound-edit-form", ib)
+	obList, _ := h.outboundStore.List()
+	h.renderPartial(w, "partial-inbound-edit-form", inboundFormData{
+		Inbound:   &ib,
+		Outbounds: obList,
+	})
 }
 
 func (h *Handler) updateInbound(w http.ResponseWriter, r *http.Request) {
@@ -1269,6 +1292,7 @@ func (h *Handler) updateInbound(w http.ResponseWriter, r *http.Request) {
 	ib.RealityPublicKey = r.FormValue("reality_public_key")
 	ib.RealityHandshakeAddr = r.FormValue("reality_handshake_addr")
 	ib.RealityShortID = r.FormValue("reality_short_id")
+	ib.OutboundID = r.FormValue("outbound_id")
 
 	if _, err := h.ibStore.UpsertInbound(ib); err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to update inbound: "+err.Error())
@@ -1418,6 +1442,100 @@ func (h *Handler) deleteHost(w http.ResponseWriter, r *http.Request) {
 	}
 	hosts, _ := h.ibStore.ListHostsByInbound(ibID)
 	h.renderPartial(w, "partial-host-rows", inboundHostsData{Inbound: ib, Hosts: hosts})
+}
+
+// ─── Outbound Handlers ────────────────────────────────────────────────────────
+
+func (h *Handler) outboundsListPartial(w http.ResponseWriter, r *http.Request) {
+	list, err := h.outboundStore.List()
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to get outbound list: "+err.Error())
+		return
+	}
+	h.renderPartial(w, "partial-outbound-rows", list)
+}
+
+func (h *Handler) outboundNewForm(w http.ResponseWriter, r *http.Request) {
+	h.renderPartial(w, "partial-outbound-new-form", nil)
+}
+
+func (h *Handler) createOutbound(w http.ResponseWriter, r *http.Request) {
+	name := r.FormValue("name")
+	server := r.FormValue("server")
+	if name == "" || server == "" {
+		htmxError(w, http.StatusBadRequest, "name and server are required")
+		return
+	}
+	protocol := r.FormValue("protocol")
+	if protocol == "" {
+		protocol = "socks5"
+	}
+	ob := outbounds.Outbound{
+		ID:       idgen.NextString(),
+		Name:     name,
+		Protocol: protocol,
+		Server:   server,
+		Username: r.FormValue("username"),
+		Password: r.FormValue("password"),
+	}
+	if _, err := h.outboundStore.Upsert(ob); err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to create outbound: "+err.Error())
+		return
+	}
+	h.renderOutboundsListFromStore(w)
+}
+
+func (h *Handler) outboundEditForm(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	ob, err := h.outboundStore.Get(id)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "outbound not found")
+		return
+	}
+	h.renderPartial(w, "partial-outbound-edit-form", ob)
+}
+
+func (h *Handler) updateOutbound(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	ob, err := h.outboundStore.Get(id)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "outbound not found")
+		return
+	}
+	if name := r.FormValue("name"); name != "" {
+		ob.Name = name
+	}
+	if server := r.FormValue("server"); server != "" {
+		ob.Server = server
+	}
+	if protocol := r.FormValue("protocol"); protocol != "" {
+		ob.Protocol = protocol
+	}
+	ob.Username = r.FormValue("username")
+	ob.Password = r.FormValue("password")
+	if _, err := h.outboundStore.Upsert(ob); err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to update outbound: "+err.Error())
+		return
+	}
+	h.renderOutboundsListFromStore(w)
+}
+
+func (h *Handler) deleteOutbound(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := h.outboundStore.Delete(id); err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to delete outbound: "+err.Error())
+		return
+	}
+	h.renderOutboundsListFromStore(w)
+}
+
+func (h *Handler) renderOutboundsListFromStore(w http.ResponseWriter) {
+	list, err := h.outboundStore.List()
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to get outbound list: "+err.Error())
+		return
+	}
+	h.renderPartial(w, "partial-outbound-rows", list)
 }
 
 // ─── 模板函数 ─────────────────────────────────────────────────────────────────

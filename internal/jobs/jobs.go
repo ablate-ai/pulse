@@ -7,6 +7,7 @@ import (
 
 	"pulse/internal/inbounds"
 	"pulse/internal/nodes"
+	"pulse/internal/outbounds"
 	"pulse/internal/proxycfg"
 	"pulse/internal/users"
 )
@@ -27,7 +28,7 @@ type SyncUsageResult struct {
 
 // SyncUsage 从各节点拉取流量统计，更新用户字节数，
 // 若某节点上的用户启用状态发生变化则重新下发配置。
-func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ibStore inbounds.InboundStore, dial NodeDialer, applyOpts ApplyOptions) (SyncUsageResult, error) {
+func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ibStore inbounds.InboundStore, dial NodeDialer, applyOpts ApplyOptions, outboundStore outbounds.Store) (SyncUsageResult, error) {
 	nodesList, err := nodeStore.List()
 	if err != nil {
 		return SyncUsageResult{}, err
@@ -138,7 +139,7 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			continue
 		}
 
-		status, _, err := ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, allUserMap, ibStore, applyOpts, node)
+		status, _, err := ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, allUserMap, ibStore, outboundStore, applyOpts, node)
 		if err != nil {
 			result.Errors = append(result.Errors, node.ID+": reload: "+err.Error())
 			continue
@@ -157,7 +158,7 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 
 // ActivateExpiredOnHold 将 on_hold_expire_at 已到期的 on_hold 用户状态改为 active，
 // 并对涉及的节点重新下发配置。
-func ActivateExpiredOnHold(ctx context.Context, store users.Store, nodeStore nodes.Store, ibStore inbounds.InboundStore, dial NodeDialer, applyOpts ApplyOptions) error {
+func ActivateExpiredOnHold(ctx context.Context, store users.Store, nodeStore nodes.Store, ibStore inbounds.InboundStore, dial NodeDialer, applyOpts ApplyOptions, outboundStore outbounds.Store) error {
 	allUsers, err := store.ListUsers()
 	if err != nil {
 		return err
@@ -203,7 +204,7 @@ func ActivateExpiredOnHold(ctx context.Context, store users.Store, nodeStore nod
 			continue
 		}
 		node, _ := nodeStore.Get(nodeID)
-		ApplyNodeUsers(ctx, client, nodeInbounds, nodeAccesses, userMap, ibStore, applyOpts, node) //nolint:errcheck
+		ApplyNodeUsers(ctx, client, nodeInbounds, nodeAccesses, userMap, ibStore, outboundStore, applyOpts, node) //nolint:errcheck
 	}
 
 	return nil
@@ -219,7 +220,7 @@ type ResetTrafficResult struct {
 }
 
 // ResetTraffic 检查所有用户的流量重置策略，到期则清零并重新下发节点配置。
-func ResetTraffic(ctx context.Context, store users.Store, nodeStore nodes.Store, ibStore inbounds.InboundStore, dial NodeDialer, applyOpts ApplyOptions) (ResetTrafficResult, error) {
+func ResetTraffic(ctx context.Context, store users.Store, nodeStore nodes.Store, ibStore inbounds.InboundStore, dial NodeDialer, applyOpts ApplyOptions, outboundStore outbounds.Store) (ResetTrafficResult, error) {
 	allUsers, err := store.ListUsers()
 	if err != nil {
 		return ResetTrafficResult{}, err
@@ -289,7 +290,7 @@ func ResetTraffic(ctx context.Context, store users.Store, nodeStore nodes.Store,
 			continue
 		}
 		node, _ := nodeStore.Get(nodeID)
-		status, _, err := ApplyNodeUsers(ctx, client, nodeInbounds, nodeAccesses, userMap, ibStore, applyOpts, node)
+		status, _, err := ApplyNodeUsers(ctx, client, nodeInbounds, nodeAccesses, userMap, ibStore, outboundStore, applyOpts, node)
 		if err != nil {
 			result.Errors = append(result.Errors, nodeID+": reload: "+err.Error())
 			continue
@@ -340,7 +341,7 @@ type ApplyOptions struct {
 
 // ApplyNodeUsers 根据节点 inbound 配置和用户凭据生成配置并下发到节点。
 // nodeInbounds 是节点 inbound 定义，userAccesses 是用户凭据列表（每用户一条）。
-func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []inbounds.Inbound, userAccesses []users.UserInbound, userMap map[string]users.User, ibStore inbounds.InboundStore, applyOpts ApplyOptions, node nodes.Node) (nodes.Status, string, error) {
+func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []inbounds.Inbound, userAccesses []users.UserInbound, userMap map[string]users.User, ibStore inbounds.InboundStore, outboundStore outbounds.Store, applyOpts ApplyOptions, node nodes.Node) (nodes.Status, string, error) {
 	// 过滤出已启用用户
 	activeAccesses := filterEnabled(userAccesses, userMap)
 	if len(activeAccesses) == 0 || len(nodeInbounds) == 0 {
@@ -355,13 +356,18 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []in
 		return status, idleCfg, err
 	}
 
+	// 加载出口 map
+	outboundMap := make(map[string]outbounds.Outbound)
+	if outboundStore != nil {
+		list, _ := outboundStore.List()
+		for _, ob := range list {
+			outboundMap[ob.ID] = ob
+		}
+	}
+
 	cfg, err := proxycfg.BuildSingboxConfig(nodeInbounds, userAccesses, userMap, proxycfg.BuildOptions{
-		CaddyEnabled:    node.CaddyEnabled,
-		ForwardEnabled:  node.ForwardEnabled,
-		ForwardProtocol: node.ForwardProtocol,
-		ForwardServer:   node.ForwardServer,
-		ForwardUsername: node.ForwardUsername,
-		ForwardPassword: node.ForwardPassword,
+		CaddyEnabled: node.CaddyEnabled,
+		OutboundMap:  outboundMap,
 	})
 	if err != nil {
 		return nodes.Status{}, "", err

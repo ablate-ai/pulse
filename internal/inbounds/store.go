@@ -14,6 +14,8 @@ type Inbound struct {
 	Protocol string `json:"protocol"` // vless / vmess / trojan / shadowsocks
 	Tag      string `json:"tag"`      // sing-box inbound tag，同节点内唯一
 	Port     int    `json:"port"`
+	// OutboundID 绑定的出口 ID；空字符串表示直连。
+	OutboundID string `json:"outbound_id,omitempty"`
 	// Shadowsocks 加密方式
 	Method string `json:"method,omitempty"`
 	// Shadowsocks 2022 服务端 PSK（仅 2022-blake3-* 系列需要）

@@ -10,6 +10,7 @@ import (
 	"pulse/internal/inbounds"
 	"pulse/internal/jobs"
 	"pulse/internal/nodes"
+	"pulse/internal/outbounds"
 	"pulse/internal/users"
 )
 
@@ -17,6 +18,7 @@ type systemAPI struct {
 	users             users.Store
 	nodes             nodes.Store
 	inboundStore      inbounds.InboundStore
+	outboundStore     outbounds.Store
 	base              *API
 	nodeClientCertPEM string
 	applyOpts         jobs.ApplyOptions
@@ -47,6 +49,7 @@ func RegisterSystemAPIWithInbounds(mux *http.ServeMux, usersStore users.Store, n
 		users:             usersStore,
 		nodes:             nodesStore,
 		inboundStore:      ibStore,
+		outboundStore:     nil, // 调用方可通过 RegisterSystemAPIWithInboundsAndOutbounds 传入
 		base:              base,
 		nodeClientCertPEM: clientCertPEM,
 		applyOpts:         applyOpts,
@@ -89,7 +92,7 @@ func (a *systemAPI) handleSyncUsage(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 
-	result, err := jobs.SyncUsage(ctx, a.users, a.nodes, a.inboundStore, a.base.Dial, a.applyOpts)
+	result, err := jobs.SyncUsage(ctx, a.users, a.nodes, a.inboundStore, a.base.Dial, a.applyOpts, a.outboundStore)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return

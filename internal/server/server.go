@@ -15,6 +15,7 @@ import (
 	"pulse/internal/inbounds"
 	"pulse/internal/jobs"
 	"pulse/internal/nodes"
+	"pulse/internal/outbounds"
 	"pulse/internal/panel"
 	"pulse/internal/serverapi"
 	sqliteStore "pulse/internal/store/sqlite"
@@ -36,6 +37,7 @@ func Run() error {
 	var store nodes.Store = db.NodeStore()
 	var userStore users.Store = db.UserStore()
 	var inboundStore inbounds.InboundStore = db.InboundStore()
+	var outboundStore outbounds.Store = db.OutboundStore()
 	authManager := auth.NewManager(cfg.AdminUsername, cfg.AdminPassword, db.SessionStore(), db.SettingsStore())
 	clientOptions := nodes.ClientOptions{
 		ClientCertFile: cfg.ServerNodeClientCertFile,
@@ -44,13 +46,13 @@ func Run() error {
 
 	// 启动调度器
 	applyOpts := jobs.ApplyOptions{}
-	nodeAPI := serverapi.NewWithUsers(store, userStore, inboundStore, clientOptions, applyOpts)
+	nodeAPI := serverapi.NewWithUsers(store, userStore, inboundStore, outboundStore, clientOptions, applyOpts)
 	scheduler := jobs.NewScheduler(nil)
 	scheduler.Add(jobs.Job{
 		Name:     "sync-usage",
 		Interval: 1 * time.Minute,
 		Fn: func(ctx context.Context) error {
-			_, err := jobs.SyncUsage(ctx, userStore, store, inboundStore, nodeAPI.Dial, applyOpts)
+			_, err := jobs.SyncUsage(ctx, userStore, store, inboundStore, nodeAPI.Dial, applyOpts, outboundStore)
 			return err
 		},
 	})
@@ -58,7 +60,7 @@ func Run() error {
 		Name:     "reset-traffic",
 		Interval: 1 * time.Minute,
 		Fn: func(ctx context.Context) error {
-			_, err := jobs.ResetTraffic(ctx, userStore, store, inboundStore, nodeAPI.Dial, applyOpts)
+			_, err := jobs.ResetTraffic(ctx, userStore, store, inboundStore, nodeAPI.Dial, applyOpts, outboundStore)
 			return err
 		},
 	})
@@ -66,7 +68,7 @@ func Run() error {
 		Name:     "activate-on-hold",
 		Interval: 1 * time.Minute,
 		Fn: func(ctx context.Context) error {
-			return jobs.ActivateExpiredOnHold(ctx, userStore, store, inboundStore, nodeAPI.Dial, applyOpts)
+			return jobs.ActivateExpiredOnHold(ctx, userStore, store, inboundStore, nodeAPI.Dial, applyOpts, outboundStore)
 		},
 	})
 
@@ -114,15 +116,16 @@ func Run() error {
 	serverapi.RegisterSubAPI(mux, userStore, inboundStore)
 
 	// 面板（HTMX + 服务端模板）
-	panelHandler, err := panel.New(authManager, userStore, store, inboundStore, nodeAPI.Dial, applyOpts)
+	panelHandler, err := panel.New(authManager, userStore, store, inboundStore, outboundStore, nodeAPI.Dial, applyOpts)
 	if err != nil {
 		return fmt.Errorf("初始化面板: %w", err)
 	}
 	panelHandler.Register(mux)
-	serverapi.NewWithUsers(store, userStore, inboundStore, clientOptions, applyOpts).Register(protectedV1)
-	serverapi.RegisterUsersAPI(protectedV1, userStore, store, inboundStore, clientOptions, applyOpts)
+	serverapi.NewWithUsers(store, userStore, inboundStore, outboundStore, clientOptions, applyOpts).Register(protectedV1)
+	serverapi.RegisterUsersAPI(protectedV1, userStore, store, inboundStore, outboundStore, clientOptions, applyOpts)
 	serverapi.RegisterSystemAPIWithInbounds(protectedV1, userStore, store, inboundStore, clientOptions, applyOpts)
 	serverapi.RegisterInboundsAPI(protectedV1, inboundStore)
+	serverapi.RegisterOutboundsAPI(protectedV1, outboundStore)
 	serverapi.RegisterToolsAPI(protectedV1)
 	mux.Handle("/v1/tools/", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/node/settings", authManager.Middleware(protectedV1))
@@ -137,6 +140,8 @@ func Run() error {
 	mux.Handle("/v1/inbounds/", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/hosts", authManager.Middleware(protectedV1))
 	mux.Handle("/v1/hosts/", authManager.Middleware(protectedV1))
+	mux.Handle("/v1/outbounds", authManager.Middleware(protectedV1))
+	mux.Handle("/v1/outbounds/", authManager.Middleware(protectedV1))
 
 	srv := &http.Server{
 		Addr:              cfg.ServerAddr,

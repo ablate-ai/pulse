@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"pulse/internal/inbounds"
+	"pulse/internal/outbounds"
 	"pulse/internal/users"
 )
 
@@ -16,6 +17,17 @@ type singboxConfig struct {
 	Log       map[string]any   `json:"log"`
 	Inbounds  []inboundBlock   `json:"inbounds"`
 	Outbounds []map[string]any `json:"outbounds"`
+	Route     *routeBlock      `json:"route,omitempty"`
+}
+
+type routeBlock struct {
+	Rules []routeRule `json:"rules"`
+	Final string      `json:"final"`
+}
+
+type routeRule struct {
+	Inbound  []string `json:"inbound"`
+	Outbound string   `json:"outbound"`
 }
 
 type inboundBlock struct {
@@ -35,12 +47,8 @@ type BuildOptions struct {
 	// CaddyEnabled=true 时，Trojan inbound 改为 127.0.0.1 监听 + WS 传输，
 	// 由外部 Caddy 终止 TLS 并反代。false = 直连模式（sing-box 自管 TLS）。
 	CaddyEnabled bool
-	// 出口转发配置。ForwardEnabled=true 时流量不直连，而是通过代理转发。
-	ForwardEnabled  bool
-	ForwardProtocol string // socks5 / http
-	ForwardServer   string // host:port
-	ForwardUsername string
-	ForwardPassword string
+	// OutboundMap 出口 ID → Outbound，用于 inbound 路由绑定。
+	OutboundMap map[string]outbounds.Outbound
 }
 
 // BuildSingboxConfig 根据节点 inbound 配置和用户凭据生成 sing-box 配置 JSON。
@@ -149,12 +157,47 @@ func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.Us
 		return blocks[i].ListenPort < blocks[j].ListenPort
 	})
 
+	// 构建出口列表和路由规则
+	directOut := map[string]any{"type": "direct", "tag": "direct"}
+	outboundList := []map[string]any{directOut}
+	seenOutboundIDs := make(map[string]struct{})
+	var rules []routeRule
+
+	for _, ib := range nodeInbounds {
+		if ib.OutboundID == "" {
+			continue
+		}
+		ob, ok := opts.OutboundMap[ib.OutboundID]
+		if !ok {
+			continue
+		}
+		obTag := "out-" + ob.ID
+		// 若该出口尚未添加，生成 outbound block
+		if _, seen := seenOutboundIDs[ob.ID]; !seen {
+			seenOutboundIDs[ob.ID] = struct{}{}
+			obBlock := buildOutboundBlock(ob, obTag)
+			outboundList = append(outboundList, obBlock)
+		}
+		// 找到 inbound 对应的 tag
+		ibTag := ib.Tag
+		if ibTag == "" {
+			ibTag = fmt.Sprintf("pulse-%s-%d", ib.Protocol, ib.Port)
+		}
+		rules = append(rules, routeRule{
+			Inbound:  []string{ibTag},
+			Outbound: obTag,
+		})
+	}
+
 	cfg := singboxConfig{
 		Log: map[string]any{
 			"level": "warn",
 		},
 		Inbounds:  blocks,
-		Outbounds: buildOutbounds(opts),
+		Outbounds: outboundList,
+	}
+	if len(rules) > 0 {
+		cfg.Route = &routeBlock{Rules: rules, Final: "direct"}
 	}
 
 	data, err := json.MarshalIndent(cfg, "", "  ")
@@ -162,6 +205,43 @@ func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.Us
 		return "", fmt.Errorf("marshal sing-box config: %w", err)
 	}
 	return string(data), nil
+}
+
+// buildOutboundBlock 根据 Outbound 配置生成 sing-box outbound block。
+func buildOutboundBlock(ob outbounds.Outbound, tag string) map[string]any {
+	host, portStr, err := net.SplitHostPort(ob.Server)
+	if err != nil {
+		// 地址解析失败，回退到直连
+		return map[string]any{"type": "direct", "tag": tag}
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port <= 0 || port > 65535 {
+		return map[string]any{"type": "direct", "tag": tag}
+	}
+
+	var block map[string]any
+	switch ob.Protocol {
+	case "http":
+		block = map[string]any{
+			"type":        "http",
+			"tag":         tag,
+			"server":      host,
+			"server_port": port,
+		}
+	default: // socks5（默认）
+		block = map[string]any{
+			"type":        "socks",
+			"tag":         tag,
+			"server":      host,
+			"server_port": port,
+			"version":     "5",
+		}
+	}
+	if ob.Username != "" {
+		block["username"] = ob.Username
+		block["password"] = ob.Password
+	}
+	return block
 }
 
 func buildInboundUser(ib inbounds.Inbound, acc users.UserInbound, username string) map[string]any {
@@ -252,47 +332,3 @@ func realityTLSFor(ib inbounds.Inbound) map[string]any {
 	}
 }
 
-// buildOutbounds 根据 BuildOptions 生成出口列表。
-// 未启用转发时返回直连出口；启用时添加转发代理并将其设为默认出口。
-func buildOutbounds(opts BuildOptions) []map[string]any {
-	direct := map[string]any{"type": "direct", "tag": "direct"}
-	if !opts.ForwardEnabled || opts.ForwardServer == "" {
-		return []map[string]any{direct}
-	}
-
-	host, portStr, err := net.SplitHostPort(opts.ForwardServer)
-	if err != nil {
-		// 地址解析失败，回退到直连
-		return []map[string]any{direct}
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil || port <= 0 || port > 65535 {
-		return []map[string]any{direct}
-	}
-
-	var forwardOut map[string]any
-	switch opts.ForwardProtocol {
-	case "http":
-		forwardOut = map[string]any{
-			"type":        "http",
-			"tag":         "forward",
-			"server":      host,
-			"server_port": port,
-		}
-	default: // socks5（默认）
-		forwardOut = map[string]any{
-			"type":        "socks",
-			"tag":         "forward",
-			"server":      host,
-			"server_port": port,
-			"version":     "5",
-		}
-	}
-	if opts.ForwardUsername != "" {
-		forwardOut["username"] = opts.ForwardUsername
-		forwardOut["password"] = opts.ForwardPassword
-	}
-
-	// 将转发出口放在第一位，成为默认出口
-	return []map[string]any{forwardOut, direct}
-}

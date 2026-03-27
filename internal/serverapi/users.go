@@ -15,16 +15,18 @@ import (
 	"pulse/internal/inbounds"
 	"pulse/internal/jobs"
 	"pulse/internal/nodes"
+	"pulse/internal/outbounds"
 	"pulse/internal/subscription"
 	"pulse/internal/users"
 )
 
 type userAPI struct {
-	users        users.Store
-	nodes        nodes.Store
-	inboundStore inbounds.InboundStore
-	base         *API
-	applyOpts    jobs.ApplyOptions
+	users         users.Store
+	nodes         nodes.Store
+	inboundStore  inbounds.InboundStore
+	outboundStore outbounds.Store
+	base          *API
+	applyOpts     jobs.ApplyOptions
 }
 
 type createUserRequest struct {
@@ -50,13 +52,14 @@ type createAccessRequest struct {
 	Secret string `json:"secret,omitempty"` // 可留空自动生成
 }
 
-func newUserAPI(usersStore users.Store, nodesStore nodes.Store, ibStore inbounds.InboundStore, base *API, applyOpts jobs.ApplyOptions) *userAPI {
+func newUserAPI(usersStore users.Store, nodesStore nodes.Store, ibStore inbounds.InboundStore, outboundStore outbounds.Store, base *API, applyOpts jobs.ApplyOptions) *userAPI {
 	return &userAPI{
-		users:        usersStore,
-		nodes:        nodesStore,
-		inboundStore: ibStore,
-		base:         base,
-		applyOpts:    applyOpts,
+		users:         usersStore,
+		nodes:         nodesStore,
+		inboundStore:  ibStore,
+		outboundStore: outboundStore,
+		base:          base,
+		applyOpts:     applyOpts,
 	}
 }
 
@@ -330,7 +333,7 @@ func (a *userAPI) handleAccessApply(w http.ResponseWriter, r *http.Request, user
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	status, config, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, allAccesses, userMap, a.inboundStore, a.applyOpts, accNode)
+	status, config, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, allAccesses, userMap, a.inboundStore, a.outboundStore, a.applyOpts, accNode)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return

@@ -24,8 +24,8 @@ func (s *InboundStore) UpsertInbound(inbound inbounds.Inbound) (inbounds.Inbound
 			id, node_id, protocol, tag, port,
 			method, password, security, reality_private_key, reality_public_key,
 			reality_handshake_addr, reality_short_id,
-			tls_cert_path, tls_key_path
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			tls_cert_path, tls_key_path, outbound_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			node_id                = excluded.node_id,
 			protocol               = excluded.protocol,
@@ -39,12 +39,13 @@ func (s *InboundStore) UpsertInbound(inbound inbounds.Inbound) (inbounds.Inbound
 			reality_handshake_addr = excluded.reality_handshake_addr,
 			reality_short_id       = excluded.reality_short_id,
 			tls_cert_path          = excluded.tls_cert_path,
-			tls_key_path           = excluded.tls_key_path
+			tls_key_path           = excluded.tls_key_path,
+			outbound_id            = excluded.outbound_id
 	`,
 		inbound.ID, inbound.NodeID, inbound.Protocol, inbound.Tag, inbound.Port,
 		inbound.Method, inbound.Password, inbound.Security, inbound.RealityPrivateKey, inbound.RealityPublicKey,
 		inbound.RealityHandshakeAddr, inbound.RealityShortID,
-		inbound.TLSCertPath, inbound.TLSKeyPath,
+		inbound.TLSCertPath, inbound.TLSKeyPath, inbound.OutboundID,
 	)
 	if err != nil {
 		return inbounds.Inbound{}, err
@@ -57,7 +58,7 @@ func (s *InboundStore) GetInbound(id string) (inbounds.Inbound, error) {
 		SELECT id, node_id, protocol, tag, port,
 		       method, password, security, reality_private_key, reality_public_key,
 		       reality_handshake_addr, reality_short_id,
-		       tls_cert_path, tls_key_path
+		       tls_cert_path, tls_key_path, outbound_id
 		FROM inbounds WHERE id = ?
 	`, id)
 	return scanInbound(row)
@@ -68,7 +69,7 @@ func (s *InboundStore) ListInbounds() ([]inbounds.Inbound, error) {
 		SELECT id, node_id, protocol, tag, port,
 		       method, password, security, reality_private_key, reality_public_key,
 		       reality_handshake_addr, reality_short_id,
-		       tls_cert_path, tls_key_path
+		       tls_cert_path, tls_key_path, outbound_id
 		FROM inbounds ORDER BY id
 	`)
 	if err != nil {
@@ -83,7 +84,7 @@ func (s *InboundStore) ListInboundsByNode(nodeID string) ([]inbounds.Inbound, er
 		SELECT id, node_id, protocol, tag, port,
 		       method, password, security, reality_private_key, reality_public_key,
 		       reality_handshake_addr, reality_short_id,
-		       tls_cert_path, tls_key_path
+		       tls_cert_path, tls_key_path, outbound_id
 		FROM inbounds WHERE node_id = ? ORDER BY id
 	`, nodeID)
 	if err != nil {
@@ -111,7 +112,7 @@ func scanInbound(row *sql.Row) (inbounds.Inbound, error) {
 		&in.ID, &in.NodeID, &in.Protocol, &in.Tag, &in.Port,
 		&in.Method, &in.Password, &in.Security, &in.RealityPrivateKey, &in.RealityPublicKey,
 		&in.RealityHandshakeAddr, &in.RealityShortID,
-		&in.TLSCertPath, &in.TLSKeyPath,
+		&in.TLSCertPath, &in.TLSKeyPath, &in.OutboundID,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return inbounds.Inbound{}, inbounds.ErrInboundNotFound
@@ -127,7 +128,7 @@ func collectInbounds(rows *sql.Rows) ([]inbounds.Inbound, error) {
 			&in.ID, &in.NodeID, &in.Protocol, &in.Tag, &in.Port,
 			&in.Method, &in.Password, &in.Security, &in.RealityPrivateKey, &in.RealityPublicKey,
 			&in.RealityHandshakeAddr, &in.RealityShortID,
-			&in.TLSCertPath, &in.TLSKeyPath,
+			&in.TLSCertPath, &in.TLSKeyPath, &in.OutboundID,
 		); err != nil {
 			return nil, err
 		}

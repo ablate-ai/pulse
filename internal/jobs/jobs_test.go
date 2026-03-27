@@ -102,7 +102,7 @@ func TestResetTraffic_ResetsLimitedUser(t *testing.T) {
 		}
 	})
 
-	result, err := ResetTraffic(context.Background(), userStore, nodeStore, ibStore, dial, ApplyOptions{})
+	result, err := ResetTraffic(context.Background(), userStore, nodeStore, ibStore, dial, ApplyOptions{}, nil)
 	if err != nil {
 		t.Fatalf("ResetTraffic() error = %v", err)
 	}
@@ -158,7 +158,7 @@ func TestSyncUsage_UpdatesBytesAndReloads(t *testing.T) {
 		}
 	})
 
-	result, err := SyncUsage(context.Background(), userStore, nodeStore, inbounds.NewMemoryStore(), dial, ApplyOptions{})
+	result, err := SyncUsage(context.Background(), userStore, nodeStore, inbounds.NewMemoryStore(), dial, ApplyOptions{}, nil)
 	if err != nil {
 		t.Fatalf("SyncUsage() error = %v", err)
 	}

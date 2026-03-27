@@ -90,6 +90,15 @@ func (db *DB) init() error {
 			base_url TEXT NOT NULL,
 			certificate TEXT NOT NULL DEFAULT ''
 		);`,
+		// outbounds：独立的出口代理配置
+		`CREATE TABLE IF NOT EXISTS outbounds (
+			id       TEXT PRIMARY KEY,
+			name     TEXT NOT NULL DEFAULT '',
+			protocol TEXT NOT NULL DEFAULT 'socks5',
+			server   TEXT NOT NULL DEFAULT '',
+			username TEXT NOT NULL DEFAULT '',
+			password TEXT NOT NULL DEFAULT ''
+		);`,
 		// users：用户身份 + 流量统计
 		`CREATE TABLE IF NOT EXISTS users (
 			id TEXT PRIMARY KEY,
@@ -197,20 +206,6 @@ func (db *DB) migrateNodesTable() error {
 			return fmt.Errorf("migrate nodes add caddy_enabled: %w", err)
 		}
 	}
-	forwardCols := map[string]string{
-		"forward_enabled":  `ALTER TABLE nodes ADD COLUMN forward_enabled INTEGER NOT NULL DEFAULT 0`,
-		"forward_protocol": `ALTER TABLE nodes ADD COLUMN forward_protocol TEXT NOT NULL DEFAULT ''`,
-		"forward_server":   `ALTER TABLE nodes ADD COLUMN forward_server TEXT NOT NULL DEFAULT ''`,
-		"forward_username": `ALTER TABLE nodes ADD COLUMN forward_username TEXT NOT NULL DEFAULT ''`,
-		"forward_password": `ALTER TABLE nodes ADD COLUMN forward_password TEXT NOT NULL DEFAULT ''`,
-	}
-	for col, ddl := range forwardCols {
-		if _, ok := columns[col]; !ok {
-			if _, err := db.conn.Exec(ddl); err != nil {
-				return fmt.Errorf("migrate nodes add %s: %w", col, err)
-			}
-		}
-	}
 	return nil
 }
 
@@ -288,6 +283,7 @@ func (db *DB) migrateInboundsTable() error {
 		"reality_short_id":       `ALTER TABLE inbounds ADD COLUMN reality_short_id TEXT NOT NULL DEFAULT ''`,
 		"tls_cert_path":          `ALTER TABLE inbounds ADD COLUMN tls_cert_path TEXT NOT NULL DEFAULT ''`,
 		"tls_key_path":           `ALTER TABLE inbounds ADD COLUMN tls_key_path TEXT NOT NULL DEFAULT ''`,
+		"outbound_id":            `ALTER TABLE inbounds ADD COLUMN outbound_id TEXT NOT NULL DEFAULT ''`,
 	}
 	for col, ddl := range additions {
 		if _, ok := columns[col]; !ok {
