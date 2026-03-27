@@ -1041,6 +1041,10 @@ func (h *Handler) inboundNewForm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createInbound(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		htmxError(w, http.StatusBadRequest, "invalid form data")
+		return
+	}
 	nodeIDs := r.Form["node_ids"]
 	protocol := r.FormValue("protocol")
 	portStr := r.FormValue("port")
