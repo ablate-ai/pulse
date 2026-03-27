@@ -144,6 +144,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /panel/nodes/{id}/start", h.requireAuth(h.startNode))
 	mux.HandleFunc("POST /panel/nodes/{id}/stop", h.requireAuth(h.stopNode))
 	mux.HandleFunc("GET /panel/nodes/{id}/config", h.requireAuth(h.nodeConfigModal))
+	mux.HandleFunc("GET /panel/nodes/{id}/logs", h.requireAuth(h.nodeLogsModal))
 }
 
 // ─── 认证中间件 ──────────────────────────────────────────────────────────────
@@ -878,6 +879,35 @@ func (h *Handler) nodeConfigModal(w http.ResponseWriter, r *http.Request) {
 	h.renderPartial(w, "partial-node-config", nodeConfigData{
 		NodeName: node.Name,
 		Config:   config,
+	})
+}
+
+func (h *Handler) nodeLogsModal(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	node, err := h.nodeStore.Get(id)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "node not found")
+		return
+	}
+	client, err := h.dial(id)
+	if err != nil {
+		htmxError(w, http.StatusBadGateway, "failed to connect to node: "+err.Error())
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	resp, err := client.Logs(ctx)
+	if err != nil {
+		htmxError(w, http.StatusBadGateway, "failed to get logs: "+err.Error())
+		return
+	}
+	type logsData struct {
+		NodeName string
+		Logs     []string
+	}
+	h.renderPartial(w, "partial-node-logs", logsData{
+		NodeName: node.Name,
+		Logs:     resp.Logs,
 	})
 }
 
