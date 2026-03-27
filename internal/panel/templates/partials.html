@@ -255,6 +255,67 @@
 {{end}}
 
 
+{{define "partial-caddy-rows"}}
+{{range .Data}}
+<div class="bg-gray-900 rounded-xl border border-gray-800 px-5 py-4">
+  <div class="flex items-center justify-between">
+    <div class="min-w-0 mr-4">
+      <div class="font-medium text-gray-100 text-sm">{{.Node.Name}}</div>
+      <div class="text-xs text-gray-500 mt-0.5 truncate">{{.Node.BaseURL}}</div>
+    </div>
+    <div class="flex items-center gap-2 flex-shrink-0">
+      {{if .Error}}
+      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-red-500/15 text-red-400">连接失败</span>
+      {{else}}
+        {{if .Caddy.Installed}}
+        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-500/15 text-emerald-400">已安装</span>
+        {{if .Caddy.Running}}
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/15 text-emerald-400">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>运行中
+        </span>
+        {{else}}
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-red-500/15 text-red-400">
+          <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span>已停止
+        </span>
+        {{end}}
+        <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-wait"
+                hx-post="/panel/caddy/{{.Node.ID}}/sync"
+                hx-target="#caddy-list"
+                hx-swap="innerHTML"
+                hx-disabled-elt="this">同步路由</button>
+        {{else}}
+        <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-gray-500/15 text-gray-500">未安装</span>
+        {{end}}
+      {{end}}
+    </div>
+  </div>
+
+  {{if .Error}}
+  <div class="mt-3 text-xs text-red-400/80 font-mono bg-red-500/5 rounded px-3 py-2">{{.Error}}</div>
+  {{else if .Caddy.Installed}}
+    {{if .Caddy.Routes}}
+    <div class="mt-4 space-y-2">
+      <div class="text-xs text-gray-500 font-medium mb-2">路由列表（{{len .Caddy.Routes}} 条）</div>
+      {{range .Caddy.Routes}}
+      <details class="group">
+        <summary class="flex items-center gap-2 cursor-pointer select-none list-none text-xs text-gray-400 hover:text-gray-200 px-3 py-2 bg-gray-950/60 rounded-lg">
+          <svg class="w-3 h-3 flex-shrink-0 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          <span class="font-mono">{{.Domain}}</span>
+        </summary>
+        <pre class="mt-1 mx-1 text-xs bg-gray-950 rounded-lg px-4 py-3 text-gray-400 overflow-x-auto font-mono leading-relaxed">{{.Config}}</pre>
+      </details>
+      {{end}}
+    </div>
+    {{else}}
+    <div class="mt-3 text-xs text-gray-600">暂无路由（尚未同步或未配置 Trojan inbound）</div>
+    {{end}}
+  {{end}}
+</div>
+{{else}}
+<div class="text-center text-sm text-gray-500 py-10">暂无节点</div>
+{{end}}
+{{end}}
+
 {{define "partial-node-rows"}}
 {{range .Data}}
 <div class="bg-gray-900 rounded-xl border border-gray-800 px-5 py-4 flex items-center justify-between" id="node-{{.Node.ID}}">

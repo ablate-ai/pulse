@@ -88,6 +88,51 @@ func syncCaddyRoutes(domains []string, wsPort int) error {
 	return reloadCaddy()
 }
 
+type caddyRoute struct {
+	Domain string `json:"domain"`
+	Config string `json:"config"`
+}
+
+func (a *API) handleCaddyStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w, http.MethodGet)
+		return
+	}
+	_, err := exec.LookPath("caddy")
+	installed := err == nil
+
+	running := false
+	if installed {
+		running = exec.Command("systemctl", "is-active", "--quiet", "caddy").Run() == nil
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"installed": installed,
+		"running":   running,
+		"routes":    readCaddyRoutes(),
+	})
+}
+
+func readCaddyRoutes() []caddyRoute {
+	entries, err := os.ReadDir(caddyPulseDDir)
+	if err != nil {
+		return []caddyRoute{}
+	}
+	routes := make([]caddyRoute, 0, len(entries))
+	for _, entry := range entries {
+		if !strings.HasSuffix(entry.Name(), ".caddy") {
+			continue
+		}
+		domain := strings.TrimSuffix(entry.Name(), ".caddy")
+		content, err := os.ReadFile(filepath.Join(caddyPulseDDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		routes = append(routes, caddyRoute{Domain: domain, Config: string(content)})
+	}
+	return routes
+}
+
 func reloadCaddy() error {
 	cmd := exec.Command("caddy", "reload", "--config", caddyfilePath, "--adapter", "caddyfile")
 	if out, err := cmd.CombinedOutput(); err != nil {

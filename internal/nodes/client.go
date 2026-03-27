@@ -234,6 +234,23 @@ func (c *Client) EnsureCert(ctx context.Context, domain string) (CertPaths, erro
 	return out, err
 }
 
+type CaddyRoute struct {
+	Domain string `json:"domain"`
+	Config string `json:"config"`
+}
+
+type CaddyStatusResponse struct {
+	Installed bool         `json:"installed"`
+	Running   bool         `json:"running"`
+	Routes    []CaddyRoute `json:"routes"`
+}
+
+func (c *Client) CaddyStatus(ctx context.Context) (CaddyStatusResponse, error) {
+	var out CaddyStatusResponse
+	err := c.do(ctx, http.MethodGet, "/v1/node/caddy/status", nil, &out)
+	return out, err
+}
+
 // SyncCaddyRoutes 同步节点上的 Caddy Trojan 路由表。
 // domains 为当前生效的 Trojan 域名列表，缺失的旧域名文件会被删除。
 func (c *Client) SyncCaddyRoutes(ctx context.Context, domains []string, wsPort int) error {

@@ -146,6 +146,10 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /panel/nodes/{id}/stop", h.requireAuth(h.stopNode))
 	mux.HandleFunc("GET /panel/nodes/{id}/config", h.requireAuth(h.nodeConfigModal))
 	mux.HandleFunc("GET /panel/nodes/{id}/logs", h.requireAuth(h.nodeLogsModal))
+
+	mux.HandleFunc("GET /caddy", h.requireAuth(h.caddyPage))
+	mux.HandleFunc("GET /panel/caddy/list", h.requireAuth(h.caddyListPartial))
+	mux.HandleFunc("POST /panel/caddy/{nodeID}/sync", h.requireAuth(h.caddySyncNode))
 }
 
 // ─── 认证中间件 ──────────────────────────────────────────────────────────────
@@ -1508,6 +1512,96 @@ func panelRandomUUID() string {
 	buf[6] = (buf[6] & 0x0f) | 0x40
 	buf[8] = (buf[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", buf[0:4], buf[4:6], buf[6:8], buf[8:10], buf[10:16])
+}
+
+// ─── Caddy 管理 ──────────────────────────────────────────────────────────────
+
+type nodeCaddyStatus struct {
+	Node  nodes.Node
+	Caddy nodes.CaddyStatusResponse
+	Error string
+}
+
+func (h *Handler) caddyPage(w http.ResponseWriter, r *http.Request) {
+	h.renderPage(w, "caddy", pageData{
+		Page:     "caddy",
+		Username: h.currentUsername(r),
+	})
+}
+
+func (h *Handler) caddyListPartial(w http.ResponseWriter, r *http.Request) {
+	nodeList, err := h.nodeStore.List()
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to get node list: "+err.Error())
+		return
+	}
+	result := make([]nodeCaddyStatus, 0, len(nodeList))
+	for _, n := range nodeList {
+		item := nodeCaddyStatus{Node: n}
+		client, dialErr := h.dial(n.ID)
+		if dialErr != nil {
+			item.Error = dialErr.Error()
+			result = append(result, item)
+			continue
+		}
+		status, statusErr := client.CaddyStatus(r.Context())
+		if statusErr != nil {
+			item.Error = statusErr.Error()
+		} else {
+			item.Caddy = status
+		}
+		result = append(result, item)
+	}
+	h.renderPartial(w, "partial-caddy-rows", result)
+}
+
+func (h *Handler) caddySyncNode(w http.ResponseWriter, r *http.Request) {
+	nodeID := r.PathValue("nodeID")
+	wsPort := h.applyOpts.SingboxWSLocalPort
+	if wsPort <= 0 {
+		htmxError(w, http.StatusBadRequest, "Caddy WS 模式未启用（PULSE_SINGBOX_WS_PORT 未设置）")
+		return
+	}
+
+	client, err := h.dial(nodeID)
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to connect to node: "+err.Error())
+		return
+	}
+
+	nodeInbounds, err := h.ibStore.ListInboundsByNode(nodeID)
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to get inbounds: "+err.Error())
+		return
+	}
+
+	seen := make(map[string]struct{})
+	var domains []string
+	for _, ib := range nodeInbounds {
+		if ib.Protocol != "trojan" {
+			continue
+		}
+		hosts, hErr := h.ibStore.ListHostsByInbound(ib.ID)
+		if hErr != nil {
+			continue
+		}
+		for _, host := range hosts {
+			if host.Address != "" {
+				if _, ok := seen[host.Address]; !ok {
+					seen[host.Address] = struct{}{}
+					domains = append(domains, host.Address)
+				}
+			}
+		}
+	}
+
+	if err := client.SyncCaddyRoutes(r.Context(), domains, wsPort); err != nil {
+		htmxError(w, http.StatusInternalServerError, "sync failed: "+err.Error())
+		return
+	}
+
+	setHXTriggerToast(w, "Caddy 路由同步成功")
+	h.caddyListPartial(w, r)
 }
 
 func panelRandomToken(size int) string {
