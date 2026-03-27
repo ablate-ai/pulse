@@ -644,19 +644,9 @@
       </div>
     </div>
 
-    <!-- Trojan TLS 字段 -->
-    <div class="ib-trojan hidden space-y-3">
-      <input type="hidden" name="security" value="tls">
-      <div>
-        <label class="block text-xs font-medium text-gray-400 mb-1.5">TLS 证书路径</label>
-        <input type="text" name="tls_cert_path" placeholder="/etc/ssl/cert.pem"
-               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
-      </div>
-      <div>
-        <label class="block text-xs font-medium text-gray-400 mb-1.5">TLS 私钥路径</label>
-        <input type="text" name="tls_key_path" placeholder="/etc/ssl/key.pem"
-               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
-      </div>
+    <!-- Trojan（Caddy 模式，TLS 由 Caddy 终止） -->
+    <div class="ib-trojan hidden">
+      <p class="text-xs text-gray-500">Trojan 需节点启用 Caddy，TLS 证书由 Caddy 自动管理。</p>
     </div>
 
     <!-- Shadowsocks 字段 -->

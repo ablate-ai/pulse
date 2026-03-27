@@ -286,29 +286,12 @@ func transportFor(protocol string, opts BuildOptions) map[string]any {
 }
 
 // tlsForInbound 根据节点 inbound 配置选择 TLS 设置。
+// Trojan 只支持 Caddy 模式，TLS 由 Caddy 终止，此处始终返回 nil。
 func tlsForInbound(ib inbounds.Inbound, opts BuildOptions) map[string]any {
-	switch ib.Protocol {
-	case "trojan":
-		if opts.CaddyEnabled {
-			return nil // TLS 由 Caddy 终止
-		}
-		return trojanTLSFor(ib)
-	case "vless":
+	if ib.Protocol == "vless" {
 		return realityTLSFor(ib)
-	default: // shadowsocks、vmess 不支持 tls 字段
-		return nil
 	}
-}
-
-func trojanTLSFor(ib inbounds.Inbound) map[string]any {
-	if ib.TLSCertPath == "" || ib.TLSKeyPath == "" {
-		return nil
-	}
-	return map[string]any{
-		"enabled":          true,
-		"certificate_path": ib.TLSCertPath,
-		"key_path":         ib.TLSKeyPath,
-	}
+	return nil
 }
 
 func realityTLSFor(ib inbounds.Inbound) map[string]any {

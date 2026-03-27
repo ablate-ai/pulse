@@ -21,14 +21,11 @@ type Inbound struct {
 	// Shadowsocks 2022 服务端 PSK（仅 2022-blake3-* 系列需要）
 	Password string `json:"password,omitempty"`
 	// TLS / Reality 服务端配置
-	Security             string `json:"security,omitempty"`              // "reality" / "tls"
+	Security             string `json:"security,omitempty"`              // "reality"（VLESS）
 	RealityPrivateKey    string `json:"reality_private_key,omitempty"`   // 服务端私钥
 	RealityPublicKey     string `json:"reality_public_key,omitempty"`    // 客户端公钥，用于订阅链接
 	RealityHandshakeAddr string `json:"reality_handshake_addr,omitempty"` // 握手目标 host:port
 	RealityShortID       string `json:"reality_short_id,omitempty"`
-	// 直连 TLS（Trojan 非 Caddy 模式，cert 由节点管理时留空）
-	TLSCertPath string `json:"tls_cert_path,omitempty"`
-	TLSKeyPath  string `json:"tls_key_path,omitempty"`
 }
 
 // Host 表示客户端连接模板：地址 + TLS/传输层配置。

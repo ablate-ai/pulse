@@ -1211,8 +1211,6 @@ func (h *Handler) createInbound(w http.ResponseWriter, r *http.Request) {
 			Port:                 port,
 			Method:               r.FormValue("method"),
 			Security:             r.FormValue("security"),
-			TLSCertPath:          r.FormValue("tls_cert_path"),
-			TLSKeyPath:           r.FormValue("tls_key_path"),
 			RealityHandshakeAddr: r.FormValue("reality_handshake_addr"),
 			OutboundID:           r.FormValue("outbound_id"),
 		}
@@ -1300,8 +1298,6 @@ func (h *Handler) updateInbound(w http.ResponseWriter, r *http.Request) {
 	if pw := r.FormValue("ss_password"); pw != "" {
 		ib.Password = pw
 	}
-	ib.TLSCertPath = r.FormValue("tls_cert_path")
-	ib.TLSKeyPath = r.FormValue("tls_key_path")
 	ib.RealityPrivateKey = r.FormValue("reality_private_key")
 	ib.RealityPublicKey = r.FormValue("reality_public_key")
 	ib.RealityHandshakeAddr = r.FormValue("reality_handshake_addr")
