@@ -299,31 +299,41 @@
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
     </button>
   </div>
-  <div class="px-5 py-4 space-y-4">
+  <div class="px-5 py-4 space-y-5">
+    {{/* 通用设置 */}}
     <div>
       <label class="block text-xs font-medium text-gray-400 mb-1.5">ACME Email</label>
       <input type="email" name="acme_email" value="{{.Data.CaddyACMEEmail}}"
              placeholder="your@email.com（Let's Encrypt 注册邮箱）"
              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
-      <p class="text-xs text-gray-600 mt-1">可选，但建议填写，Let's Encrypt 会在证书到期时发送通知</p>
+      <p class="text-xs text-gray-600 mt-1">可选，证书到期时 Let's Encrypt 会发通知邮件</p>
     </div>
-    <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">面板域名</label>
-      <input type="text" name="panel_domain" value="{{.Data.CaddyPanelDomain}}"
-             placeholder="panel.example.com（留空则不配置面板反代）"
-             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
-      <p class="text-xs text-gray-600 mt-1">仅在此节点同时运行 Pulse 面板时填写</p>
+    {{/* 面板反代（独立，不依赖 WS 模式）*/}}
+    <div class="rounded-lg border border-gray-700/60 px-4 py-3 space-y-3">
+      <p class="text-xs font-semibold text-gray-300">面板反代</p>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">面板域名</label>
+        <input type="text" name="panel_domain" value="{{.Data.CaddyPanelDomain}}"
+               placeholder="panel.example.com（留空则不配置）"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+        <p class="text-xs text-gray-600 mt-1">Caddy 将把该域名的 HTTPS 流量反代到本机面板端口，与 Trojan WS 模式无关</p>
+      </div>
     </div>
-    <div class="flex items-center justify-between">
-      <label class="text-xs font-medium text-gray-400">启用 Caddy WS 模式（Trojan）</label>
-      <label class="relative inline-flex items-center cursor-pointer">
-        <input type="hidden" name="caddy_enabled" value="0">
-        <input type="checkbox" name="caddy_enabled" value="1" {{if .Data.CaddyEnabled}}checked{{end}}
-               class="sr-only peer">
-        <div class="w-9 h-5 bg-gray-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
-      </label>
+    {{/* Trojan WS 模式（独立开关）*/}}
+    <div class="rounded-lg border border-gray-700/60 px-4 py-3">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-xs font-semibold text-gray-300">Trojan WS 模式</p>
+          <p class="text-xs text-gray-600 mt-0.5">开启后 Trojan inbound 改为 127.0.0.1 监听，由 Caddy 终止 TLS</p>
+        </div>
+        <label class="relative inline-flex items-center cursor-pointer ml-4 flex-shrink-0">
+          <input type="hidden" name="caddy_enabled" value="0">
+          <input type="checkbox" name="caddy_enabled" value="1" {{if .Data.CaddyEnabled}}checked{{end}}
+                 class="sr-only peer">
+          <div class="w-9 h-5 bg-gray-700 rounded-full peer peer-checked:bg-indigo-600 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all"></div>
+        </label>
+      </div>
     </div>
-    <p class="text-xs text-gray-600 mt-1">开启后 Trojan inbound 改为 127.0.0.1 监听，由 Caddy 终止 TLS</p>
   </div>
   <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
     <button type="button" onclick="document.getElementById('app-modal').close()"
