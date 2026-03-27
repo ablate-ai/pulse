@@ -41,14 +41,20 @@ Go 重写版 Marzban + Marzban-node，控制面与节点统一在单一仓库。
 ## 开发
 
 ```bash
-# 同时编译并启动 server + node（热重启）
+# 同时编译并启动 server + node
 make dev
+
+# 停止开发进程
+make stop
 
 # 仅运行测试
 make test
+
+# 编译所有二进制（pulse / pulse-server / pulse-node）
+make build
 ```
 
-默认控制面访问地址：`http://localhost:8080`（账号 `admin` / 密码 `admin123`）
+默认访问地址：`http://localhost:8080`（账号 `admin` / 密码 `admin123`），node 监听 `:8081`。
 
 > `make dev` 使用硬编码的开发凭据，生产环境请使用安装脚本。
 
@@ -58,7 +64,7 @@ make test
 make release
 ```
 
-交互式选择 patch / minor / major，脚本会自动打 tag 并推送，GitHub Actions 触发构建。
+交互式选择 patch / minor / major，脚本会先运行测试，通过后自动打 tag 并推送，GitHub Actions 触发构建。
 
 ## 生产安装
 
@@ -70,19 +76,23 @@ curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/instal
 
 # 安装指定版本
 curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | sh -s -- server v0.1.18
+
+# 指定管理员密码和面板域名（启用 HTTPS）
+curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
+  PULSE_ADMIN_PASSWORD='strong-password' PULSE_PANEL_DOMAIN='panel.example.com' sh -s -- server
 ```
 
-首次安装会随机生成管理员密码并在安装结束时打印：
+首次安装会随机生成端口和管理员密码，安装结束后打印：
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  面板地址: http://<IP>:<PORT>
+  面板地址: http://<IP>:<随机端口>
   管理员:   admin
   密码:     <随机生成>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-登录后可在「Settings」页面修改密码，修改结果持久化到数据库，重启后依然有效。
+若安装时指定了 `PULSE_PANEL_DOMAIN`，面板地址会显示为 `https://<domain>`。
 
 如需修改端口或其他配置：
 
@@ -90,6 +100,19 @@ curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/instal
 vim /etc/pulse/pulse-server.env
 systemctl restart pulse-server
 ```
+
+**安装脚本支持的环境变量：**
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PULSE_REPO` | `ablate-ai/pulse` | GitHub 仓库（owner/repo） |
+| `PULSE_ADMIN_USERNAME` | `admin` | 管理员用户名 |
+| `PULSE_ADMIN_PASSWORD` | 随机生成 | 管理员密码 |
+| `PULSE_SERVER_ADDR` | 随机端口 | server 监听地址，格式 `:端口` |
+| `PULSE_PANEL_DOMAIN` | 空 | 面板对外域名，设置后自动启用 HTTPS |
+| `PULSE_INSTALL_BIN` | `/usr/local/bin` | 二进制安装目录 |
+| `PULSE_INSTALL_ETC` | `/etc/pulse` | 配置安装目录 |
+| `PULSE_STATE_DIR` | `/var/lib/pulse` | 数据目录 |
 
 ### 2. 获取 node 所需证书
 
@@ -103,48 +126,51 @@ curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/instal
 
 # 安装指定版本
 curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | sh -s -- node v0.1.18
+
+# 重新粘贴证书（已有证书需强制覆盖时）
+curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | sh -s -- --force node
 ```
 
-执行后脚本会提示粘贴证书，把第 2 步复制的 PEM 内容粘贴进去，读到 `-----END CERTIFICATE-----` 后自动继续。
+执行后脚本会提示粘贴证书，把第 2 步复制的 PEM 内容粘贴进去，输入空行确认后自动继续。
 
-### 4. 启用 HTTPS（可选，推荐生产环境）
+### 4. 启用 HTTPS / Caddy（可选，推荐生产环境）
 
-pulse 默认以 HTTP 提供面板，如需 HTTPS 及 Trojan 在标准 443 端口运行，运行 Caddy 配置脚本：
+如需 Trojan 在标准 443 端口运行，在每台节点机器上运行：
 
 ```bash
-# server 节点（有面板）
-PANEL_DOMAIN=panel.example.com sh <(curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/setup-caddy.sh)
-
-# agent 节点（无面板，只需安装 Caddy + 创建 Trojan 路由目录）
 sh <(curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/setup-caddy.sh)
 ```
 
 **脚本做的事：**
 
-1. 从 `/etc/pulse/pulse-server.env` 自动读取面板端口（`PULSE_SERVER_ADDR`）
-2. 检测 443 端口是否已被占用
-3. 自动安装 Caddy（apt / dnf / yum，如已安装则跳过）
-4. 生成 `/etc/caddy/Caddyfile`：面板 HTTPS 块 + `import /etc/caddy/pulse.d/*.caddy`
-5. 热重载 Caddy，重启 pulse-server
+1. 检测 443 端口是否已被占用
+2. 自动安装 Caddy（apt / dnf / yum，如已安装则跳过）
+3. 生成 `/etc/caddy/Caddyfile`，内容为 `import /etc/caddy/pulse.d/*.caddy`
+4. 启动/热重载 Caddy
 
-**Trojan 域名路由无需手动配置**，创建 Trojan inbound 后 pulse-server 会自动写入 `/etc/caddy/pulse.d/<domain>.caddy` 并热重载 Caddy。
+**安装完成后，在面板完成配置：**
 
-**可配置的环境变量：**
+1. 进入 **面板 → Caddy 管理**，找到对应节点
+2. 点击「配置」，开启「启用 Caddy WS 模式（Trojan）」开关
+3. 可选：填写 ACME Email（Let's Encrypt 邮箱）和面板域名（用于面板 HTTPS）
+4. 保存后面板自动触发一次路由同步
+
+后续每次应用节点配置（新增/修改 inbound）时，面板会自动更新 `/etc/caddy/pulse.d/<domain>.caddy` 并热重载 Caddy。
+
+**可配置的环境变量（安装脚本）：**
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `PANEL_DOMAIN` | 空 | 面板对外域名（agent 节点可留空） |
-| `PANEL_PORT` | 自动读取，兜底 `8080` | pulse-server 监听端口 |
-| `ACME_EMAIL` | 空 | Let's Encrypt 账号邮箱（可选） |
+| `ACME_EMAIL` | 空 | Let's Encrypt 账号邮箱（可选，也可事后在面板填写） |
 | `CADDYFILE` | `/etc/caddy/Caddyfile` | Caddyfile 路径 |
 
 **架构示意：**
 
 ```
 客户端
-  ├── HTTPS  → :443 (Caddy) → :PANEL_PORT (pulse-server 面板)
-  └── Trojan → wss://<domain>/ws → :443 (Caddy) → :WS_PORT (sing-box)
-              每个 Trojan inbound 域名对应 /etc/caddy/pulse.d/<domain>.caddy
+  ├── HTTPS  → :443 (Caddy) → pulse-server 面板
+  └── Trojan → wss://<domain>/ws → :443 (Caddy) → sing-box:<inbound_port>
+              每个 Trojan inbound 各自路由，配置自动写入 /etc/caddy/pulse.d/<domain>.caddy
 ```
 
 ---
@@ -170,4 +196,6 @@ curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/uninst
 - 从 GitHub Release 下载对应平台（linux/amd64 或 linux/arm64）的 tar.gz
 - 安装二进制到 `/usr/local/bin`
 - 首次安装时写入示例配置到 `/etc/pulse/*.env`（已有配置不覆盖）
+- server：随机生成端口和管理员密码（可通过环境变量覆盖），若设置 `PULSE_PANEL_DOMAIN` 则写入面板域名
+- node：交互式提示粘贴 server 客户端证书 PEM，写入 `/etc/pulse/server_client_cert.pem`
 - 注册并启动 systemd 服务（`systemctl enable --now`）
