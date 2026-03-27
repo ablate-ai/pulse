@@ -200,6 +200,13 @@ func panelPortFromEnv() int {
 }
 
 func reloadCaddy() error {
+	// Caddy 未运行时直接启动，运行中则 reload
+	if exec.Command("systemctl", "is-active", "--quiet", "caddy").Run() != nil {
+		if out, err := exec.Command("systemctl", "start", "caddy").CombinedOutput(); err != nil {
+			return fmt.Errorf("caddy start: %w: %s", err, strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
 	cmd := exec.Command("caddy", "reload", "--config", caddyfilePath, "--adapter", "caddyfile")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("caddy reload: %w: %s", err, strings.TrimSpace(string(out)))
