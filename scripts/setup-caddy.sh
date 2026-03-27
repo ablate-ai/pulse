@@ -30,7 +30,7 @@ check_caddy() {
 
 install_caddy() {
   if command -v apt-get >/dev/null 2>&1; then
-    apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl 2>/dev/null || true
+    apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl gnupg 2>/dev/null || true
     curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
       | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
     curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
