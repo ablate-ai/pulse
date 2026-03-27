@@ -62,9 +62,18 @@ function ibRandPort(form) {
 function ibSync(form) {
   if (!form) return;
   const p = form.querySelector('[name=protocol]:checked')?.value || form.querySelector('[name=protocol]')?.value || 'vless';
-  form.querySelectorAll('.ib-vless').forEach(el => el.classList.toggle('hidden', p !== 'vless'));
-  form.querySelectorAll('.ib-trojan').forEach(el => el.classList.toggle('hidden', p !== 'trojan'));
-  form.querySelectorAll('.ib-ss').forEach(el => el.classList.toggle('hidden', p !== 'shadowsocks'));
+  form.querySelectorAll('.ib-vless').forEach(el => {
+    el.classList.toggle('hidden', p !== 'vless');
+    el.querySelectorAll('input,select,textarea').forEach(i => i.disabled = p !== 'vless');
+  });
+  form.querySelectorAll('.ib-trojan').forEach(el => {
+    el.classList.toggle('hidden', p !== 'trojan');
+    el.querySelectorAll('input,select,textarea').forEach(i => i.disabled = p !== 'trojan');
+  });
+  form.querySelectorAll('.ib-ss').forEach(el => {
+    el.classList.toggle('hidden', p !== 'shadowsocks');
+    el.querySelectorAll('input,select,textarea').forEach(i => i.disabled = p !== 'shadowsocks');
+  });
   // 切换协议时若端口为空则自动随机
   const portEl = form.querySelector('[name=port]');
   if (portEl && portEl.value === '') ibRandPort(form);

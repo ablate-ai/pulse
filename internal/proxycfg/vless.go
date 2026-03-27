@@ -202,13 +202,17 @@ func transportFor(protocol string, opts BuildOptions) map[string]any {
 
 // tlsForInbound 根据节点 inbound 配置选择 TLS 设置。
 func tlsForInbound(ib inbounds.Inbound, opts BuildOptions) map[string]any {
-	if ib.Protocol == "trojan" {
+	switch ib.Protocol {
+	case "trojan":
 		if opts.SingboxWSLocalPort > 0 {
 			return nil // TLS 由 Caddy 终止
 		}
 		return trojanTLSFor(ib)
+	case "vless":
+		return realityTLSFor(ib)
+	default: // shadowsocks、vmess 不支持 tls 字段
+		return nil
 	}
-	return realityTLSFor(ib)
 }
 
 func trojanTLSFor(ib inbounds.Inbound) map[string]any {
