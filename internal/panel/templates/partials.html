@@ -1106,7 +1106,18 @@
 
 
 {{define "partial-outbound-rows"}}
-{{if .Data}}
+<!-- 内置直连出口，始终展示，不可删除 -->
+<tr class="border-b border-gray-800">
+  <td class="px-4 py-3 font-medium text-gray-100">直连</td>
+  <td class="px-4 py-3">
+    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-500/15 text-emerald-400">direct</span>
+  </td>
+  <td class="px-4 py-3 text-sm text-gray-500 font-mono">—</td>
+  <td class="px-4 py-3 text-sm text-gray-500">—</td>
+  <td class="px-4 py-3">
+    <span class="text-xs text-gray-600">内置</span>
+  </td>
+</tr>
 {{range .Data}}
 <tr class="border-b border-gray-800 hover:bg-gray-800/40 transition-colors">
   <td class="px-4 py-3 font-medium text-gray-100">{{.Name}}</td>
@@ -1131,10 +1142,11 @@
   </td>
 </tr>
 {{end}}
-{{else}}
+{{if not .Data}}
 <tr>
-  <td colspan="5" class="px-4 py-8 text-center text-sm text-gray-500">暂无出口配置</td>
+  <td colspan="5" class="px-4 py-4 text-center text-sm text-gray-600">添加自定义出口以启用转发</td>
 </tr>
+{{end}}
 {{end}}
 {{end}}
 
