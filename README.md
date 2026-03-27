@@ -18,6 +18,7 @@ Go 重写版 Marzban + Marzban-node，控制面与节点统一在单一仓库。
 ├── internal/idgen            # Snowflake ID 生成
 ├── internal/inbounds         # inbound / host 模型与 store
 ├── internal/jobs             # 后台调度任务
+├── internal/outbounds        # outbound 出口模型与 store
 ├── internal/node             # 节点侧服务（sing-box 管理、gRPC server）
 ├── internal/nodeapi          # 节点 RPC API（含 Caddy 热重载）
 ├── internal/nodeauth         # 节点认证中间件
@@ -133,7 +134,17 @@ curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/instal
 
 执行后脚本会提示粘贴证书，把第 2 步复制的 PEM 内容粘贴进去，输入空行确认后自动继续。
 
-### 4. 启用 HTTPS / Caddy（可选，推荐生产环境）
+### 4. 配置出口转发（可选）
+
+默认所有流量直连。如需将某个 inbound 的流量转发到另一台落地机，可在面板配置出口：
+
+1. 进入 **面板 → Outbounds**，点击「添加出口」
+2. 选择协议（Shadowsocks 或 VLESS + Reality），填写落地机地址和认证信息
+3. 进入对应 inbound 的编辑页，在「出口」下拉框中选择刚创建的出口，保存后应用节点配置即生效
+
+不绑定出口的 inbound 保持直连。
+
+### 5. 启用 HTTPS / Caddy（可选，推荐生产环境）
 
 如需面板或 Trojan 使用 HTTPS（443 端口），在每台节点机器上运行：
 
