@@ -150,6 +150,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /caddy", h.requireAuth(h.caddyPage))
 	mux.HandleFunc("GET /panel/caddy/list", h.requireAuth(h.caddyListPartial))
 	mux.HandleFunc("POST /panel/caddy/{nodeID}/sync", h.requireAuth(h.caddySyncNode))
+	mux.HandleFunc("GET /panel/caddy/{nodeID}/config-form", h.requireAuth(h.caddyConfigForm))
+	mux.HandleFunc("POST /panel/caddy/{nodeID}/config", h.requireAuth(h.caddySaveConfig))
 }
 
 // ─── 认证中间件 ──────────────────────────────────────────────────────────────
@@ -1605,6 +1607,44 @@ func (h *Handler) caddySyncNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	setHXTriggerToast(w, "Caddy 路由同步成功")
+	h.caddyListPartial(w, r)
+}
+
+func (h *Handler) caddyConfigForm(w http.ResponseWriter, r *http.Request) {
+	nodeID := r.PathValue("nodeID")
+	node, err := h.nodeStore.Get(nodeID)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "节点不存在")
+		return
+	}
+	h.renderPartial(w, "partial-caddy-config-form", node)
+}
+
+func (h *Handler) caddySaveConfig(w http.ResponseWriter, r *http.Request) {
+	nodeID := r.PathValue("nodeID")
+	acmeEmail := strings.TrimSpace(r.FormValue("acme_email"))
+	panelDomain := strings.TrimSpace(r.FormValue("panel_domain"))
+
+	if err := h.nodeStore.UpdateCaddyConfig(nodeID, acmeEmail, panelDomain); err != nil {
+		htmxError(w, http.StatusInternalServerError, "保存配置失败: "+err.Error())
+		return
+	}
+
+	client, err := h.dial(nodeID)
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "连接节点失败: "+err.Error())
+		return
+	}
+
+	if err := client.UpdateCaddyConfig(r.Context(), nodes.CaddyConfig{
+		ACMEEmail:   acmeEmail,
+		PanelDomain: panelDomain,
+	}); err != nil {
+		htmxError(w, http.StatusInternalServerError, "推送配置失败: "+err.Error())
+		return
+	}
+
+	setHXTriggerToast(w, "Caddy 配置已保存")
 	h.caddyListPartial(w, r)
 }
 

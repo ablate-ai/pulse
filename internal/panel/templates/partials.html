@@ -276,6 +276,42 @@
 {{end}}
 
 
+{{define "partial-caddy-config-form"}}
+<form hx-post="/panel/caddy/{{.Data.ID}}/config"
+      hx-target="#caddy-list"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful) document.getElementById('app-modal').close()">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+    <h3 class="text-sm font-semibold text-gray-100">Caddy 配置 — {{.Data.Name}}</h3>
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="px-5 py-4 space-y-4">
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">ACME Email</label>
+      <input type="email" name="acme_email" value="{{.Data.CaddyACMEEmail}}"
+             placeholder="your@email.com（Let's Encrypt 注册邮箱）"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+      <p class="text-xs text-gray-600 mt-1">可选，但建议填写，Let's Encrypt 会在证书到期时发送通知</p>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">面板域名</label>
+      <input type="text" name="panel_domain" value="{{.Data.CaddyPanelDomain}}"
+             placeholder="panel.example.com（留空则不配置面板反代）"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+      <p class="text-xs text-gray-600 mt-1">仅在此节点同时运行 Pulse 面板时填写</p>
+    </div>
+  </div>
+  <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
+    <button type="button" onclick="document.getElementById('app-modal').close()"
+            class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">取消</button>
+    <button type="submit"
+            class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">保存并应用</button>
+  </div>
+</form>
+{{end}}
+
 {{define "partial-caddy-rows"}}
 {{range .Data}}
 <div class="bg-gray-900 rounded-xl border border-gray-800 px-5 py-4">
@@ -304,6 +340,10 @@
                 hx-target="#caddy-list"
                 hx-swap="innerHTML"
                 hx-disabled-elt="this">同步路由</button>
+        <button class="text-xs text-gray-400 hover:text-sky-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+                hx-get="/panel/caddy/{{.Node.ID}}/config-form"
+                hx-target="#modal-body"
+                hx-on::after-request="document.getElementById('app-modal').showModal()">配置</button>
         {{else}}
         <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-gray-500/15 text-gray-500">未安装</span>
         {{end}}

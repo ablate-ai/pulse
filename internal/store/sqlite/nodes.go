@@ -45,8 +45,8 @@ func (s *NodeStore) Delete(id string) error {
 func (s *NodeStore) Get(id string) (nodes.Node, error) {
 	var node nodes.Node
 	err := s.db.QueryRow(
-		`SELECT id, name, base_url, upload_bytes, download_bytes FROM nodes WHERE id = ?`, id,
-	).Scan(&node.ID, &node.Name, &node.BaseURL, &node.UploadBytes, &node.DownloadBytes)
+		`SELECT id, name, base_url, upload_bytes, download_bytes, caddy_acme_email, caddy_panel_domain FROM nodes WHERE id = ?`, id,
+	).Scan(&node.ID, &node.Name, &node.BaseURL, &node.UploadBytes, &node.DownloadBytes, &node.CaddyACMEEmail, &node.CaddyPanelDomain)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nodes.Node{}, nodes.ErrNodeNotFound
 	}
@@ -58,7 +58,7 @@ func (s *NodeStore) Get(id string) (nodes.Node, error) {
 
 func (s *NodeStore) List() ([]nodes.Node, error) {
 	rows, err := s.db.Query(
-		`SELECT id, name, base_url, upload_bytes, download_bytes FROM nodes ORDER BY id`,
+		`SELECT id, name, base_url, upload_bytes, download_bytes, caddy_acme_email, caddy_panel_domain FROM nodes ORDER BY id`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list nodes: %w", err)
@@ -68,12 +68,23 @@ func (s *NodeStore) List() ([]nodes.Node, error) {
 	items := make([]nodes.Node, 0)
 	for rows.Next() {
 		var node nodes.Node
-		if err := rows.Scan(&node.ID, &node.Name, &node.BaseURL, &node.UploadBytes, &node.DownloadBytes); err != nil {
+		if err := rows.Scan(&node.ID, &node.Name, &node.BaseURL, &node.UploadBytes, &node.DownloadBytes, &node.CaddyACMEEmail, &node.CaddyPanelDomain); err != nil {
 			return nil, fmt.Errorf("scan node: %w", err)
 		}
 		items = append(items, node)
 	}
 	return items, rows.Err()
+}
+
+func (s *NodeStore) UpdateCaddyConfig(nodeID, acmeEmail, panelDomain string) error {
+	_, err := s.db.Exec(
+		`UPDATE nodes SET caddy_acme_email = ?, caddy_panel_domain = ? WHERE id = ?`,
+		acmeEmail, panelDomain, nodeID,
+	)
+	if err != nil {
+		return fmt.Errorf("update node caddy config: %w", err)
+	}
+	return nil
 }
 
 func (s *NodeStore) AddTraffic(nodeID string, upload, download int64) error {

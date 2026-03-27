@@ -182,6 +182,16 @@ func (db *DB) migrateNodesTable() error {
 			return fmt.Errorf("migrate nodes add download_bytes: %w", err)
 		}
 	}
+	if _, ok := columns["caddy_acme_email"]; !ok {
+		if _, err := db.conn.Exec(`ALTER TABLE nodes ADD COLUMN caddy_acme_email TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("migrate nodes add caddy_acme_email: %w", err)
+		}
+	}
+	if _, ok := columns["caddy_panel_domain"]; !ok {
+		if _, err := db.conn.Exec(`ALTER TABLE nodes ADD COLUMN caddy_panel_domain TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("migrate nodes add caddy_panel_domain: %w", err)
+		}
+	}
 	return nil
 }
 

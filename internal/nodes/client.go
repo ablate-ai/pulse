@@ -260,6 +260,15 @@ func (c *Client) SyncCaddyRoutes(ctx context.Context, domains []string, wsPort i
 	}, nil)
 }
 
+type CaddyConfig struct {
+	ACMEEmail   string `json:"acme_email"`
+	PanelDomain string `json:"panel_domain"`
+}
+
+func (c *Client) UpdateCaddyConfig(ctx context.Context, cfg CaddyConfig) error {
+	return c.do(ctx, http.MethodPost, "/v1/node/caddy/config", cfg, nil)
+}
+
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
 	if c.initErr != nil {
 		return fmt.Errorf("configure node client: %w", c.initErr)

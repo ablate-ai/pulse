@@ -3,10 +3,12 @@ package nodeapi
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -131,6 +133,63 @@ func readCaddyRoutes() []caddyRoute {
 		routes = append(routes, caddyRoute{Domain: domain, Config: string(content)})
 	}
 	return routes
+}
+
+func (a *API) handleCaddyConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMethodNotAllowed(w, http.MethodPost)
+		return
+	}
+	var req struct {
+		ACMEEmail   string `json:"acme_email"`
+		PanelDomain string `json:"panel_domain"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
+		return
+	}
+	if err := writeCaddyfileFromConfig(req.ACMEEmail, req.PanelDomain); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	if err := reloadCaddy(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func writeCaddyfileFromConfig(acmeEmail, panelDomain string) error {
+	caddyfileDir := filepath.Dir(caddyfilePath)
+	if err := os.MkdirAll(filepath.Join(caddyfileDir, "pulse.d"), 0755); err != nil {
+		return fmt.Errorf("create pulse.d dir: %w", err)
+	}
+
+	var buf strings.Builder
+	if acmeEmail != "" {
+		fmt.Fprintf(&buf, "{\n\temail %s\n}\n\n", acmeEmail)
+	}
+	if panelDomain != "" {
+		panelPort := panelPortFromEnv()
+		fmt.Fprintf(&buf, "# 面板 HTTPS\n%s {\n\thandle {\n\t\treverse_proxy 127.0.0.1:%d\n\t}\n}\n\n", panelDomain, panelPort)
+	}
+	buf.WriteString("# 由 Pulse 面板自动管理，请勿手动编辑\n")
+	fmt.Fprintf(&buf, "import %s/pulse.d/*.caddy\n", caddyfileDir)
+
+	return os.WriteFile(caddyfilePath, []byte(buf.String()), 0644)
+}
+
+func panelPortFromEnv() int {
+	addr := os.Getenv("PULSE_SERVER_ADDR")
+	if addr == "" {
+		return 8080
+	}
+	if _, portStr, err := net.SplitHostPort(addr); err == nil {
+		if p, err := strconv.Atoi(portStr); err == nil && p > 0 {
+			return p
+		}
+	}
+	return 8080
 }
 
 func reloadCaddy() error {
