@@ -53,6 +53,11 @@ function ibGenPassword(fieldName, form) {
   crypto.getRandomValues(bytes);
   form.querySelector('[name=' + fieldName + ']').value = btoa(String.fromCharCode(...bytes));
 }
+// 生成随机端口（10000-59999）并填入端口字段
+function ibRandPort(form) {
+  const portEl = form.querySelector('[name=port]');
+  if (portEl) portEl.value = Math.floor(Math.random() * 50000) + 10000;
+}
 // 新建 Inbound 表单协议字段动态显隐
 function ibSync(form) {
   if (!form) return;
@@ -60,11 +65,9 @@ function ibSync(form) {
   form.querySelectorAll('.ib-vless').forEach(el => el.classList.toggle('hidden', p !== 'vless'));
   form.querySelectorAll('.ib-trojan').forEach(el => el.classList.toggle('hidden', p !== 'trojan'));
   form.querySelectorAll('.ib-ss').forEach(el => el.classList.toggle('hidden', p !== 'shadowsocks'));
-  // 切换协议时自动填入随机端口（10000-59999）
+  // 切换协议时若端口为空则自动随机
   const portEl = form.querySelector('[name=port]');
-  if (portEl && (portEl.value === '' || portEl.value === '443')) {
-    portEl.value = Math.floor(Math.random() * 50000) + 10000;
-  }
+  if (portEl && portEl.value === '') ibRandPort(form);
 }
 document.addEventListener('htmx:afterSettle', function() {
   const form = document.getElementById('ib-new-form');
