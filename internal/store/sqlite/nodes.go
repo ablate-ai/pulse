@@ -13,14 +13,23 @@ type NodeStore struct {
 }
 
 func (s *NodeStore) Upsert(node nodes.Node) (nodes.Node, error) {
+	forwardEnabled := 0
+	if node.ForwardEnabled {
+		forwardEnabled = 1
+	}
 	_, err := s.db.Exec(`
-		INSERT INTO nodes (id, name, base_url, certificate)
-		VALUES (?, ?, ?, ?)
+		INSERT INTO nodes (id, name, base_url, certificate, forward_enabled, forward_protocol, forward_server, forward_username, forward_password)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name = excluded.name,
 			base_url = excluded.base_url,
-			certificate = excluded.certificate
-	`, node.ID, node.Name, node.BaseURL, "")
+			certificate = excluded.certificate,
+			forward_enabled = excluded.forward_enabled,
+			forward_protocol = excluded.forward_protocol,
+			forward_server = excluded.forward_server,
+			forward_username = excluded.forward_username,
+			forward_password = excluded.forward_password
+	`, node.ID, node.Name, node.BaseURL, "", forwardEnabled, node.ForwardProtocol, node.ForwardServer, node.ForwardUsername, node.ForwardPassword)
 	if err != nil {
 		return nodes.Node{}, fmt.Errorf("upsert node: %w", err)
 	}
@@ -44,10 +53,13 @@ func (s *NodeStore) Delete(id string) error {
 
 func (s *NodeStore) Get(id string) (nodes.Node, error) {
 	var node nodes.Node
-	var caddyEnabled int
+	var caddyEnabled, forwardEnabled int
 	err := s.db.QueryRow(
-		`SELECT id, name, base_url, upload_bytes, download_bytes, caddy_acme_email, caddy_panel_domain, caddy_enabled FROM nodes WHERE id = ?`, id,
-	).Scan(&node.ID, &node.Name, &node.BaseURL, &node.UploadBytes, &node.DownloadBytes, &node.CaddyACMEEmail, &node.CaddyPanelDomain, &caddyEnabled)
+		`SELECT id, name, base_url, upload_bytes, download_bytes, caddy_acme_email, caddy_panel_domain, caddy_enabled,
+		        forward_enabled, forward_protocol, forward_server, forward_username, forward_password
+		 FROM nodes WHERE id = ?`, id,
+	).Scan(&node.ID, &node.Name, &node.BaseURL, &node.UploadBytes, &node.DownloadBytes, &node.CaddyACMEEmail, &node.CaddyPanelDomain, &caddyEnabled,
+		&forwardEnabled, &node.ForwardProtocol, &node.ForwardServer, &node.ForwardUsername, &node.ForwardPassword)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nodes.Node{}, nodes.ErrNodeNotFound
 	}
@@ -55,12 +67,15 @@ func (s *NodeStore) Get(id string) (nodes.Node, error) {
 		return nodes.Node{}, fmt.Errorf("get node: %w", err)
 	}
 	node.CaddyEnabled = caddyEnabled != 0
+	node.ForwardEnabled = forwardEnabled != 0
 	return node, nil
 }
 
 func (s *NodeStore) List() ([]nodes.Node, error) {
 	rows, err := s.db.Query(
-		`SELECT id, name, base_url, upload_bytes, download_bytes, caddy_acme_email, caddy_panel_domain, caddy_enabled FROM nodes ORDER BY id`,
+		`SELECT id, name, base_url, upload_bytes, download_bytes, caddy_acme_email, caddy_panel_domain, caddy_enabled,
+		        forward_enabled, forward_protocol, forward_server, forward_username, forward_password
+		 FROM nodes ORDER BY id`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list nodes: %w", err)
@@ -70,11 +85,13 @@ func (s *NodeStore) List() ([]nodes.Node, error) {
 	items := make([]nodes.Node, 0)
 	for rows.Next() {
 		var node nodes.Node
-		var caddyEnabled int
-		if err := rows.Scan(&node.ID, &node.Name, &node.BaseURL, &node.UploadBytes, &node.DownloadBytes, &node.CaddyACMEEmail, &node.CaddyPanelDomain, &caddyEnabled); err != nil {
+		var caddyEnabled, forwardEnabled int
+		if err := rows.Scan(&node.ID, &node.Name, &node.BaseURL, &node.UploadBytes, &node.DownloadBytes, &node.CaddyACMEEmail, &node.CaddyPanelDomain, &caddyEnabled,
+			&forwardEnabled, &node.ForwardProtocol, &node.ForwardServer, &node.ForwardUsername, &node.ForwardPassword); err != nil {
 			return nil, fmt.Errorf("scan node: %w", err)
 		}
 		node.CaddyEnabled = caddyEnabled != 0
+		node.ForwardEnabled = forwardEnabled != 0
 		items = append(items, node)
 	}
 	return items, rows.Err()

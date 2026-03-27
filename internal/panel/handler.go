@@ -717,9 +717,14 @@ func (h *Handler) createNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	newNode := nodes.Node{
-		ID:      idgen.NextString(),
-		Name:    name,
-		BaseURL: baseURL,
+		ID:              idgen.NextString(),
+		Name:            name,
+		BaseURL:         baseURL,
+		ForwardEnabled:  r.FormValue("forward_enabled") == "1",
+		ForwardProtocol: r.FormValue("forward_protocol"),
+		ForwardServer:   r.FormValue("forward_server"),
+		ForwardUsername: r.FormValue("forward_username"),
+		ForwardPassword: r.FormValue("forward_password"),
 	}
 
 	if _, err := h.nodeStore.Upsert(newNode); err != nil {
@@ -777,7 +782,7 @@ func (h *Handler) restartNode(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	status, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.applyOpts, node.CaddyEnabled)
+	status, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.applyOpts, node)
 	if err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to restart node: "+err.Error())
 		return
@@ -828,7 +833,7 @@ func (h *Handler) startNode(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	if _, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.applyOpts, node.CaddyEnabled); err != nil {
+	if _, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.applyOpts, node); err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to start node: "+err.Error())
 		return
 	}
@@ -949,6 +954,11 @@ func (h *Handler) updateNode(w http.ResponseWriter, r *http.Request) {
 	if baseURL := r.FormValue("base_url"); baseURL != "" {
 		node.BaseURL = baseURL
 	}
+	node.ForwardEnabled = r.FormValue("forward_enabled") == "1"
+	node.ForwardProtocol = r.FormValue("forward_protocol")
+	node.ForwardServer = r.FormValue("forward_server")
+	node.ForwardUsername = r.FormValue("forward_username")
+	node.ForwardPassword = r.FormValue("forward_password")
 
 	if _, err := h.nodeStore.Upsert(node); err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to update node: "+err.Error())
@@ -1021,7 +1031,7 @@ func (h *Handler) applyNodes(nodeIDs []string) {
 			n, _ := h.nodeStore.Get(id)
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			if _, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.applyOpts, n.CaddyEnabled); err != nil {
+			if _, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.applyOpts, n); err != nil {
 				log.Printf("applyNodes: apply %s: %v", id, err)
 			}
 		}(nodeID)

@@ -13,6 +13,12 @@ type Node struct {
 	CaddyACMEEmail   string `json:"caddy_acme_email"`
 	CaddyPanelDomain string `json:"caddy_panel_domain"`
 	CaddyEnabled     bool   `json:"caddy_enabled"`
+	// 出口转发配置（留空表示直连）
+	ForwardEnabled  bool   `json:"forward_enabled"`
+	ForwardProtocol string `json:"forward_protocol,omitempty"` // socks5 / http
+	ForwardServer   string `json:"forward_server,omitempty"`   // host:port
+	ForwardUsername string `json:"forward_username,omitempty"`
+	ForwardPassword string `json:"forward_password,omitempty"`
 }
 
 type Store interface {

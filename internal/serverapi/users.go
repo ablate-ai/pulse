@@ -330,7 +330,7 @@ func (a *userAPI) handleAccessApply(w http.ResponseWriter, r *http.Request, user
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	status, config, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, allAccesses, userMap, a.inboundStore, a.applyOpts, accNode.CaddyEnabled)
+	status, config, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, allAccesses, userMap, a.inboundStore, a.applyOpts, accNode)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return

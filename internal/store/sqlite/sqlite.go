@@ -197,6 +197,20 @@ func (db *DB) migrateNodesTable() error {
 			return fmt.Errorf("migrate nodes add caddy_enabled: %w", err)
 		}
 	}
+	forwardCols := map[string]string{
+		"forward_enabled":  `ALTER TABLE nodes ADD COLUMN forward_enabled INTEGER NOT NULL DEFAULT 0`,
+		"forward_protocol": `ALTER TABLE nodes ADD COLUMN forward_protocol TEXT NOT NULL DEFAULT ''`,
+		"forward_server":   `ALTER TABLE nodes ADD COLUMN forward_server TEXT NOT NULL DEFAULT ''`,
+		"forward_username": `ALTER TABLE nodes ADD COLUMN forward_username TEXT NOT NULL DEFAULT ''`,
+		"forward_password": `ALTER TABLE nodes ADD COLUMN forward_password TEXT NOT NULL DEFAULT ''`,
+	}
+	for col, ddl := range forwardCols {
+		if _, ok := columns[col]; !ok {
+			if _, err := db.conn.Exec(ddl); err != nil {
+				return fmt.Errorf("migrate nodes add %s: %w", col, err)
+			}
+		}
+	}
 	return nil
 }
 

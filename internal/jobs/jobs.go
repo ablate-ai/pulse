@@ -138,7 +138,7 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			continue
 		}
 
-		status, _, err := ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, allUserMap, ibStore, applyOpts, node.CaddyEnabled)
+		status, _, err := ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, allUserMap, ibStore, applyOpts, node)
 		if err != nil {
 			result.Errors = append(result.Errors, node.ID+": reload: "+err.Error())
 			continue
@@ -203,7 +203,7 @@ func ActivateExpiredOnHold(ctx context.Context, store users.Store, nodeStore nod
 			continue
 		}
 		node, _ := nodeStore.Get(nodeID)
-		ApplyNodeUsers(ctx, client, nodeInbounds, nodeAccesses, userMap, ibStore, applyOpts, node.CaddyEnabled) //nolint:errcheck
+		ApplyNodeUsers(ctx, client, nodeInbounds, nodeAccesses, userMap, ibStore, applyOpts, node) //nolint:errcheck
 	}
 
 	return nil
@@ -289,7 +289,7 @@ func ResetTraffic(ctx context.Context, store users.Store, nodeStore nodes.Store,
 			continue
 		}
 		node, _ := nodeStore.Get(nodeID)
-		status, _, err := ApplyNodeUsers(ctx, client, nodeInbounds, nodeAccesses, userMap, ibStore, applyOpts, node.CaddyEnabled)
+		status, _, err := ApplyNodeUsers(ctx, client, nodeInbounds, nodeAccesses, userMap, ibStore, applyOpts, node)
 		if err != nil {
 			result.Errors = append(result.Errors, nodeID+": reload: "+err.Error())
 			continue
@@ -340,15 +340,14 @@ type ApplyOptions struct {
 
 // ApplyNodeUsers 根据节点 inbound 配置和用户凭据生成配置并下发到节点。
 // nodeInbounds 是节点 inbound 定义，userAccesses 是用户凭据列表（每用户一条）。
-// caddyEnabled 为 true 时，Trojan inbound 改为 127.0.0.1 监听并触发 Caddy 路由同步。
-func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []inbounds.Inbound, userAccesses []users.UserInbound, userMap map[string]users.User, ibStore inbounds.InboundStore, applyOpts ApplyOptions, caddyEnabled bool) (nodes.Status, string, error) {
+func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []inbounds.Inbound, userAccesses []users.UserInbound, userMap map[string]users.User, ibStore inbounds.InboundStore, applyOpts ApplyOptions, node nodes.Node) (nodes.Status, string, error) {
 	// 过滤出已启用用户
 	activeAccesses := filterEnabled(userAccesses, userMap)
 	if len(activeAccesses) == 0 || len(nodeInbounds) == 0 {
 		// 没有活跃用户或 Inbound 时，用最小配置保持 sing-box 进程存活
 		idleCfg := proxycfg.BuildIdleConfig()
 		status, err := client.Restart(ctx, nodes.ConfigRequest{Config: idleCfg})
-		if err == nil && caddyEnabled {
+		if err == nil && node.CaddyEnabled {
 			if syncErr := client.SyncCaddyRoutes(ctx, nil); syncErr != nil {
 				log.Printf("warn: caddy sync (idle): %v", syncErr)
 			}
@@ -357,7 +356,12 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []in
 	}
 
 	cfg, err := proxycfg.BuildSingboxConfig(nodeInbounds, userAccesses, userMap, proxycfg.BuildOptions{
-		CaddyEnabled: caddyEnabled,
+		CaddyEnabled:    node.CaddyEnabled,
+		ForwardEnabled:  node.ForwardEnabled,
+		ForwardProtocol: node.ForwardProtocol,
+		ForwardServer:   node.ForwardServer,
+		ForwardUsername: node.ForwardUsername,
+		ForwardPassword: node.ForwardPassword,
 	})
 	if err != nil {
 		return nodes.Status{}, "", err
@@ -369,7 +373,7 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []in
 	}
 
 	// Caddy 模式：同步当前生效的 Trojan 路由
-	if caddyEnabled && ibStore != nil {
+	if node.CaddyEnabled && ibStore != nil {
 		routes := collectTrojanRoutes(nodeInbounds, ibStore)
 		if syncErr := client.SyncCaddyRoutes(ctx, routes); syncErr != nil {
 			log.Printf("warn: caddy sync: %v", syncErr)
