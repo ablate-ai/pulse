@@ -135,7 +135,7 @@ curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/instal
 
 ### 4. 启用 HTTPS / Caddy（可选，推荐生产环境）
 
-如需 Trojan 在标准 443 端口运行，在每台节点机器上运行：
+如需面板或 Trojan 使用 HTTPS（443 端口），在每台节点机器上运行：
 
 ```bash
 sh <(curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/setup-caddy.sh)
