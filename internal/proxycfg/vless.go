@@ -254,31 +254,8 @@ func buildOutboundBlock(ob outbounds.Outbound, tag string) map[string]any {
 				},
 			},
 		}
-	case "http":
-		block := map[string]any{
-			"type":        "http",
-			"tag":         tag,
-			"server":      host,
-			"server_port": port,
-		}
-		if ob.Username != "" {
-			block["username"] = ob.Username
-			block["password"] = ob.Password
-		}
-		return block
-	default: // socks5
-		block := map[string]any{
-			"type":        "socks",
-			"tag":         tag,
-			"server":      host,
-			"server_port": port,
-			"version":     "5",
-		}
-		if ob.Username != "" {
-			block["username"] = ob.Username
-			block["password"] = ob.Password
-		}
-		return block
+	default:
+		return map[string]any{"type": "direct", "tag": tag}
 	}
 }
 

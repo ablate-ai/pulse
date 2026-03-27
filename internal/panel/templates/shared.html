@@ -63,8 +63,6 @@ function outboundProtocolChange(prefix) {
   const proto = document.getElementById(prefix + '-ob-protocol').value;
   const isSS    = proto === 'ss';
   const isVless = proto === 'vless';
-  const isAuth  = !isSS && !isVless;
-  document.getElementById(prefix + '-ob-auth').classList.toggle('hidden', !isAuth);
   document.getElementById(prefix + '-ob-ss').classList.toggle('hidden', !isSS);
   document.getElementById(prefix + '-ob-vless').classList.toggle('hidden', !isVless);
 }

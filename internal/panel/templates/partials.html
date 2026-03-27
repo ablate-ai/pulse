@@ -1167,8 +1167,6 @@
       <label class="block text-xs font-medium text-gray-400 mb-1.5">协议</label>
       <select name="protocol" id="new-ob-protocol" onchange="outboundProtocolChange('new')"
               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-        <option value="socks5">SOCKS5</option>
-        <option value="http">HTTP</option>
         <option value="ss">Shadowsocks</option>
         <option value="vless">VLESS + Reality</option>
       </select>
@@ -1177,19 +1175,6 @@
       <label class="block text-xs font-medium text-gray-400 mb-1.5">服务器地址（host:port）</label>
       <input type="text" name="server" required placeholder="1.2.3.4:1080"
              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
-    </div>
-    <!-- SOCKS5 / HTTP 字段 -->
-    <div id="new-ob-auth" class="grid grid-cols-2 gap-3">
-      <div>
-        <label class="block text-xs font-medium text-gray-400 mb-1.5">用户名（可选）</label>
-        <input type="text" name="username"
-               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-      </div>
-      <div>
-        <label class="block text-xs font-medium text-gray-400 mb-1.5">密码（可选）</label>
-        <input type="password" name="password"
-               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-      </div>
     </div>
     <!-- SS 字段 -->
     <div id="new-ob-ss" class="hidden space-y-3">
@@ -1278,29 +1263,14 @@
       <label class="block text-xs font-medium text-gray-400 mb-1.5">协议</label>
       <select name="protocol" id="edit-ob-protocol" onchange="outboundProtocolChange('edit')"
               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-        <option value="socks5" {{if eq .Data.Protocol "socks5"}}selected{{end}}>SOCKS5</option>
-        <option value="http"   {{if eq .Data.Protocol "http"}}selected{{end}}>HTTP</option>
-        <option value="ss"     {{if eq .Data.Protocol "ss"}}selected{{end}}>Shadowsocks</option>
-        <option value="vless"  {{if eq .Data.Protocol "vless"}}selected{{end}}>VLESS + Reality</option>
+        <option value="ss"    {{if eq .Data.Protocol "ss"}}selected{{end}}>Shadowsocks</option>
+        <option value="vless" {{if eq .Data.Protocol "vless"}}selected{{end}}>VLESS + Reality</option>
       </select>
     </div>
     <div>
       <label class="block text-xs font-medium text-gray-400 mb-1.5">服务器地址（host:port）</label>
       <input type="text" name="server" value="{{.Data.Server}}" required
              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-    </div>
-    <!-- SOCKS5 / HTTP 字段 -->
-    <div id="edit-ob-auth" class="{{if or (eq .Data.Protocol "ss") (eq .Data.Protocol "vless")}}hidden {{end}}grid grid-cols-2 gap-3">
-      <div>
-        <label class="block text-xs font-medium text-gray-400 mb-1.5">用户名（可选）</label>
-        <input type="text" name="username" value="{{.Data.Username}}"
-               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-      </div>
-      <div>
-        <label class="block text-xs font-medium text-gray-400 mb-1.5">密码（可选）</label>
-        <input type="password" name="password" value="{{.Data.Password}}"
-               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-      </div>
     </div>
     <!-- SS 字段 -->
     <div id="edit-ob-ss" class="{{if ne .Data.Protocol "ss"}}hidden {{end}}space-y-3">

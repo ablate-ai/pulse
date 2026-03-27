@@ -1468,7 +1468,7 @@ func (h *Handler) createOutbound(w http.ResponseWriter, r *http.Request) {
 	}
 	protocol := r.FormValue("protocol")
 	if protocol == "" {
-		protocol = "socks5"
+		protocol = "ss"
 	}
 	ob := outbounds.Outbound{
 		ID:          idgen.NextString(),
