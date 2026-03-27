@@ -44,21 +44,23 @@ func (s *NodeStore) Delete(id string) error {
 
 func (s *NodeStore) Get(id string) (nodes.Node, error) {
 	var node nodes.Node
+	var caddyEnabled int
 	err := s.db.QueryRow(
-		`SELECT id, name, base_url, upload_bytes, download_bytes, caddy_acme_email, caddy_panel_domain FROM nodes WHERE id = ?`, id,
-	).Scan(&node.ID, &node.Name, &node.BaseURL, &node.UploadBytes, &node.DownloadBytes, &node.CaddyACMEEmail, &node.CaddyPanelDomain)
+		`SELECT id, name, base_url, upload_bytes, download_bytes, caddy_acme_email, caddy_panel_domain, caddy_enabled FROM nodes WHERE id = ?`, id,
+	).Scan(&node.ID, &node.Name, &node.BaseURL, &node.UploadBytes, &node.DownloadBytes, &node.CaddyACMEEmail, &node.CaddyPanelDomain, &caddyEnabled)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nodes.Node{}, nodes.ErrNodeNotFound
 	}
 	if err != nil {
 		return nodes.Node{}, fmt.Errorf("get node: %w", err)
 	}
+	node.CaddyEnabled = caddyEnabled != 0
 	return node, nil
 }
 
 func (s *NodeStore) List() ([]nodes.Node, error) {
 	rows, err := s.db.Query(
-		`SELECT id, name, base_url, upload_bytes, download_bytes, caddy_acme_email, caddy_panel_domain FROM nodes ORDER BY id`,
+		`SELECT id, name, base_url, upload_bytes, download_bytes, caddy_acme_email, caddy_panel_domain, caddy_enabled FROM nodes ORDER BY id`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list nodes: %w", err)
@@ -68,18 +70,24 @@ func (s *NodeStore) List() ([]nodes.Node, error) {
 	items := make([]nodes.Node, 0)
 	for rows.Next() {
 		var node nodes.Node
-		if err := rows.Scan(&node.ID, &node.Name, &node.BaseURL, &node.UploadBytes, &node.DownloadBytes, &node.CaddyACMEEmail, &node.CaddyPanelDomain); err != nil {
+		var caddyEnabled int
+		if err := rows.Scan(&node.ID, &node.Name, &node.BaseURL, &node.UploadBytes, &node.DownloadBytes, &node.CaddyACMEEmail, &node.CaddyPanelDomain, &caddyEnabled); err != nil {
 			return nil, fmt.Errorf("scan node: %w", err)
 		}
+		node.CaddyEnabled = caddyEnabled != 0
 		items = append(items, node)
 	}
 	return items, rows.Err()
 }
 
-func (s *NodeStore) UpdateCaddyConfig(nodeID, acmeEmail, panelDomain string) error {
+func (s *NodeStore) UpdateCaddyConfig(nodeID, acmeEmail, panelDomain string, caddyEnabled bool) error {
+	enabled := 0
+	if caddyEnabled {
+		enabled = 1
+	}
 	_, err := s.db.Exec(
-		`UPDATE nodes SET caddy_acme_email = ?, caddy_panel_domain = ? WHERE id = ?`,
-		acmeEmail, panelDomain, nodeID,
+		`UPDATE nodes SET caddy_acme_email = ?, caddy_panel_domain = ?, caddy_enabled = ? WHERE id = ?`,
+		acmeEmail, panelDomain, enabled, nodeID,
 	)
 	if err != nil {
 		return fmt.Errorf("update node caddy config: %w", err)

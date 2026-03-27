@@ -138,7 +138,7 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			continue
 		}
 
-		status, _, err := ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, allUserMap, ibStore, applyOpts)
+		status, _, err := ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, allUserMap, ibStore, applyOpts, node.CaddyEnabled)
 		if err != nil {
 			result.Errors = append(result.Errors, node.ID+": reload: "+err.Error())
 			continue
@@ -202,7 +202,8 @@ func ActivateExpiredOnHold(ctx context.Context, store users.Store, nodeStore nod
 		if err != nil {
 			continue
 		}
-		ApplyNodeUsers(ctx, client, nodeInbounds, nodeAccesses, userMap, ibStore, applyOpts) //nolint:errcheck
+		node, _ := nodeStore.Get(nodeID)
+		ApplyNodeUsers(ctx, client, nodeInbounds, nodeAccesses, userMap, ibStore, applyOpts, node.CaddyEnabled) //nolint:errcheck
 	}
 
 	return nil
@@ -287,7 +288,8 @@ func ResetTraffic(ctx context.Context, store users.Store, nodeStore nodes.Store,
 			result.Errors = append(result.Errors, nodeID+": get users: "+err.Error())
 			continue
 		}
-		status, _, err := ApplyNodeUsers(ctx, client, nodeInbounds, nodeAccesses, userMap, ibStore, applyOpts)
+		node, _ := nodeStore.Get(nodeID)
+		status, _, err := ApplyNodeUsers(ctx, client, nodeInbounds, nodeAccesses, userMap, ibStore, applyOpts, node.CaddyEnabled)
 		if err != nil {
 			result.Errors = append(result.Errors, nodeID+": reload: "+err.Error())
 			continue
@@ -334,21 +336,20 @@ func ShouldResetTraffic(strategy string, createdAt time.Time, lastResetAt *time.
 
 // ApplyOptions 控制 ApplyNodeUsers 的行为。
 type ApplyOptions struct {
-	// SingboxWSLocalPort > 0 时，Trojan inbound 改为 WS 模式并监听该本地端口。
-	SingboxWSLocalPort int
 }
 
 // ApplyNodeUsers 根据节点 inbound 配置和用户凭据生成配置并下发到节点。
 // nodeInbounds 是节点 inbound 定义，userAccesses 是用户凭据列表（每用户一条）。
-func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []inbounds.Inbound, userAccesses []users.UserInbound, userMap map[string]users.User, ibStore inbounds.InboundStore, applyOpts ApplyOptions) (nodes.Status, string, error) {
+// caddyEnabled 为 true 时，Trojan inbound 改为 127.0.0.1 监听并触发 Caddy 路由同步。
+func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []inbounds.Inbound, userAccesses []users.UserInbound, userMap map[string]users.User, ibStore inbounds.InboundStore, applyOpts ApplyOptions, caddyEnabled bool) (nodes.Status, string, error) {
 	// 过滤出已启用用户
 	activeAccesses := filterEnabled(userAccesses, userMap)
 	if len(activeAccesses) == 0 || len(nodeInbounds) == 0 {
 		// 没有活跃用户或 Inbound 时，用最小配置保持 sing-box 进程存活
 		idleCfg := proxycfg.BuildIdleConfig()
 		status, err := client.Restart(ctx, nodes.ConfigRequest{Config: idleCfg})
-		if err == nil && applyOpts.SingboxWSLocalPort > 0 {
-			if syncErr := client.SyncCaddyRoutes(ctx, nil, applyOpts.SingboxWSLocalPort); syncErr != nil {
+		if err == nil && caddyEnabled {
+			if syncErr := client.SyncCaddyRoutes(ctx, nil); syncErr != nil {
 				log.Printf("warn: caddy sync (idle): %v", syncErr)
 			}
 		}
@@ -356,7 +357,7 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []in
 	}
 
 	cfg, err := proxycfg.BuildSingboxConfig(nodeInbounds, userAccesses, userMap, proxycfg.BuildOptions{
-		SingboxWSLocalPort: applyOpts.SingboxWSLocalPort,
+		CaddyEnabled: caddyEnabled,
 	})
 	if err != nil {
 		return nodes.Status{}, "", err
@@ -367,10 +368,10 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []in
 		return status, cfg, err
 	}
 
-	// Caddy WS 模式：同步当前生效的 Trojan 域名路由
-	if applyOpts.SingboxWSLocalPort > 0 && ibStore != nil {
-		domains := collectTrojanDomains(nodeInbounds, ibStore)
-		if syncErr := client.SyncCaddyRoutes(ctx, domains, applyOpts.SingboxWSLocalPort); syncErr != nil {
+	// Caddy 模式：同步当前生效的 Trojan 路由
+	if caddyEnabled && ibStore != nil {
+		routes := collectTrojanRoutes(nodeInbounds, ibStore)
+		if syncErr := client.SyncCaddyRoutes(ctx, routes); syncErr != nil {
 			log.Printf("warn: caddy sync: %v", syncErr)
 		}
 	}
@@ -378,10 +379,10 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []in
 	return status, cfg, nil
 }
 
-// collectTrojanDomains 从节点 inbound 的 host 模板中提取 Trojan 域名（去重）。
-func collectTrojanDomains(nodeInbounds []inbounds.Inbound, ibStore inbounds.InboundStore) []string {
+// collectTrojanRoutes 从节点 inbound 的 host 模板中提取 Trojan 路由（域名+端口，去重）。
+func collectTrojanRoutes(nodeInbounds []inbounds.Inbound, ibStore inbounds.InboundStore) []nodes.TrojanRoute {
 	seen := make(map[string]struct{})
-	out := make([]string, 0)
+	out := make([]nodes.TrojanRoute, 0)
 	for _, ib := range nodeInbounds {
 		if ib.Protocol != "trojan" {
 			continue
@@ -394,7 +395,7 @@ func collectTrojanDomains(nodeInbounds []inbounds.Inbound, ibStore inbounds.Inbo
 			if h.Address != "" {
 				if _, ok := seen[h.Address]; !ok {
 					seen[h.Address] = struct{}{}
-					out = append(out, h.Address)
+					out = append(out, nodes.TrojanRoute{Domain: h.Address, Port: ib.Port})
 				}
 			}
 		}

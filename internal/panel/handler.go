@@ -768,10 +768,16 @@ func (h *Handler) restartNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	node, err := h.nodeStore.Get(id)
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to get node: "+err.Error())
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	status, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.applyOpts)
+	status, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.applyOpts, node.CaddyEnabled)
 	if err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to restart node: "+err.Error())
 		return
@@ -813,10 +819,16 @@ func (h *Handler) startNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	node, err := h.nodeStore.Get(id)
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to get node: "+err.Error())
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	if _, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.applyOpts); err != nil {
+	if _, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.applyOpts, node.CaddyEnabled); err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to start node: "+err.Error())
 		return
 	}
@@ -1006,9 +1018,10 @@ func (h *Handler) applyNodes(nodeIDs []string) {
 				log.Printf("applyNodes: get users %s: %v", id, err)
 				return
 			}
+			n, _ := h.nodeStore.Get(id)
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			if _, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.applyOpts); err != nil {
+			if _, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.applyOpts, n.CaddyEnabled); err != nil {
 				log.Printf("applyNodes: apply %s: %v", id, err)
 			}
 		}(nodeID)
@@ -1524,10 +1537,9 @@ func panelRandomUUID() string {
 // ─── Caddy 管理 ──────────────────────────────────────────────────────────────
 
 type nodeCaddyStatus struct {
-	Node      nodes.Node
-	Caddy     nodes.CaddyStatusResponse
-	Error     string
-	WSEnabled bool // PULSE_SINGBOX_WS_PORT > 0
+	Node  nodes.Node
+	Caddy nodes.CaddyStatusResponse
+	Error string
 }
 
 func (h *Handler) caddyPage(w http.ResponseWriter, r *http.Request) {
@@ -1543,10 +1555,9 @@ func (h *Handler) caddyListPartial(w http.ResponseWriter, r *http.Request) {
 		htmxError(w, http.StatusInternalServerError, "failed to get node list: "+err.Error())
 		return
 	}
-	wsEnabled := h.applyOpts.SingboxWSLocalPort > 0
 	result := make([]nodeCaddyStatus, 0, len(nodeList))
 	for _, n := range nodeList {
-		item := nodeCaddyStatus{Node: n, WSEnabled: wsEnabled}
+		item := nodeCaddyStatus{Node: n}
 		client, dialErr := h.dial(n.ID)
 		if dialErr != nil {
 			item.Error = dialErr.Error()
@@ -1566,9 +1577,14 @@ func (h *Handler) caddyListPartial(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) caddySyncNode(w http.ResponseWriter, r *http.Request) {
 	nodeID := r.PathValue("nodeID")
-	wsPort := h.applyOpts.SingboxWSLocalPort
-	if wsPort <= 0 {
-		htmxError(w, http.StatusBadRequest, "Caddy WS 模式未启用（PULSE_SINGBOX_WS_PORT 未设置）")
+
+	node, err := h.nodeStore.Get(nodeID)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "节点不存在")
+		return
+	}
+	if !node.CaddyEnabled {
+		htmxError(w, http.StatusBadRequest, "该节点未启用 Caddy WS 模式")
 		return
 	}
 
@@ -1585,7 +1601,7 @@ func (h *Handler) caddySyncNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	seen := make(map[string]struct{})
-	var domains []string
+	var routes []nodes.TrojanRoute
 	for _, ib := range nodeInbounds {
 		if ib.Protocol != "trojan" {
 			continue
@@ -1598,13 +1614,13 @@ func (h *Handler) caddySyncNode(w http.ResponseWriter, r *http.Request) {
 			if host.Address != "" {
 				if _, ok := seen[host.Address]; !ok {
 					seen[host.Address] = struct{}{}
-					domains = append(domains, host.Address)
+					routes = append(routes, nodes.TrojanRoute{Domain: host.Address, Port: ib.Port})
 				}
 			}
 		}
 	}
 
-	if err := client.SyncCaddyRoutes(r.Context(), domains, wsPort); err != nil {
+	if err := client.SyncCaddyRoutes(r.Context(), routes); err != nil {
 		htmxError(w, http.StatusInternalServerError, "sync failed: "+err.Error())
 		return
 	}
@@ -1650,8 +1666,9 @@ func (h *Handler) caddySaveConfig(w http.ResponseWriter, r *http.Request) {
 	nodeID := r.PathValue("nodeID")
 	acmeEmail := strings.TrimSpace(r.FormValue("acme_email"))
 	panelDomain := strings.TrimSpace(r.FormValue("panel_domain"))
+	caddyEnabled := r.FormValue("caddy_enabled") == "1"
 
-	if err := h.nodeStore.UpdateCaddyConfig(nodeID, acmeEmail, panelDomain); err != nil {
+	if err := h.nodeStore.UpdateCaddyConfig(nodeID, acmeEmail, panelDomain, caddyEnabled); err != nil {
 		htmxError(w, http.StatusInternalServerError, "保存配置失败: "+err.Error())
 		return
 	}
@@ -1668,6 +1685,35 @@ func (h *Handler) caddySaveConfig(w http.ResponseWriter, r *http.Request) {
 	}); err != nil {
 		htmxError(w, http.StatusInternalServerError, "推送配置失败: "+err.Error())
 		return
+	}
+
+	// 若已启用 Caddy，顺带触发一次路由同步
+	if caddyEnabled {
+		nodeInbounds, ibErr := h.ibStore.ListInboundsByNode(nodeID)
+		if ibErr == nil {
+			seen := make(map[string]struct{})
+			var routes []nodes.TrojanRoute
+			for _, ib := range nodeInbounds {
+				if ib.Protocol != "trojan" {
+					continue
+				}
+				hosts, hErr := h.ibStore.ListHostsByInbound(ib.ID)
+				if hErr != nil {
+					continue
+				}
+				for _, host := range hosts {
+					if host.Address != "" {
+						if _, ok := seen[host.Address]; !ok {
+							seen[host.Address] = struct{}{}
+							routes = append(routes, nodes.TrojanRoute{Domain: host.Address, Port: ib.Port})
+						}
+					}
+				}
+			}
+			if syncErr := client.SyncCaddyRoutes(r.Context(), routes); syncErr != nil {
+				log.Printf("warn: caddy sync after save config: %v", syncErr)
+			}
+		}
 	}
 
 	setHXTriggerToast(w, "Caddy 配置已保存")

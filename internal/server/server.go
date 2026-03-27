@@ -43,9 +43,7 @@ func Run() error {
 	}
 
 	// 启动调度器
-	applyOpts := jobs.ApplyOptions{
-		SingboxWSLocalPort: cfg.SingboxWSLocalPort,
-	}
+	applyOpts := jobs.ApplyOptions{}
 	nodeAPI := serverapi.NewWithUsers(store, userStore, inboundStore, clientOptions, applyOpts)
 	scheduler := jobs.NewScheduler(nil)
 	scheduler.Add(jobs.Job{

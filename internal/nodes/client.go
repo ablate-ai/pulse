@@ -252,12 +252,17 @@ func (c *Client) CaddyStatus(ctx context.Context) (CaddyStatusResponse, error) {
 	return out, err
 }
 
+// TrojanRoute 表示一条 Trojan Caddy 路由（域名 + inbound 端口）。
+type TrojanRoute struct {
+	Domain string `json:"domain"`
+	Port   int    `json:"port"`
+}
+
 // SyncCaddyRoutes 同步节点上的 Caddy Trojan 路由表。
-// domains 为当前生效的 Trojan 域名列表，缺失的旧域名文件会被删除。
-func (c *Client) SyncCaddyRoutes(ctx context.Context, domains []string, wsPort int) error {
+// routes 为当前生效的 Trojan 路由列表，缺失的旧域名文件会被删除。
+func (c *Client) SyncCaddyRoutes(ctx context.Context, routes []TrojanRoute) error {
 	return c.do(ctx, http.MethodPost, "/v1/node/caddy/sync", map[string]any{
-		"domains": domains,
-		"ws_port": wsPort,
+		"routes": routes,
 	}, nil)
 }
 

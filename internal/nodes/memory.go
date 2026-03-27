@@ -56,7 +56,7 @@ func (s *MemoryStore) AddTraffic(nodeID string, upload, download int64) error {
 	return nil
 }
 
-func (s *MemoryStore) UpdateCaddyConfig(nodeID, acmeEmail, panelDomain string) error {
+func (s *MemoryStore) UpdateCaddyConfig(nodeID, acmeEmail, panelDomain string, caddyEnabled bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	node, ok := s.nodes[nodeID]
@@ -65,6 +65,7 @@ func (s *MemoryStore) UpdateCaddyConfig(nodeID, acmeEmail, panelDomain string) e
 	}
 	node.CaddyACMEEmail = acmeEmail
 	node.CaddyPanelDomain = panelDomain
+	node.CaddyEnabled = caddyEnabled
 	s.nodes[nodeID] = node
 	return nil
 }

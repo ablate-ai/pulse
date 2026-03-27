@@ -32,9 +32,9 @@ type inboundBlock struct {
 
 // BuildOptions 控制 BuildSingboxConfig 的可选行为。
 type BuildOptions struct {
-	// SingboxWSLocalPort > 0 时，Trojan inbound 改为 WebSocket 模式并监听该本地端口，
-	// 由外部 Caddy 统一终止 TLS 并反代过来。0 = 直连模式（sing-box 自管 TLS）。
-	SingboxWSLocalPort int
+	// CaddyEnabled=true 时，Trojan inbound 改为 127.0.0.1 监听 + WS 传输，
+	// 由外部 Caddy 终止 TLS 并反代。false = 直连模式（sing-box 自管 TLS）。
+	CaddyEnabled bool
 }
 
 // BuildSingboxConfig 根据节点 inbound 配置和用户凭据生成 sing-box 配置 JSON。
@@ -71,10 +71,6 @@ func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.Us
 		return "", fmt.Errorf("at least one active user is required")
 	}
 
-	// Trojan Caddy WS 模式下，多个 Trojan inbound 合并为一个
-	type trojanMergeKey struct{}
-	trojanMerged := false
-
 	blocks := make([]inboundBlock, 0, len(nodeInbounds))
 	for _, ib := range nodeInbounds {
 		tag := ib.Tag
@@ -85,15 +81,8 @@ func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.Us
 		listenAddr := "::"
 		listenPort := ib.Port
 
-		if opts.SingboxWSLocalPort > 0 && ib.Protocol == "trojan" {
-			if trojanMerged {
-				// 已生成过 trojan WS inbound，跳过
-				continue
-			}
+		if opts.CaddyEnabled && ib.Protocol == "trojan" {
 			listenAddr = "127.0.0.1"
-			listenPort = opts.SingboxWSLocalPort
-			tag = "pulse-trojan-ws"
-			trojanMerged = true
 		}
 
 		method := ""
@@ -194,7 +183,7 @@ func buildInboundUser(ib inbounds.Inbound, acc users.UserInbound, username strin
 }
 
 func transportFor(protocol string, opts BuildOptions) map[string]any {
-	if opts.SingboxWSLocalPort > 0 && protocol == "trojan" {
+	if opts.CaddyEnabled && protocol == "trojan" {
 		return map[string]any{"type": "ws", "path": "/ws"}
 	}
 	return nil
@@ -204,7 +193,7 @@ func transportFor(protocol string, opts BuildOptions) map[string]any {
 func tlsForInbound(ib inbounds.Inbound, opts BuildOptions) map[string]any {
 	switch ib.Protocol {
 	case "trojan":
-		if opts.SingboxWSLocalPort > 0 {
+		if opts.CaddyEnabled {
 			return nil // TLS 由 Caddy 终止
 		}
 		return trojanTLSFor(ib)
