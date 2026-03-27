@@ -1524,9 +1524,10 @@ func panelRandomUUID() string {
 // ─── Caddy 管理 ──────────────────────────────────────────────────────────────
 
 type nodeCaddyStatus struct {
-	Node  nodes.Node
-	Caddy nodes.CaddyStatusResponse
-	Error string
+	Node      nodes.Node
+	Caddy     nodes.CaddyStatusResponse
+	Error     string
+	WSEnabled bool // PULSE_SINGBOX_WS_PORT > 0
 }
 
 func (h *Handler) caddyPage(w http.ResponseWriter, r *http.Request) {
@@ -1542,9 +1543,10 @@ func (h *Handler) caddyListPartial(w http.ResponseWriter, r *http.Request) {
 		htmxError(w, http.StatusInternalServerError, "failed to get node list: "+err.Error())
 		return
 	}
+	wsEnabled := h.applyOpts.SingboxWSLocalPort > 0
 	result := make([]nodeCaddyStatus, 0, len(nodeList))
 	for _, n := range nodeList {
-		item := nodeCaddyStatus{Node: n}
+		item := nodeCaddyStatus{Node: n, WSEnabled: wsEnabled}
 		client, dialErr := h.dial(n.ID)
 		if dialErr != nil {
 			item.Error = dialErr.Error()

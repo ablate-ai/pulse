@@ -347,11 +347,13 @@
           <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span>已停止
         </span>
         {{end}}
+        {{if .WSEnabled}}
         <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-wait"
                 hx-post="/panel/caddy/{{.Node.ID}}/sync"
                 hx-target="#caddy-list"
                 hx-swap="innerHTML"
                 hx-disabled-elt="this">同步路由</button>
+        {{end}}
         {{if .Caddy.Caddyfile}}
         <button class="text-xs text-gray-400 hover:text-emerald-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
                 hx-get="/panel/caddy/{{.Node.ID}}/caddyfile"
