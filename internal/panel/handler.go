@@ -12,6 +12,7 @@ import (
 	"html/template"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -1092,6 +1093,23 @@ func (h *Handler) createInbound(w http.ResponseWriter, r *http.Request) {
 		htmxError(w, http.StatusInternalServerError, "failed to create inbound: "+err.Error())
 		return
 	}
+
+	// 自动创建默认 host，从节点 BaseURL 提取地址
+	if node, err := h.nodeStore.Get(nodeID); err == nil {
+		hostAddr := nodeID // 兜底用 nodeID
+		if parsed, err := url.Parse(node.BaseURL); err == nil {
+			hostAddr = parsed.Hostname()
+		}
+		defaultHost := inbounds.Host{
+			ID:        idgen.NextString(),
+			InboundID: ib.ID,
+			Remark:    tag,
+			Address:   hostAddr,
+			Port:      port,
+		}
+		_, _ = h.ibStore.UpsertHost(defaultHost)
+	}
+
 	h.renderInboundsListFromStore(w)
 }
 
