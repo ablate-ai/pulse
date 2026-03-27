@@ -12,6 +12,7 @@ import (
 	"html/template"
 	"log"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -44,6 +45,7 @@ type Handler struct {
 	dial          jobs.NodeDialer
 	applyOpts     jobs.ApplyOptions
 	tmpl          *template.Template
+	serverAddr    string
 }
 
 // pageData 传入完整页面模板的数据结构。
@@ -77,6 +79,7 @@ func New(
 	outboundStore outbounds.Store,
 	dial jobs.NodeDialer,
 	applyOpts jobs.ApplyOptions,
+	serverAddr string,
 ) (*Handler, error) {
 	h := &Handler{
 		auth:          authMgr,
@@ -86,6 +89,7 @@ func New(
 		outboundStore: outboundStore,
 		dial:          dial,
 		applyOpts:     applyOpts,
+		serverAddr:    serverAddr,
 	}
 
 	tmpl, err := template.New("").Funcs(templateFuncs()).ParseFS(embedFS, "templates/*.html")
@@ -94,6 +98,16 @@ func New(
 	}
 	h.tmpl = tmpl
 	return h, nil
+}
+
+// panelPort 从 serverAddr 解析面板监听端口，解析失败时返回 8080。
+func (h *Handler) panelPort() int {
+	if _, portStr, err := net.SplitHostPort(h.serverAddr); err == nil {
+		if p, err := strconv.Atoi(portStr); err == nil && p > 0 {
+			return p
+		}
+	}
+	return 8080
 }
 
 // Register 将所有路由注册到 mux。
@@ -1822,6 +1836,7 @@ func (h *Handler) caddySaveConfig(w http.ResponseWriter, r *http.Request) {
 	if err := client.UpdateCaddyConfig(r.Context(), nodes.CaddyConfig{
 		ACMEEmail:   acmeEmail,
 		PanelDomain: panelDomain,
+		PanelPort:   h.panelPort(),
 	}); err != nil {
 		htmxError(w, http.StatusInternalServerError, "推送配置失败: "+err.Error())
 		return
