@@ -60,6 +60,13 @@ function ibSync(form) {
   form.querySelectorAll('.ib-vless').forEach(el => el.classList.toggle('hidden', p !== 'vless'));
   form.querySelectorAll('.ib-trojan').forEach(el => el.classList.toggle('hidden', p !== 'trojan'));
   form.querySelectorAll('.ib-ss').forEach(el => el.classList.toggle('hidden', p !== 'shadowsocks'));
+  // SS 协议切换时自动填入随机端口（10000-59999），避免与常用端口冲突
+  if (p === 'shadowsocks') {
+    const portEl = form.querySelector('[name=port]');
+    if (portEl && (portEl.value === '' || portEl.value === '443')) {
+      portEl.value = Math.floor(Math.random() * 50000) + 10000;
+    }
+  }
 }
 document.addEventListener('htmx:afterSettle', function() {
   const form = document.getElementById('ib-new-form');
