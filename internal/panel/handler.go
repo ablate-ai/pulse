@@ -1105,7 +1105,7 @@ func (h *Handler) inboundsListPartial(w http.ResponseWriter, r *http.Request) {
 		htmxError(w, http.StatusInternalServerError, "failed to get inbound list: "+err.Error())
 		return
 	}
-	h.renderPartial(w, "partial-inbound-rows", list)
+	h.renderPartial(w, "partial-inbound-rows", inboundListData{Inbounds: list, NodeMap: h.buildNodeMap()})
 }
 
 func (h *Handler) inboundNewForm(w http.ResponseWriter, r *http.Request) {
@@ -1256,13 +1256,18 @@ func (h *Handler) deleteInbound(w http.ResponseWriter, r *http.Request) {
 	h.renderInboundsListFromStore(w)
 }
 
+type inboundListData struct {
+	Inbounds []inbounds.Inbound
+	NodeMap  map[string]string // nodeID → 节点名称
+}
+
 func (h *Handler) renderInboundsListFromStore(w http.ResponseWriter) {
 	list, err := h.ibStore.ListInbounds()
 	if err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to get inbound list: "+err.Error())
 		return
 	}
-	h.renderPartial(w, "partial-inbound-rows", list)
+	h.renderPartial(w, "partial-inbound-rows", inboundListData{Inbounds: list, NodeMap: h.buildNodeMap()})
 }
 
 // ─── Host Handlers ────────────────────────────────────────────────────────────

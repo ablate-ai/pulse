@@ -358,14 +358,15 @@
 
 
 {{define "partial-inbound-rows"}}
-{{range .Data}}
+{{$nodeMap := .Data.NodeMap}}
+{{range .Data.Inbounds}}
 <tr class="border-b border-gray-800 hover:bg-gray-800/40 transition-colors">
   <td class="px-4 py-3 font-medium text-gray-100">{{.Tag}}</td>
   <td class="px-4 py-3">
     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-indigo-500/15 text-indigo-400">{{.Protocol}}{{if eq .Security "reality"}}+Reality{{else if eq .Security "tls"}}+TLS{{end}}</span>
   </td>
   <td class="px-4 py-3 text-sm text-gray-400">{{.Port}}</td>
-  <td class="px-4 py-3 text-sm text-gray-500 font-mono text-xs">{{.NodeID}}</td>
+  <td class="px-4 py-3 text-sm text-gray-400">{{if index $nodeMap .NodeID}}{{index $nodeMap .NodeID}}{{else}}{{.NodeID}}{{end}}</td>
   <td class="px-4 py-3">
     <div class="flex items-center gap-1">
       <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
