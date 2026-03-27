@@ -942,14 +942,18 @@ func (h *Handler) buildNodeMap() map[string]string {
 // syncUserInbounds 根据选中的 inbound ID 列表同步用户的节点关联记录。
 // 新增：为没有凭据的节点创建 UserInbound；删除：移除未选中节点的旧记录。
 func (h *Handler) syncUserInbounds(userID string, selectedInboundIDs []string) error {
-	// 收集选中 inbound 对应的 nodeID（去重）
+	// 收集选中 inbound 对应的 nodeID（去重），同时记录节点上 SS method
 	wantedNodeIDs := make(map[string]struct{})
+	nodeSSMethod := make(map[string]string) // nodeID → ss method（仅 SS 协议）
 	for _, ibID := range selectedInboundIDs {
 		ib, err := h.ibStore.GetInbound(ibID)
 		if err != nil {
 			continue
 		}
 		wantedNodeIDs[ib.NodeID] = struct{}{}
+		if ib.Protocol == "shadowsocks" && ib.Method != "" {
+			nodeSSMethod[ib.NodeID] = ib.Method
+		}
 	}
 
 	// 获取该用户现有凭据
@@ -965,12 +969,17 @@ func (h *Handler) syncUserInbounds(userID string, selectedInboundIDs []string) e
 	// 创建新增节点的凭据
 	for nodeID := range wantedNodeIDs {
 		if _, ok := existingByNode[nodeID]; !ok {
+			secret := panelRandomToken(12)
+			// SS 2022 系列要求 Base64 编码的原始密钥字节
+			if method, ok := nodeSSMethod[nodeID]; ok && strings.HasPrefix(method, "2022-") {
+				secret = generateSSPassword(method)
+			}
 			acc := users.UserInbound{
 				ID:     idgen.NextString(),
 				UserID: userID,
 				NodeID: nodeID,
 				UUID:   panelRandomUUID(),
-				Secret: panelRandomToken(12),
+				Secret: secret,
 			}
 			if _, err := h.userStore.UpsertUserInbound(acc); err != nil {
 				return err

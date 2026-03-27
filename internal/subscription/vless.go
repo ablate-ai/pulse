@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strings"
 
 	"pulse/internal/inbounds"
 	"pulse/internal/users"
@@ -144,7 +145,13 @@ func shadowsocksLink(ib inbounds.Inbound, host inbounds.Host, acc users.UserInbo
 	if method == "" {
 		method = "aes-128-gcm"
 	}
-	credentials := fmt.Sprintf("%s:%s", method, acc.Secret)
+	var credentials string
+	// SS 2022 系列需要 "method:服务端PSK:用户PSK" 格式
+	if strings.HasPrefix(method, "2022-") {
+		credentials = fmt.Sprintf("%s:%s:%s", method, ib.Password, acc.Secret)
+	} else {
+		credentials = fmt.Sprintf("%s:%s", method, acc.Secret)
+	}
 	encoded := base64.RawURLEncoding.EncodeToString([]byte(credentials))
 	return fmt.Sprintf("ss://%s@%s:%d#%s", encoded, addr, port, url.QueryEscape(username))
 }
