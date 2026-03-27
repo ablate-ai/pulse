@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"log"
 	"math"
 	"net/http"
 	"net/url"
@@ -442,12 +443,14 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 处理 inbound 关联
+	// 处理 inbound 关联，变更后异步推送配置到受影响节点
 	if selectedIDs := r.Form["inbound_ids"]; len(selectedIDs) > 0 {
-		if err := h.syncUserInbounds(newUser.ID, selectedIDs); err != nil {
+		affected, err := h.syncUserInbounds(newUser.ID, selectedIDs)
+		if err != nil {
 			htmxError(w, http.StatusInternalServerError, "failed to sync inbounds: "+err.Error())
 			return
 		}
+		h.applyNodes(affected)
 	}
 
 	// 返回更新后的用户列表
@@ -543,10 +546,12 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 
 	// 有提交 inbound_sync 标记时（无论是否选中），都同步 inbound 关联
 	if r.Form.Has("inbound_sync") {
-		if err := h.syncUserInbounds(user.ID, r.Form["inbound_ids"]); err != nil {
+		affected, err := h.syncUserInbounds(user.ID, r.Form["inbound_ids"])
+		if err != nil {
 			htmxError(w, http.StatusInternalServerError, "failed to sync inbounds: "+err.Error())
 			return
 		}
+		h.applyNodes(affected)
 	}
 
 	h.renderUsersListFromStore(w)
@@ -969,9 +974,44 @@ func (h *Handler) buildNodeMap() map[string]string {
 	return m
 }
 
+// applyNodes 异步将最新用户配置下发到指定节点列表（后台执行，不阻塞请求）。
+func (h *Handler) applyNodes(nodeIDs []string) {
+	for _, nodeID := range nodeIDs {
+		go func(id string) {
+			client, err := h.dial(id)
+			if err != nil {
+				log.Printf("applyNodes: dial %s: %v", id, err)
+				return
+			}
+			nodeInbounds, err := h.ibStore.ListInboundsByNode(id)
+			if err != nil {
+				log.Printf("applyNodes: list inbounds %s: %v", id, err)
+				return
+			}
+			userAccesses, err := h.userStore.ListUserInboundsByNode(id)
+			if err != nil {
+				log.Printf("applyNodes: list user accesses %s: %v", id, err)
+				return
+			}
+			userIDs := collectUserIDs(userAccesses)
+			userMap, err := h.userStore.GetUsersByIDs(userIDs)
+			if err != nil {
+				log.Printf("applyNodes: get users %s: %v", id, err)
+				return
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if _, _, err := jobs.ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, h.ibStore, h.applyOpts); err != nil {
+				log.Printf("applyNodes: apply %s: %v", id, err)
+			}
+		}(nodeID)
+	}
+}
+
 // syncUserInbounds 根据选中的 inbound ID 列表同步用户的节点关联记录。
 // 新增：为没有凭据的节点创建 UserInbound；删除：移除未选中节点的旧记录。
-func (h *Handler) syncUserInbounds(userID string, selectedInboundIDs []string) error {
+// 返回所有发生变更的 nodeID（新增 + 删除），供调用方触发配置下发。
+func (h *Handler) syncUserInbounds(userID string, selectedInboundIDs []string) ([]string, error) {
 	// 收集选中 inbound 对应的 nodeID（去重），同时记录节点上 SS method
 	wantedNodeIDs := make(map[string]struct{})
 	nodeSSMethod := make(map[string]string) // nodeID → ss method（仅 SS 协议）
@@ -989,12 +1029,14 @@ func (h *Handler) syncUserInbounds(userID string, selectedInboundIDs []string) e
 	// 获取该用户现有凭据
 	existing, err := h.userStore.ListUserInboundsByUser(userID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	existingByNode := make(map[string]users.UserInbound, len(existing))
 	for _, acc := range existing {
 		existingByNode[acc.NodeID] = acc
 	}
+
+	changedNodeIDs := make(map[string]struct{})
 
 	// 创建新增节点的凭据
 	for nodeID := range wantedNodeIDs {
@@ -1012,8 +1054,9 @@ func (h *Handler) syncUserInbounds(userID string, selectedInboundIDs []string) e
 				Secret: secret,
 			}
 			if _, err := h.userStore.UpsertUserInbound(acc); err != nil {
-				return err
+				return nil, err
 			}
+			changedNodeIDs[nodeID] = struct{}{}
 		}
 	}
 
@@ -1021,12 +1064,17 @@ func (h *Handler) syncUserInbounds(userID string, selectedInboundIDs []string) e
 	for nodeID, acc := range existingByNode {
 		if _, wanted := wantedNodeIDs[nodeID]; !wanted {
 			if err := h.userStore.DeleteUserInbound(acc.ID); err != nil {
-				return err
+				return nil, err
 			}
+			changedNodeIDs[nodeID] = struct{}{}
 		}
 	}
 
-	return nil
+	affected := make([]string, 0, len(changedNodeIDs))
+	for id := range changedNodeIDs {
+		affected = append(affected, id)
+	}
+	return affected, nil
 }
 
 // collectUserIDs 从 userAccesses 列表中提取去重后的 UserID。
