@@ -172,6 +172,16 @@ func (db *DB) migrateNodesTable() error {
 			return fmt.Errorf("migrate nodes drop auth_token: %w", err)
 		}
 	}
+	if _, ok := columns["upload_bytes"]; !ok {
+		if _, err := db.conn.Exec(`ALTER TABLE nodes ADD COLUMN upload_bytes INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("migrate nodes add upload_bytes: %w", err)
+		}
+	}
+	if _, ok := columns["download_bytes"]; !ok {
+		if _, err := db.conn.Exec(`ALTER TABLE nodes ADD COLUMN download_bytes INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("migrate nodes add download_bytes: %w", err)
+		}
+	}
 	return nil
 }
 

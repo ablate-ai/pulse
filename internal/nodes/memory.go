@@ -43,6 +43,19 @@ func (s *MemoryStore) Get(id string) (Node, error) {
 	return node, nil
 }
 
+func (s *MemoryStore) AddTraffic(nodeID string, upload, download int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	node, ok := s.nodes[nodeID]
+	if !ok {
+		return ErrNodeNotFound
+	}
+	node.UploadBytes += upload
+	node.DownloadBytes += download
+	s.nodes[nodeID] = node
+	return nil
+}
+
 func (s *MemoryStore) List() ([]Node, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

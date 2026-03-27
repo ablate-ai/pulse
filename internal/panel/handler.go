@@ -1501,6 +1501,10 @@ func templateFuncs() template.FuncMap {
 		"gt0": func(n int64) bool {
 			return n > 0
 		},
+		// addInt64 两个 int64 相加。
+		"addInt64": func(a, b int64) int64 {
+			return a + b
+		},
 	}
 }
 

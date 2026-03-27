@@ -39,6 +39,27 @@
       <div class="text-xs text-gray-500 mt-1">共 {{.Data.UsersCount}} 用户</div>
     </div>
   </div>
+
+  <!-- 节点流量明细 -->
+  {{if .Data.NodeStats}}
+  <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+    <div class="px-5 py-3 border-b border-gray-800">
+      <span class="text-xs font-medium text-gray-400 uppercase tracking-wider">节点流量</span>
+    </div>
+    <div class="divide-y divide-gray-800">
+      {{range .Data.NodeStats}}
+      <div class="flex items-center justify-between px-5 py-3">
+        <span class="text-sm text-gray-300">{{.Name}}</span>
+        <div class="flex items-center gap-4 text-xs">
+          <span class="text-sky-400">↑ {{formatBytes .UploadBytes}}</span>
+          <span class="text-violet-400">↓ {{formatBytes .DownloadBytes}}</span>
+          <span class="text-gray-500">共 {{formatBytes (addInt64 .UploadBytes .DownloadBytes)}}</span>
+        </div>
+      </div>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
 </div>
 {{end}}
 

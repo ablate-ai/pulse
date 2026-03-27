@@ -5,9 +5,11 @@ import "errors"
 var ErrNodeNotFound = errors.New("node not found")
 
 type Node struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	BaseURL string `json:"base_url"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	BaseURL       string `json:"base_url"`
+	UploadBytes   int64  `json:"upload_bytes"`
+	DownloadBytes int64  `json:"download_bytes"`
 }
 
 type Store interface {
@@ -15,4 +17,6 @@ type Store interface {
 	Delete(id string) error
 	Get(id string) (Node, error)
 	List() ([]Node, error)
+	// AddTraffic 原子性地将 upload/download 字节数累加到节点流量计数器。
+	AddTraffic(nodeID string, upload, download int64) error
 }

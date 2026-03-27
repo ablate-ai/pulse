@@ -70,6 +70,7 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 		}
 
 		reloadNeeded := false
+		var nodeUploadDelta, nodeDownloadDelta int64
 
 		for _, acc := range userAccesses {
 			user, ok := userMap[acc.UserID]
@@ -83,6 +84,8 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 				downloadDelta := usageDelta(stats.DownloadTotal, acc.SyncedDownloadBytes)
 				user.UploadBytes += uploadDelta
 				user.DownloadBytes += downloadDelta
+				nodeUploadDelta += uploadDelta
+				nodeDownloadDelta += downloadDelta
 				acc.SyncedUploadBytes = stats.UploadTotal
 				acc.SyncedDownloadBytes = stats.DownloadTotal
 				// 有新增流量则更新在线时间
@@ -107,6 +110,13 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			}
 			result.UsersUpdated++
 			userMap[user.ID] = user
+		}
+
+		// 累积节点维度流量
+		if nodeUploadDelta > 0 || nodeDownloadDelta > 0 {
+			if err := nodeStore.AddTraffic(node.ID, nodeUploadDelta, nodeDownloadDelta); err != nil {
+				result.Errors = append(result.Errors, node.ID+": add traffic: "+err.Error())
+			}
 		}
 
 		if !reloadNeeded {

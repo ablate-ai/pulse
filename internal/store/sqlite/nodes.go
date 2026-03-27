@@ -44,8 +44,9 @@ func (s *NodeStore) Delete(id string) error {
 
 func (s *NodeStore) Get(id string) (nodes.Node, error) {
 	var node nodes.Node
-	err := s.db.QueryRow(`SELECT id, name, base_url, certificate FROM nodes WHERE id = ?`, id).
-		Scan(&node.ID, &node.Name, &node.BaseURL, new(string))
+	err := s.db.QueryRow(
+		`SELECT id, name, base_url, upload_bytes, download_bytes FROM nodes WHERE id = ?`, id,
+	).Scan(&node.ID, &node.Name, &node.BaseURL, &node.UploadBytes, &node.DownloadBytes)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nodes.Node{}, nodes.ErrNodeNotFound
 	}
@@ -56,7 +57,9 @@ func (s *NodeStore) Get(id string) (nodes.Node, error) {
 }
 
 func (s *NodeStore) List() ([]nodes.Node, error) {
-	rows, err := s.db.Query(`SELECT id, name, base_url, certificate FROM nodes ORDER BY id`)
+	rows, err := s.db.Query(
+		`SELECT id, name, base_url, upload_bytes, download_bytes FROM nodes ORDER BY id`,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("list nodes: %w", err)
 	}
@@ -65,10 +68,21 @@ func (s *NodeStore) List() ([]nodes.Node, error) {
 	items := make([]nodes.Node, 0)
 	for rows.Next() {
 		var node nodes.Node
-		if err := rows.Scan(&node.ID, &node.Name, &node.BaseURL, new(string)); err != nil {
+		if err := rows.Scan(&node.ID, &node.Name, &node.BaseURL, &node.UploadBytes, &node.DownloadBytes); err != nil {
 			return nil, fmt.Errorf("scan node: %w", err)
 		}
 		items = append(items, node)
 	}
 	return items, rows.Err()
+}
+
+func (s *NodeStore) AddTraffic(nodeID string, upload, download int64) error {
+	_, err := s.db.Exec(
+		`UPDATE nodes SET upload_bytes = upload_bytes + ?, download_bytes = download_bytes + ? WHERE id = ?`,
+		upload, download, nodeID,
+	)
+	if err != nil {
+		return fmt.Errorf("add node traffic: %w", err)
+	}
+	return nil
 }
