@@ -58,6 +58,16 @@ function ibRandPort(form) {
   const portEl = form.querySelector('[name=port]');
   if (portEl) portEl.value = Math.floor(Math.random() * 50000) + 10000;
 }
+// Outbound 表单协议字段动态显隐（prefix = 'new' 或 'edit'）
+function outboundProtocolChange(prefix) {
+  const proto = document.getElementById(prefix + '-ob-protocol').value;
+  const isSS    = proto === 'ss';
+  const isVless = proto === 'vless';
+  const isAuth  = !isSS && !isVless;
+  document.getElementById(prefix + '-ob-auth').classList.toggle('hidden', !isAuth);
+  document.getElementById(prefix + '-ob-ss').classList.toggle('hidden', !isSS);
+  document.getElementById(prefix + '-ob-vless').classList.toggle('hidden', !isVless);
+}
 // 新建 Inbound 表单协议字段动态显隐
 function ibSync(form) {
   if (!form) return;

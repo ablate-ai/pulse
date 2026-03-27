@@ -1165,10 +1165,12 @@
     </div>
     <div>
       <label class="block text-xs font-medium text-gray-400 mb-1.5">协议</label>
-      <select name="protocol"
+      <select name="protocol" id="new-ob-protocol" onchange="outboundProtocolChange('new')"
               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
         <option value="socks5">SOCKS5</option>
         <option value="http">HTTP</option>
+        <option value="ss">Shadowsocks</option>
+        <option value="vless">VLESS + Reality</option>
       </select>
     </div>
     <div>
@@ -1176,7 +1178,8 @@
       <input type="text" name="server" required placeholder="1.2.3.4:1080"
              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
     </div>
-    <div class="grid grid-cols-2 gap-3">
+    <!-- SOCKS5 / HTTP 字段 -->
+    <div id="new-ob-auth" class="grid grid-cols-2 gap-3">
       <div>
         <label class="block text-xs font-medium text-gray-400 mb-1.5">用户名（可选）</label>
         <input type="text" name="username"
@@ -1186,6 +1189,61 @@
         <label class="block text-xs font-medium text-gray-400 mb-1.5">密码（可选）</label>
         <input type="password" name="password"
                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+    </div>
+    <!-- SS 字段 -->
+    <div id="new-ob-ss" class="hidden space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">加密方式</label>
+        <select name="method"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+          <option value="2022-blake3-aes-128-gcm">2022-blake3-aes-128-gcm</option>
+          <option value="2022-blake3-aes-256-gcm">2022-blake3-aes-256-gcm</option>
+          <option value="aes-128-gcm">aes-128-gcm</option>
+          <option value="aes-256-gcm">aes-256-gcm</option>
+          <option value="chacha20-ietf-poly1305">chacha20-ietf-poly1305</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">密码</label>
+        <input type="text" name="password" placeholder=""
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono text-xs focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+    </div>
+    <!-- VLESS + Reality 字段 -->
+    <div id="new-ob-vless" class="hidden space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">UUID</label>
+        <input type="text" name="uuid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono text-xs focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">SNI（server_name）</label>
+          <input type="text" name="sni" placeholder="www.google.com"
+                 class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">指纹（fingerprint）</label>
+          <select name="fingerprint"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+            <option value="chrome">chrome</option>
+            <option value="firefox">firefox</option>
+            <option value="safari">safari</option>
+            <option value="ios">ios</option>
+            <option value="random">random</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">Public Key</label>
+        <input type="text" name="public_key" placeholder="Reality 服务端公钥"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono text-xs placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">Short ID</label>
+        <input type="text" name="short_id" placeholder="如：a1b2c3d4"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono text-xs placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
       </div>
     </div>
   </div>
@@ -1218,10 +1276,12 @@
     </div>
     <div>
       <label class="block text-xs font-medium text-gray-400 mb-1.5">协议</label>
-      <select name="protocol"
+      <select name="protocol" id="edit-ob-protocol" onchange="outboundProtocolChange('edit')"
               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
         <option value="socks5" {{if eq .Data.Protocol "socks5"}}selected{{end}}>SOCKS5</option>
-        <option value="http" {{if eq .Data.Protocol "http"}}selected{{end}}>HTTP</option>
+        <option value="http"   {{if eq .Data.Protocol "http"}}selected{{end}}>HTTP</option>
+        <option value="ss"     {{if eq .Data.Protocol "ss"}}selected{{end}}>Shadowsocks</option>
+        <option value="vless"  {{if eq .Data.Protocol "vless"}}selected{{end}}>VLESS + Reality</option>
       </select>
     </div>
     <div>
@@ -1229,7 +1289,8 @@
       <input type="text" name="server" value="{{.Data.Server}}" required
              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
     </div>
-    <div class="grid grid-cols-2 gap-3">
+    <!-- SOCKS5 / HTTP 字段 -->
+    <div id="edit-ob-auth" class="{{if or (eq .Data.Protocol "ss") (eq .Data.Protocol "vless")}}hidden {{end}}grid grid-cols-2 gap-3">
       <div>
         <label class="block text-xs font-medium text-gray-400 mb-1.5">用户名（可选）</label>
         <input type="text" name="username" value="{{.Data.Username}}"
@@ -1239,6 +1300,61 @@
         <label class="block text-xs font-medium text-gray-400 mb-1.5">密码（可选）</label>
         <input type="password" name="password" value="{{.Data.Password}}"
                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+    </div>
+    <!-- SS 字段 -->
+    <div id="edit-ob-ss" class="{{if ne .Data.Protocol "ss"}}hidden {{end}}space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">加密方式</label>
+        <select name="method"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+          <option value="2022-blake3-aes-128-gcm" {{if eq .Data.Method "2022-blake3-aes-128-gcm"}}selected{{end}}>2022-blake3-aes-128-gcm</option>
+          <option value="2022-blake3-aes-256-gcm" {{if eq .Data.Method "2022-blake3-aes-256-gcm"}}selected{{end}}>2022-blake3-aes-256-gcm</option>
+          <option value="aes-128-gcm"             {{if eq .Data.Method "aes-128-gcm"}}selected{{end}}>aes-128-gcm</option>
+          <option value="aes-256-gcm"             {{if eq .Data.Method "aes-256-gcm"}}selected{{end}}>aes-256-gcm</option>
+          <option value="chacha20-ietf-poly1305"  {{if eq .Data.Method "chacha20-ietf-poly1305"}}selected{{end}}>chacha20-ietf-poly1305</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">密码</label>
+        <input type="text" name="password" value="{{.Data.Password}}"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono text-xs focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+    </div>
+    <!-- VLESS + Reality 字段 -->
+    <div id="edit-ob-vless" class="{{if ne .Data.Protocol "vless"}}hidden {{end}}space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">UUID</label>
+        <input type="text" name="uuid" value="{{.Data.UUID}}" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono text-xs focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">SNI（server_name）</label>
+          <input type="text" name="sni" value="{{.Data.SNI}}" placeholder="www.google.com"
+                 class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-gray-400 mb-1.5">指纹（fingerprint）</label>
+          <select name="fingerprint"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+            <option value="chrome"  {{if eq .Data.Fingerprint "chrome"}}selected{{end}}>chrome</option>
+            <option value="firefox" {{if eq .Data.Fingerprint "firefox"}}selected{{end}}>firefox</option>
+            <option value="safari"  {{if eq .Data.Fingerprint "safari"}}selected{{end}}>safari</option>
+            <option value="ios"     {{if eq .Data.Fingerprint "ios"}}selected{{end}}>ios</option>
+            <option value="random"  {{if eq .Data.Fingerprint "random"}}selected{{end}}>random</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">Public Key</label>
+        <input type="text" name="public_key" value="{{.Data.PublicKey}}" placeholder="Reality 服务端公钥"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono text-xs placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">Short ID</label>
+        <input type="text" name="short_id" value="{{.Data.ShortID}}" placeholder="如：a1b2c3d4"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono text-xs placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
       </div>
     </div>
   </div>

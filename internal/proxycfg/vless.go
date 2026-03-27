@@ -211,7 +211,6 @@ func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.Us
 func buildOutboundBlock(ob outbounds.Outbound, tag string) map[string]any {
 	host, portStr, err := net.SplitHostPort(ob.Server)
 	if err != nil {
-		// 地址解析失败，回退到直连
 		return map[string]any{"type": "direct", "tag": tag}
 	}
 	port, err := strconv.Atoi(portStr)
@@ -219,29 +218,68 @@ func buildOutboundBlock(ob outbounds.Outbound, tag string) map[string]any {
 		return map[string]any{"type": "direct", "tag": tag}
 	}
 
-	var block map[string]any
 	switch ob.Protocol {
+	case "ss":
+		return map[string]any{
+			"type":        "shadowsocks",
+			"tag":         tag,
+			"server":      host,
+			"server_port": port,
+			"method":      ob.Method,
+			"password":    ob.Password,
+		}
+	case "vless":
+		fp := ob.Fingerprint
+		if fp == "" {
+			fp = "chrome"
+		}
+		return map[string]any{
+			"type":            "vless",
+			"tag":             tag,
+			"server":          host,
+			"server_port":     port,
+			"uuid":            ob.UUID,
+			"packet_encoding": "xudp",
+			"tls": map[string]any{
+				"enabled":     true,
+				"server_name": ob.SNI,
+				"utls": map[string]any{
+					"enabled":     true,
+					"fingerprint": fp,
+				},
+				"reality": map[string]any{
+					"enabled":    true,
+					"public_key": ob.PublicKey,
+					"short_id":   ob.ShortID,
+				},
+			},
+		}
 	case "http":
-		block = map[string]any{
+		block := map[string]any{
 			"type":        "http",
 			"tag":         tag,
 			"server":      host,
 			"server_port": port,
 		}
-	default: // socks5（默认）
-		block = map[string]any{
+		if ob.Username != "" {
+			block["username"] = ob.Username
+			block["password"] = ob.Password
+		}
+		return block
+	default: // socks5
+		block := map[string]any{
 			"type":        "socks",
 			"tag":         tag,
 			"server":      host,
 			"server_port": port,
 			"version":     "5",
 		}
+		if ob.Username != "" {
+			block["username"] = ob.Username
+			block["password"] = ob.Password
+		}
+		return block
 	}
-	if ob.Username != "" {
-		block["username"] = ob.Username
-		block["password"] = ob.Password
-	}
-	return block
 }
 
 func buildInboundUser(ib inbounds.Inbound, acc users.UserInbound, username string) map[string]any {

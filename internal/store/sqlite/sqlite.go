@@ -162,6 +162,32 @@ func (db *DB) init() error {
 	if err := db.migrateUserInboundsTable(); err != nil {
 		return err
 	}
+	if err := db.migrateOutboundsTable(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (db *DB) migrateOutboundsTable() error {
+	columns, err := db.tableColumns("outbounds")
+	if err != nil {
+		return err
+	}
+	additions := map[string]string{
+		"method":      `ALTER TABLE outbounds ADD COLUMN method TEXT NOT NULL DEFAULT ''`,
+		"uuid":        `ALTER TABLE outbounds ADD COLUMN uuid TEXT NOT NULL DEFAULT ''`,
+		"sni":         `ALTER TABLE outbounds ADD COLUMN sni TEXT NOT NULL DEFAULT ''`,
+		"public_key":  `ALTER TABLE outbounds ADD COLUMN public_key TEXT NOT NULL DEFAULT ''`,
+		"short_id":    `ALTER TABLE outbounds ADD COLUMN short_id TEXT NOT NULL DEFAULT ''`,
+		"fingerprint": `ALTER TABLE outbounds ADD COLUMN fingerprint TEXT NOT NULL DEFAULT ''`,
+	}
+	for col, ddl := range additions {
+		if _, ok := columns[col]; !ok {
+			if _, err := db.conn.Exec(ddl); err != nil {
+				return fmt.Errorf("migrate outbounds add %s: %w", col, err)
+			}
+		}
+	}
 	return nil
 }
 

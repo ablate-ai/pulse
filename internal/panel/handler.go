@@ -1471,12 +1471,18 @@ func (h *Handler) createOutbound(w http.ResponseWriter, r *http.Request) {
 		protocol = "socks5"
 	}
 	ob := outbounds.Outbound{
-		ID:       idgen.NextString(),
-		Name:     name,
-		Protocol: protocol,
-		Server:   server,
-		Username: r.FormValue("username"),
-		Password: r.FormValue("password"),
+		ID:          idgen.NextString(),
+		Name:        name,
+		Protocol:    protocol,
+		Server:      server,
+		Username:    r.FormValue("username"),
+		Password:    r.FormValue("password"),
+		Method:      r.FormValue("method"),
+		UUID:        r.FormValue("uuid"),
+		SNI:         r.FormValue("sni"),
+		PublicKey:   r.FormValue("public_key"),
+		ShortID:     r.FormValue("short_id"),
+		Fingerprint: r.FormValue("fingerprint"),
 	}
 	if _, err := h.outboundStore.Upsert(ob); err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to create outbound: "+err.Error())
@@ -1513,6 +1519,12 @@ func (h *Handler) updateOutbound(w http.ResponseWriter, r *http.Request) {
 	}
 	ob.Username = r.FormValue("username")
 	ob.Password = r.FormValue("password")
+	ob.Method = r.FormValue("method")
+	ob.UUID = r.FormValue("uuid")
+	ob.SNI = r.FormValue("sni")
+	ob.PublicKey = r.FormValue("public_key")
+	ob.ShortID = r.FormValue("short_id")
+	ob.Fingerprint = r.FormValue("fingerprint")
 	if _, err := h.outboundStore.Upsert(ob); err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to update outbound: "+err.Error())
 		return

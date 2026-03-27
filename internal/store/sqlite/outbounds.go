@@ -19,15 +19,22 @@ func (db *DB) OutboundStore() *OutboundStore {
 
 func (s *OutboundStore) Upsert(ob outbounds.Outbound) (outbounds.Outbound, error) {
 	_, err := s.db.Exec(`
-		INSERT INTO outbounds (id, name, protocol, server, username, password)
-		VALUES (?, ?, ?, ?, ?, ?)
+		INSERT INTO outbounds (id, name, protocol, server, username, password, method, uuid, sni, public_key, short_id, fingerprint)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
-			name     = excluded.name,
-			protocol = excluded.protocol,
-			server   = excluded.server,
-			username = excluded.username,
-			password = excluded.password
-	`, ob.ID, ob.Name, ob.Protocol, ob.Server, ob.Username, ob.Password)
+			name        = excluded.name,
+			protocol    = excluded.protocol,
+			server      = excluded.server,
+			username    = excluded.username,
+			password    = excluded.password,
+			method      = excluded.method,
+			uuid        = excluded.uuid,
+			sni         = excluded.sni,
+			public_key  = excluded.public_key,
+			short_id    = excluded.short_id,
+			fingerprint = excluded.fingerprint
+	`, ob.ID, ob.Name, ob.Protocol, ob.Server, ob.Username, ob.Password,
+		ob.Method, ob.UUID, ob.SNI, ob.PublicKey, ob.ShortID, ob.Fingerprint)
 	if err != nil {
 		return outbounds.Outbound{}, fmt.Errorf("upsert outbound: %w", err)
 	}
@@ -37,8 +44,10 @@ func (s *OutboundStore) Upsert(ob outbounds.Outbound) (outbounds.Outbound, error
 func (s *OutboundStore) Get(id string) (outbounds.Outbound, error) {
 	var ob outbounds.Outbound
 	err := s.db.QueryRow(
-		`SELECT id, name, protocol, server, username, password FROM outbounds WHERE id = ?`, id,
-	).Scan(&ob.ID, &ob.Name, &ob.Protocol, &ob.Server, &ob.Username, &ob.Password)
+		`SELECT id, name, protocol, server, username, password, method, uuid, sni, public_key, short_id, fingerprint
+		 FROM outbounds WHERE id = ?`, id,
+	).Scan(&ob.ID, &ob.Name, &ob.Protocol, &ob.Server, &ob.Username, &ob.Password,
+		&ob.Method, &ob.UUID, &ob.SNI, &ob.PublicKey, &ob.ShortID, &ob.Fingerprint)
 	if errors.Is(err, sql.ErrNoRows) {
 		return outbounds.Outbound{}, outbounds.ErrOutboundNotFound
 	}
@@ -50,7 +59,8 @@ func (s *OutboundStore) Get(id string) (outbounds.Outbound, error) {
 
 func (s *OutboundStore) List() ([]outbounds.Outbound, error) {
 	rows, err := s.db.Query(
-		`SELECT id, name, protocol, server, username, password FROM outbounds ORDER BY id`,
+		`SELECT id, name, protocol, server, username, password, method, uuid, sni, public_key, short_id, fingerprint
+		 FROM outbounds ORDER BY id`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list outbounds: %w", err)
@@ -60,7 +70,8 @@ func (s *OutboundStore) List() ([]outbounds.Outbound, error) {
 	items := make([]outbounds.Outbound, 0)
 	for rows.Next() {
 		var ob outbounds.Outbound
-		if err := rows.Scan(&ob.ID, &ob.Name, &ob.Protocol, &ob.Server, &ob.Username, &ob.Password); err != nil {
+		if err := rows.Scan(&ob.ID, &ob.Name, &ob.Protocol, &ob.Server, &ob.Username, &ob.Password,
+			&ob.Method, &ob.UUID, &ob.SNI, &ob.PublicKey, &ob.ShortID, &ob.Fingerprint); err != nil {
 			return nil, fmt.Errorf("scan outbound: %w", err)
 		}
 		items = append(items, ob)
