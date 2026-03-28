@@ -687,20 +687,27 @@
     </button>
   </div>
   <div class="px-5 py-4">
-    {{if .Data.Logs}}
     <pre id="node-logs-text"
-         class="bg-gray-800 border border-gray-700 rounded-lg p-3 text-xs text-gray-300 font-mono overflow-auto max-h-[60vh] whitespace-pre-wrap">{{range .Data.Logs}}{{.}}
-{{end}}</pre>
-    <script>document.getElementById('node-logs-text').scrollTop=9999999;</script>
-    {{else}}
-    <p class="text-sm text-gray-500 text-center py-6">暂无日志</p>
-    {{end}}
+         class="bg-gray-800 border border-gray-700 rounded-lg p-3 text-xs text-gray-300 font-mono overflow-auto max-h-[60vh] whitespace-pre-wrap"></pre>
   </div>
   <div class="flex justify-end px-5 py-4 border-t border-gray-700">
     <button type="button" onclick="document.getElementById('app-modal').close()"
             class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">关闭</button>
   </div>
 </div>
+<script>
+(function() {
+  var pre = document.getElementById('node-logs-text');
+  var modal = document.getElementById('app-modal');
+  var es = new EventSource('/panel/nodes/{{.Data.NodeID}}/logs/stream');
+  es.onmessage = function(e) {
+    pre.textContent += e.data + '\n';
+    pre.scrollTop = pre.scrollHeight;
+  };
+  es.onerror = function() { es.close(); };
+  modal.addEventListener('close', function() { es.close(); }, {once: true});
+})();
+</script>
 {{end}}
 
 {{define "partial-node-config"}}

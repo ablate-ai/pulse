@@ -172,6 +172,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /panel/nodes/{id}/stop", h.requireAuth(h.stopNode))
 	mux.HandleFunc("GET /panel/nodes/{id}/config", h.requireAuth(h.nodeConfigModal))
 	mux.HandleFunc("GET /panel/nodes/{id}/logs", h.requireAuth(h.nodeLogsModal))
+	mux.HandleFunc("GET /panel/nodes/{id}/logs/stream", h.requireAuth(h.nodeLogsStream))
 
 	mux.HandleFunc("GET /caddy", h.requireAuth(h.caddyPage))
 	mux.HandleFunc("GET /panel/caddy/list", h.requireAuth(h.caddyListPartial))
@@ -939,26 +940,51 @@ func (h *Handler) nodeLogsModal(w http.ResponseWriter, r *http.Request) {
 		htmxError(w, http.StatusNotFound, "node not found")
 		return
 	}
-	client, err := h.dial(id)
-	if err != nil {
-		htmxError(w, http.StatusBadGateway, "failed to connect to node: "+err.Error())
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	resp, err := client.Logs(ctx)
-	if err != nil {
-		htmxError(w, http.StatusBadGateway, "failed to get logs: "+err.Error())
-		return
-	}
 	type logsData struct {
 		NodeName string
-		Logs     []string
+		NodeID   string
 	}
 	h.renderPartial(w, "partial-node-logs", logsData{
 		NodeName: node.Name,
-		Logs:     resp.Logs,
+		NodeID:   id,
 	})
+}
+
+func (h *Handler) nodeLogsStream(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	client, err := h.dial(id)
+	if err != nil {
+		http.Error(w, "failed to connect to node: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	body, err := client.LogsStream(r.Context())
+	if err != nil {
+		http.Error(w, "failed to stream logs: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer body.Close()
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	buf := make([]byte, 4096)
+	for {
+		n, readErr := body.Read(buf)
+		if n > 0 {
+			_, _ = w.Write(buf[:n])
+			flusher.Flush()
+		}
+		if readErr != nil {
+			return
+		}
+	}
 }
 
 func (h *Handler) updateNode(w http.ResponseWriter, r *http.Request) {

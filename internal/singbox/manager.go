@@ -27,14 +27,16 @@ const maxLogs = 200
 var ErrNotRunning = errors.New("sing-box is not running")
 
 type Manager struct {
-	mu         sync.Mutex
-	instance   *box.Box
-	starting   bool
-	startedAt  time.Time
-	logs       []string
-	traffic    trafficManager
-	lastConfig string
-	configFile string // 持久化路径，非空时 Start/Stop 会读写该文件
+	mu          sync.Mutex
+	instance    *box.Box
+	starting    bool
+	startedAt   time.Time
+	logs        []string
+	traffic     trafficManager
+	lastConfig  string
+	configFile  string // 持久化路径，非空时 Start/Stop 会读写该文件
+	subscribers map[int64]chan string
+	nextSubID   int64
 }
 
 type trafficManager interface {
@@ -75,7 +77,8 @@ type UserUsage struct {
 
 func NewManager() *Manager {
 	return &Manager{
-		logs: make([]string, 0, maxLogs),
+		logs:        make([]string, 0, maxLogs),
+		subscribers: make(map[int64]chan string),
 	}
 }
 
@@ -83,8 +86,9 @@ func NewManager() *Manager {
 // configFile 为保存最近一次配置的文件路径；启动成功后写入，显式 Stop 后删除。
 func NewManagerWithPersistence(configFile string) *Manager {
 	return &Manager{
-		logs:       make([]string, 0, maxLogs),
-		configFile: configFile,
+		logs:        make([]string, 0, maxLogs),
+		configFile:  configFile,
+		subscribers: make(map[int64]chan string),
 	}
 }
 
@@ -295,6 +299,28 @@ func (m *Manager) Usage() UsageStats {
 	return stats
 }
 
+// Subscribe 注册一个日志订阅者，返回订阅 ID 和只读 channel。
+// 调用方负责在完成时调用 Unsubscribe(id) 释放资源。
+func (m *Manager) Subscribe() (id int64, ch <-chan string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.nextSubID++
+	id = m.nextSubID
+	c := make(chan string, 64)
+	m.subscribers[id] = c
+	return id, c
+}
+
+// Unsubscribe 注销订阅者并关闭其 channel。
+func (m *Manager) Unsubscribe(id int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if c, ok := m.subscribers[id]; ok {
+		close(c)
+		delete(m.subscribers, id)
+	}
+}
+
 func (m *Manager) appendLogLocked(line string) {
 	line = strings.TrimSpace(line)
 	if line == "" {
@@ -306,6 +332,14 @@ func (m *Manager) appendLogLocked(line string) {
 		m.logs = m.logs[:maxLogs-1]
 	}
 	m.logs = append(m.logs, line)
+
+	// 广播给所有订阅者，慢消费者直接丢弃
+	for _, c := range m.subscribers {
+		select {
+		case c <- line:
+		default:
+		}
+	}
 }
 
 func buildInfo() RuntimeInfo {

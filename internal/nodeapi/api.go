@@ -3,6 +3,7 @@ package nodeapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -35,6 +36,7 @@ func (a *API) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/v1/node/runtime/version", a.handleVersion)
 	mux.HandleFunc("/v1/node/runtime/config", a.handleConfig)
 	mux.HandleFunc("/v1/node/runtime/logs", a.handleLogs)
+	mux.HandleFunc("GET /v1/node/runtime/logs/stream", a.handleLogsStream)
 	mux.HandleFunc("/v1/node/runtime/start", a.handleStart)
 	mux.HandleFunc("/v1/node/runtime/stop", a.handleStop)
 	mux.HandleFunc("/v1/node/runtime/restart", a.handleRestart)
@@ -110,6 +112,41 @@ func (a *API) handleLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"logs": a.manager.Logs()})
+}
+
+func (a *API) handleLogsStream(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	// 先把缓冲区里的历史日志全部发送
+	for _, line := range a.manager.Logs() {
+		fmt.Fprintf(w, "data: %s\n\n", line)
+	}
+	flusher.Flush()
+
+	// 订阅后续新日志
+	id, ch := a.manager.Subscribe()
+	defer a.manager.Unsubscribe(id)
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case line, ok := <-ch:
+			if !ok {
+				return
+			}
+			fmt.Fprintf(w, "data: %s\n\n", line)
+			flusher.Flush()
+		}
+	}
 }
 
 func (a *API) handleStart(w http.ResponseWriter, r *http.Request) {

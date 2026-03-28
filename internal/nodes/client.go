@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -186,6 +187,29 @@ func (c *Client) Logs(ctx context.Context) (LogsResponse, error) {
 	var out LogsResponse
 	err := c.do(ctx, http.MethodGet, "/v1/node/runtime/logs", nil, &out)
 	return out, err
+}
+
+// LogsStream 打开节点的 SSE 日志流，返回 response body（调用方负责 Close）。
+// 使用无超时的 HTTP 客户端，由 ctx 控制生命周期。
+func (c *Client) LogsStream(ctx context.Context) (io.ReadCloser, error) {
+	if c.initErr != nil {
+		return nil, fmt.Errorf("configure node client: %w", c.initErr)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/node/runtime/logs/stream", nil)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	// 流式请求不能有超时，复用 transport 但去掉 Timeout
+	sc := &http.Client{Transport: c.httpClient.Transport}
+	resp, err := sc.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request node: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		resp.Body.Close()
+		return nil, fmt.Errorf("node returned %d", resp.StatusCode)
+	}
+	return resp.Body, nil
 }
 
 type ConfigResponse struct {
