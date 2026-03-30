@@ -912,18 +912,7 @@
     <!-- Trojan TLS -->
     {{if eq .Data.Inbound.Protocol "trojan"}}
     <input type="hidden" name="security" value="tls">
-    <div class="space-y-3">
-      <div>
-        <label class="block text-xs font-medium text-gray-400 mb-1.5">TLS 证书路径</label>
-        <input type="text" name="tls_cert_path" value="{{.Data.Inbound.TLSCertPath}}" placeholder="/etc/ssl/cert.pem"
-               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
-      </div>
-      <div>
-        <label class="block text-xs font-medium text-gray-400 mb-1.5">TLS 私钥路径</label>
-        <input type="text" name="tls_key_path" value="{{.Data.Inbound.TLSKeyPath}}" placeholder="/etc/ssl/key.pem"
-               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
-      </div>
-    </div>
+    <p class="text-xs text-gray-500">Trojan TLS 由 Caddy 负责终止，无需在此配置证书路径。</p>
     {{end}}
 
     <!-- Shadowsocks -->
