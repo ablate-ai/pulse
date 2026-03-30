@@ -160,6 +160,9 @@
   <td class="px-4 py-3 text-xs text-gray-400">
     {{if gt .Connections 0}}<span class="text-sky-400 font-medium">{{.Connections}}</span>{{else}}<span class="text-gray-600">0</span>{{end}}
   </td>
+  <td class="px-4 py-3 text-xs text-gray-400">
+    {{if gt .Devices 0}}<span class="text-violet-400 font-medium">{{.Devices}}</span>{{else}}<span class="text-gray-600">0</span>{{end}}
+  </td>
   <td class="px-4 py-3">
     <div class="flex items-center gap-1">
       <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
