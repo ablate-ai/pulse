@@ -29,6 +29,38 @@
       </div>
       {{end}}
 
+      <!-- 公告管理 -->
+      <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-4">
+        <h2 class="text-sm font-semibold text-gray-100 mb-1">公告</h2>
+        <p class="text-xs text-gray-500 mb-4">启用后将在用户主页展示公告内容。</p>
+        <form hx-post="/panel/settings/announcement"
+              hx-swap="none"
+              class="space-y-3">
+          <div class="flex items-center gap-2 mb-2">
+            <input type="checkbox" id="announcement-enabled" name="announcement_enabled" value="true"
+                   {{if .Data.AnnouncementEnabled}}checked{{end}}
+                   class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-gray-900">
+            <label for="announcement-enabled" class="text-xs text-gray-300">启用公告</label>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-400 mb-1.5">标题</label>
+            <input type="text" name="announcement_title" value="{{.Data.AnnouncementTitle}}"
+                   placeholder="公告标题（可留空）"
+                   class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-400 mb-1.5">内容</label>
+            <textarea name="announcement_content" rows="4"
+                      placeholder="公告正文..."
+                      class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors resize-none">{{.Data.AnnouncementContent}}</textarea>
+          </div>
+          <div class="pt-1">
+            <button type="submit"
+                    class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">保存公告</button>
+          </div>
+        </form>
+      </div>
+
       <!-- 修改密码 -->
       <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-4">
         <h2 class="text-sm font-semibold text-gray-100 mb-4">修改管理员密码</h2>

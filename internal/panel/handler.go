@@ -31,6 +31,12 @@ import (
 	"pulse/internal/users"
 )
 
+// SettingsStore 公告/设置持久化接口（与 auth.SettingsStore 相同签名，避免循环依赖）。
+type SettingsStore interface {
+	GetSetting(key string) (string, bool)
+	SetSetting(key, value string) error
+}
+
 //go:embed templates static
 var embedFS embed.FS
 
@@ -48,6 +54,7 @@ type Handler struct {
 	tmpl           *template.Template
 	serverAddr     string
 	clientCertFile string // 面板客户端证书路径，用于 node 安装时粘贴
+	settingsStore  SettingsStore
 }
 
 // pageData 传入完整页面模板的数据结构。
@@ -83,6 +90,7 @@ func New(
 	applyOpts jobs.ApplyOptions,
 	serverAddr string,
 	clientCertFile string,
+	settingsStore SettingsStore,
 ) (*Handler, error) {
 	h := &Handler{
 		auth:           authMgr,
@@ -94,6 +102,7 @@ func New(
 		applyOpts:      applyOpts,
 		serverAddr:     serverAddr,
 		clientCertFile: clientCertFile,
+		settingsStore:  settingsStore,
 	}
 
 	tmpl, err := template.New("").Funcs(templateFuncs()).ParseFS(embedFS, "templates/*.html")
@@ -145,6 +154,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /panel/users/{id}/reset-traffic", h.requireAuth(h.resetUserTraffic))
 	mux.HandleFunc("POST /panel/users/batch", h.requireAuth(h.batchUsers))
 	mux.HandleFunc("POST /panel/settings/password", h.requireAuth(h.changePassword))
+	mux.HandleFunc("POST /panel/settings/announcement", h.requireAuth(h.saveAnnouncement))
 
 	mux.HandleFunc("GET /inbounds", h.requireAuth(h.inboundsPage))
 	mux.HandleFunc("GET /outbounds", h.requireAuth(h.outboundsPage))
@@ -700,7 +710,10 @@ func (h *Handler) batchUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 type settingsData struct {
-	ClientCert string // 面板客户端证书 PEM，用于 node 安装时粘贴
+	ClientCert           string // 面板客户端证书 PEM，用于 node 安装时粘贴
+	AnnouncementTitle   string
+	AnnouncementContent string
+	AnnouncementEnabled bool
 }
 
 // settingsPage 渲染设置页面。
@@ -711,11 +724,47 @@ func (h *Handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 			cert = strings.TrimSpace(string(data))
 		}
 	}
+	d := settingsData{ClientCert: cert}
+	if h.settingsStore != nil {
+		d.AnnouncementTitle, _ = h.settingsStore.GetSetting("announcement_title")
+		d.AnnouncementContent, _ = h.settingsStore.GetSetting("announcement_content")
+		enabled, _ := h.settingsStore.GetSetting("announcement_enabled")
+		d.AnnouncementEnabled = enabled == "true"
+	}
 	h.renderPage(w, "settings", pageData{
 		Page:     "settings",
 		Username: h.currentUsername(r),
-		Data:     settingsData{ClientCert: cert},
+		Data:     d,
 	})
+}
+
+// saveAnnouncement 保存公告设置。
+func (h *Handler) saveAnnouncement(w http.ResponseWriter, r *http.Request) {
+	if h.settingsStore == nil {
+		htmxError(w, http.StatusInternalServerError, "settings store unavailable")
+		return
+	}
+	title := strings.TrimSpace(r.FormValue("announcement_title"))
+	content := strings.TrimSpace(r.FormValue("announcement_content"))
+	enabled := r.FormValue("announcement_enabled")
+	if enabled != "true" {
+		enabled = "false"
+	}
+	if err := h.settingsStore.SetSetting("announcement_title", title); err != nil {
+		htmxError(w, http.StatusInternalServerError, "保存失败")
+		return
+	}
+	if err := h.settingsStore.SetSetting("announcement_content", content); err != nil {
+		htmxError(w, http.StatusInternalServerError, "保存失败")
+		return
+	}
+	if err := h.settingsStore.SetSetting("announcement_enabled", enabled); err != nil {
+		htmxError(w, http.StatusInternalServerError, "保存失败")
+		return
+	}
+	w.Header().Set("HX-Reswap", "none")
+	w.Header().Set("HX-Trigger", `{"showToast":{"msg":"公告已保存","type":"success"}}`)
+	w.WriteHeader(http.StatusOK)
 }
 
 // changePassword 修改管理员密码。
@@ -1960,9 +2009,12 @@ type userNodeInfo struct {
 
 // userPortalData 传入用户主页模板的数据。
 type userPortalData struct {
-	User   users.User
-	SubURL string
-	Nodes  []userNodeInfo
+	User                 users.User
+	SubURL               string
+	Nodes                []userNodeInfo
+	AnnouncementTitle   string
+	AnnouncementContent string
+	HasAnnouncement     bool
 }
 
 // subURL 根据请求构造完整的订阅链接。
@@ -2011,10 +2063,23 @@ func (h *Handler) userPortalPage(w http.ResponseWriter, r *http.Request) {
 		nodeInfos = append(nodeInfos, userNodeInfo{Name: node.Name, Protocols: protocols})
 	}
 
+	portalData := userPortalData{User: user, SubURL: subURL(r, user.SubToken), Nodes: nodeInfos}
+	if h.settingsStore != nil {
+		enabled, _ := h.settingsStore.GetSetting("announcement_enabled")
+		if enabled == "true" {
+			title, _ := h.settingsStore.GetSetting("announcement_title")
+			content, _ := h.settingsStore.GetSetting("announcement_content")
+			if title != "" || content != "" {
+				portalData.HasAnnouncement = true
+				portalData.AnnouncementTitle = title
+				portalData.AnnouncementContent = content
+			}
+		}
+	}
 	w.Header().Set("X-Robots-Tag", "noindex")
 	h.renderPage(w, "user_portal", pageData{
 		Page: "user_portal",
-		Data: userPortalData{User: user, SubURL: subURL(r, user.SubToken), Nodes: nodeInfos},
+		Data: portalData,
 	})
 }
 
