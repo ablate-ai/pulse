@@ -132,7 +132,6 @@ func (db *DB) init() error {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_user_inbounds_user_id ON user_inbounds(user_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_user_inbounds_node_id ON user_inbounds(node_id);`,
-		`CREATE INDEX IF NOT EXISTS idx_user_inbounds_inbound_id ON user_inbounds(inbound_id);`,
 		// sessions：管理员登录 session，持久化以便服务重启后保持登录态
 		`CREATE TABLE IF NOT EXISTS sessions (
 			token      TEXT PRIMARY KEY,
@@ -176,6 +175,10 @@ func (db *DB) init() error {
 	}
 	if err := db.migrateOutboundsTable(); err != nil {
 		return err
+	}
+	// inbound_id 索引必须在迁移完成后创建，避免旧库中该列尚不存在时报错
+	if _, err := db.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_user_inbounds_inbound_id ON user_inbounds(inbound_id)`); err != nil {
+		return fmt.Errorf("init sqlite schema: create idx_user_inbounds_inbound_id: %w", err)
 	}
 	return nil
 }
