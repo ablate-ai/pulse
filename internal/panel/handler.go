@@ -407,12 +407,22 @@ func (h *Handler) usersListPartial(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 按关键词和状态过滤
+	now := time.Now()
+	expiringDeadline := now.Add(7 * 24 * time.Hour)
 	filtered := make([]users.User, 0, len(allUsers))
 	for _, u := range allUsers {
 		if q != "" && !strings.Contains(strings.ToLower(u.Username), q) {
 			continue
 		}
-		if statusFilter != "" && u.EffectiveStatus() != statusFilter {
+		if statusFilter == "expiring" {
+			// 虚拟过滤：7 天内到期的活跃用户
+			if u.EffectiveStatus() != users.StatusActive {
+				continue
+			}
+			if u.ExpireAt == nil || !u.ExpireAt.After(now) || !u.ExpireAt.Before(expiringDeadline) {
+				continue
+			}
+		} else if statusFilter != "" && u.EffectiveStatus() != statusFilter {
 			continue
 		}
 		filtered = append(filtered, u)

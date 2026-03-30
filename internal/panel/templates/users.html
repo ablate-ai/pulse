@@ -30,7 +30,7 @@
                hx-target="#users-tbody"
                hx-include="[name='status-filter']"
                class="flex-1 bg-gray-900 border border-gray-800 rounded-lg px-4 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors">
-        <select name="status-filter"
+        <select id="status-filter" name="status-filter"
                 hx-get="/panel/users/list"
                 hx-trigger="change"
                 hx-target="#users-tbody"
@@ -69,6 +69,7 @@
           <tbody id="users-tbody"
                  hx-get="/panel/users/list"
                  hx-trigger="load"
+                 hx-include="[name='status-filter']"
                  hx-swap="innerHTML">
           </tbody>
         </table>
@@ -81,6 +82,17 @@
 {{template "toast" .}}
 
 <script>
+// 从 dashboard "需关注" 卡片跳转时，预设状态筛选
+(function() {
+  const params = new URLSearchParams(location.search);
+  const status = params.get('status');
+  if (!status) return;
+  // expiring 是前端虚拟状态，映射到 active + 近期过期，用搜索框无法直接过滤
+  // 其余状态直接映射到 select
+  const sel = document.getElementById('status-filter');
+  if (sel && status !== 'expiring') sel.value = status;
+})();
+
 function copySubLink(subToken) {
   const url = window.location.origin + '/sub/' + subToken;
   if (navigator.clipboard && navigator.clipboard.writeText) {

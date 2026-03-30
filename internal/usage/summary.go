@@ -26,12 +26,13 @@ type Summary struct {
 	NodeStats  []NodeStat `json:"node_stats"`
 
 	// 用户（按有效状态分组）
-	UsersCount         int `json:"users_count"`
-	OnlineUsersCount   int `json:"online_users_count"`
-	ActiveUsersCount   int `json:"active_users_count"`
-	DisabledUsersCount int `json:"disabled_users_count"`
-	ExpiredUsersCount  int `json:"expired_users_count"`
-	LimitedUsersCount  int `json:"limited_users_count"`
+	UsersCount          int `json:"users_count"`
+	OnlineUsersCount    int `json:"online_users_count"`
+	ActiveUsersCount    int `json:"active_users_count"`
+	DisabledUsersCount  int `json:"disabled_users_count"`
+	ExpiredUsersCount   int `json:"expired_users_count"`
+	LimitedUsersCount   int `json:"limited_users_count"`
+	ExpiringUsersCount  int `json:"expiring_users_count"` // 7 天内到期的活跃用户
 
 	// 流量
 	TotalUploadBytes   int64 `json:"total_upload_bytes"`
@@ -74,6 +75,7 @@ func Build(nodeStore nodes.Store, userStore users.Store) (Summary, error) {
 	s.TotalUsedBytes = s.TotalUploadBytes + s.TotalDownloadBytes
 
 	now := time.Now()
+	expiringDeadline := now.Add(7 * 24 * time.Hour)
 	for _, u := range usersList {
 		if u.OnlineAt != nil && now.Sub(*u.OnlineAt) <= OnlineThreshold {
 			s.OnlineUsersCount++
@@ -81,6 +83,9 @@ func Build(nodeStore nodes.Store, userStore users.Store) (Summary, error) {
 		switch u.EffectiveStatus() {
 		case users.StatusActive:
 			s.ActiveUsersCount++
+			if u.ExpireAt != nil && u.ExpireAt.After(now) && u.ExpireAt.Before(expiringDeadline) {
+				s.ExpiringUsersCount++
+			}
 		case users.StatusDisabled:
 			s.DisabledUsersCount++
 		case users.StatusExpired:

@@ -1,10 +1,11 @@
 {{define "partial-stats"}}
 <div class="space-y-4">
-  <!-- 用户状态 -->
+  <!-- 用户概览 -->
   <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
     <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-      <div class="text-2xl font-bold text-emerald-400">{{.Data.ActiveUsersCount}}</div>
-      <div class="text-xs text-gray-500 mt-1">活跃用户</div>
+      <div class="text-2xl font-bold text-gray-100">{{.Data.UsersCount}}</div>
+      <div class="text-xs text-gray-500 mt-1">用户总数</div>
+      <div class="text-xs text-gray-600 mt-1.5">活跃 {{.Data.ActiveUsersCount}} · 禁用 {{.Data.DisabledUsersCount}}</div>
     </div>
     <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
       <div class="flex items-center gap-1.5">
@@ -12,41 +13,48 @@
         {{if gt .Data.OnlineUsersCount 0}}<span class="inline-block w-2 h-2 rounded-full bg-teal-400 animate-pulse"></span>{{end}}
       </div>
       <div class="text-xs text-gray-500 mt-1">当前在线</div>
+      <div class="text-xs text-gray-600 mt-1.5">3 分钟内有流量</div>
     </div>
     <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-      <div class="text-2xl font-bold text-yellow-400">{{.Data.LimitedUsersCount}}</div>
-      <div class="text-xs text-gray-500 mt-1">流量超限</div>
+      <div class="text-2xl font-bold text-gray-100">{{formatBytes .Data.TotalUsedBytes}}</div>
+      <div class="text-xs text-gray-500 mt-1">累计流量</div>
+      <div class="text-xs text-gray-600 mt-1.5">↑ {{formatBytes .Data.TotalUploadBytes}} · ↓ {{formatBytes .Data.TotalDownloadBytes}}</div>
     </div>
     <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-      <div class="text-2xl font-bold text-red-400">{{.Data.ExpiredUsersCount}}</div>
-      <div class="text-xs text-gray-500 mt-1">已过期</div>
+      <div class="text-2xl font-bold text-gray-100">{{.Data.NodesCount}}</div>
+      <div class="text-xs text-gray-500 mt-1">节点数</div>
+      <div class="text-xs text-gray-600 mt-1.5">刷新间隔 30s</div>
     </div>
   </div>
 
-  <!-- 流量 & 节点 -->
-  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-      <div class="text-2xl font-bold text-gray-100">{{formatBytes .Data.TotalUsedBytes}}</div>
-      <div class="text-xs text-gray-500 mt-1">总流量消耗</div>
+  <!-- 需关注 -->
+  {{if or (gt .Data.ExpiringUsersCount 0) (gt .Data.ExpiredUsersCount 0) (gt .Data.LimitedUsersCount 0)}}
+  <div class="bg-gray-900 rounded-xl border border-amber-900/40 overflow-hidden">
+    <div class="px-5 py-2.5 border-b border-gray-800 flex items-center gap-2">
+      <svg class="w-3.5 h-3.5 text-amber-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+      <span class="text-xs font-medium text-amber-400">需关注</span>
     </div>
-    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-      <div class="text-2xl font-bold text-sky-400">{{formatBytes .Data.TotalUploadBytes}}</div>
-      <div class="text-xs text-gray-500 mt-1">上行流量</div>
-    </div>
-    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-      <div class="text-2xl font-bold text-violet-400">{{formatBytes .Data.TotalDownloadBytes}}</div>
-      <div class="text-xs text-gray-500 mt-1">下行流量</div>
-    </div>
-    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-      <div class="text-2xl font-bold text-gray-100">{{.Data.NodesCount}} <span class="text-sm font-normal text-gray-500">节点</span></div>
-      <div class="text-xs text-gray-500 mt-1">共 {{.Data.UsersCount}} 用户</div>
+    <div class="grid grid-cols-3 divide-x divide-gray-800">
+      <a href="/users?status=expiring" class="flex flex-col items-center py-4 hover:bg-gray-800/50 transition-colors group">
+        <div class="text-2xl font-bold {{if gt .Data.ExpiringUsersCount 0}}text-orange-400{{else}}text-gray-600{{end}}">{{.Data.ExpiringUsersCount}}</div>
+        <div class="text-xs text-gray-500 mt-1">7 天内到期</div>
+      </a>
+      <a href="/users?status=expired" class="flex flex-col items-center py-4 hover:bg-gray-800/50 transition-colors group">
+        <div class="text-2xl font-bold {{if gt .Data.ExpiredUsersCount 0}}text-red-400{{else}}text-gray-600{{end}}">{{.Data.ExpiredUsersCount}}</div>
+        <div class="text-xs text-gray-500 mt-1">已过期</div>
+      </a>
+      <a href="/users?status=limited" class="flex flex-col items-center py-4 hover:bg-gray-800/50 transition-colors group">
+        <div class="text-2xl font-bold {{if gt .Data.LimitedUsersCount 0}}text-yellow-400{{else}}text-gray-600{{end}}">{{.Data.LimitedUsersCount}}</div>
+        <div class="text-xs text-gray-500 mt-1">流量超限</div>
+      </a>
     </div>
   </div>
+  {{end}}
 
   <!-- 节点流量明细 -->
   {{if .Data.NodeStats}}
   <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-    <div class="px-5 py-3 border-b border-gray-800">
+    <div class="px-5 py-2.5 border-b border-gray-800">
       <span class="text-xs font-medium text-gray-400 uppercase tracking-wider">节点流量</span>
     </div>
     <div class="divide-y divide-gray-800">
