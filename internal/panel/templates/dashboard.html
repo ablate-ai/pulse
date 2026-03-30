@@ -14,7 +14,7 @@
         <p class="text-sm text-gray-500 mt-0.5">系统概览</p>
       </div>
 
-      <div hx-get="/panel/stats" hx-trigger="load, every 30s" hx-swap="innerHTML">
+      <div id="stats-container" hx-get="/panel/stats" hx-trigger="load, every 30s" hx-swap="innerHTML">
         <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
             <div class="text-2xl font-bold text-gray-100">—</div>

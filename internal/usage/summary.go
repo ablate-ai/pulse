@@ -20,6 +20,15 @@ type NodeStat struct {
 	DownloadBytes int64  `json:"download_bytes"`
 }
 
+// NodePeriodStat 节点在选定时段内的流量（来自 daily_usage 表，不受用户重置影响）。
+type NodePeriodStat struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	UploadBytes   int64  `json:"upload_bytes"`
+	DownloadBytes int64  `json:"download_bytes"`
+	TotalBytes    int64  `json:"total_bytes"`
+}
+
 // DailyTrafficPoint 某日所有节点合并后的流量点（用于趋势图）。
 type DailyTrafficPoint struct {
 	Date          string  // YYYY-MM-DD
@@ -50,11 +59,18 @@ type Summary struct {
 	TotalDownloadBytes int64 `json:"total_download_bytes"`
 	TotalUsedBytes     int64 `json:"total_used_bytes"`
 
-	// 近 14 天每日流量趋势
+	// 每日流量趋势（天数由 days 参数控制）
 	DailyTraffic []DailyTrafficPoint `json:"daily_traffic"`
+
+	// 选定时段内各节点流量对比
+	NodePeriodStats []NodePeriodStat `json:"node_period_stats"`
+
+	// 当前选中的时间范围（天数）
+	Days        int   `json:"days"`
+	DaysOptions []int `json:"days_options"`
 }
 
-func Build(nodeStore nodes.Store, userStore users.Store) (Summary, error) {
+func Build(nodeStore nodes.Store, userStore users.Store, days int) (Summary, error) {
 	nodesList, err := nodeStore.List()
 	if err != nil {
 		return Summary{}, err
@@ -75,10 +91,16 @@ func Build(nodeStore nodes.Store, userStore users.Store) (Summary, error) {
 		})
 	}
 
+	if days <= 0 {
+		days = 14
+	}
+
 	s := Summary{
-		NodesCount: len(nodesList),
-		NodeStats:  nodeStats,
-		UsersCount: len(usersList),
+		NodesCount:  len(nodesList),
+		NodeStats:   nodeStats,
+		UsersCount:  len(usersList),
+		Days:        days,
+		DaysOptions: []int{7, 14, 30, 90},
 	}
 
 	// 流量总览从节点累计值汇总，不受用户流量重置影响
@@ -109,9 +131,9 @@ func Build(nodeStore nodes.Store, userStore users.Store) (Summary, error) {
 		}
 	}
 
-	const dailyDays = 14
-	dailyRaw, _ := nodeStore.ListNodeDailyUsage(dailyDays)
-	s.DailyTraffic = aggregateDailyTraffic(dailyRaw, dailyDays)
+	dailyRaw, _ := nodeStore.ListNodeDailyUsage(days)
+	s.DailyTraffic = aggregateDailyTraffic(dailyRaw, days)
+	s.NodePeriodStats = aggregateNodePeriodStats(dailyRaw, nodesList)
 
 	return s, nil
 }
@@ -161,5 +183,26 @@ func aggregateDailyTraffic(raw []nodes.NodeDailyUsage, days int) []DailyTrafficP
 		}
 	}
 
+	return result
+}
+
+// aggregateNodePeriodStats 按节点汇总时段内的流量增量（来自 daily_usage 原始记录）。
+func aggregateNodePeriodStats(raw []nodes.NodeDailyUsage, nodeList []nodes.Node) []NodePeriodStat {
+	byNode := make(map[string]*NodePeriodStat, len(nodeList))
+	for _, n := range nodeList {
+		ns := &NodePeriodStat{ID: n.ID, Name: n.Name}
+		byNode[n.ID] = ns
+	}
+	for _, r := range raw {
+		if ns, ok := byNode[r.NodeID]; ok {
+			ns.UploadBytes += r.UploadBytes
+			ns.DownloadBytes += r.DownloadBytes
+			ns.TotalBytes += r.UploadBytes + r.DownloadBytes
+		}
+	}
+	result := make([]NodePeriodStat, 0, len(nodeList))
+	for _, n := range nodeList {
+		result = append(result, *byNode[n.ID])
+	}
 	return result
 }

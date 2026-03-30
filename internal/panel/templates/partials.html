@@ -51,10 +51,24 @@
   </div>
   {{end}}
 
-  <!-- 近 14 天流量趋势 -->
+  <!-- 流量趋势（带时间范围切换） -->
   {{if .Data.DailyTraffic}}
   <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-    <div class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">近 14 天流量</div>
+    <div class="flex items-center justify-between mb-3">
+      <div class="text-xs font-medium text-gray-500 uppercase tracking-wide">流量趋势</div>
+      <div class="flex items-center gap-1">
+        {{$days := .Data.Days}}
+        {{range .Data.DaysOptions}}
+        <button
+          hx-get="/panel/stats?days={{.}}"
+          hx-target="#stats-container"
+          hx-swap="innerHTML"
+          class="text-xs px-2 py-0.5 rounded transition-colors {{if eq . $days}}bg-indigo-600 text-white{{else}}bg-gray-800 text-gray-400 hover:bg-gray-700{{end}}">
+          {{.}}天
+        </button>
+        {{end}}
+      </div>
+    </div>
     <div class="flex items-end gap-px h-16">
       {{range .Data.DailyTraffic}}
       <div class="flex-1 flex flex-col justify-end" title="{{.Date}}&#10;{{formatBytes .TotalBytes}}">
@@ -72,11 +86,33 @@
   </div>
   {{end}}
 
-  <!-- 节点流量明细 -->
+  <!-- 节点流量对比（选定时段增量） -->
+  {{if .Data.NodePeriodStats}}
+  <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+    <div class="px-5 py-2.5 border-b border-gray-800 flex items-center justify-between">
+      <span class="text-xs font-medium text-gray-400 uppercase tracking-wider">节点流量对比</span>
+      <span class="text-xs text-gray-600">近 {{.Data.Days}} 天增量</span>
+    </div>
+    <div class="divide-y divide-gray-800">
+      {{range .Data.NodePeriodStats}}
+      <div class="flex items-center justify-between px-5 py-3">
+        <span class="text-sm text-gray-300">{{.Name}}</span>
+        <div class="flex items-center gap-4 text-xs">
+          <span class="text-sky-400">↑ {{formatBytes .UploadBytes}}</span>
+          <span class="text-violet-400">↓ {{formatBytes .DownloadBytes}}</span>
+          <span class="text-gray-500">共 {{formatBytes .TotalBytes}}</span>
+        </div>
+      </div>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+
+  <!-- 节点累计流量明细 -->
   {{if .Data.NodeStats}}
   <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
     <div class="px-5 py-2.5 border-b border-gray-800">
-      <span class="text-xs font-medium text-gray-400 uppercase tracking-wider">节点流量</span>
+      <span class="text-xs font-medium text-gray-400 uppercase tracking-wider">节点累计流量</span>
     </div>
     <div class="divide-y divide-gray-800">
       {{range .Data.NodeStats}}

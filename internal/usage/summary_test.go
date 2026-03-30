@@ -31,7 +31,7 @@ func TestBuild(t *testing.T) {
 	_, _ = userStore.UpsertUserInbound(users.UserInbound{ID: "u2-ib0", UserID: "u2", NodeID: "node-1", UUID: "uuid-bob", Secret: "secret-bob"})
 	_, _ = userStore.UpsertUserInbound(users.UserInbound{ID: "u3-ib0", UserID: "u3", NodeID: "node-2", UUID: "uuid-carol", Secret: "secret-carol"})
 
-	summary, err := Build(nodeStore, userStore)
+	summary, err := Build(nodeStore, userStore, 14)
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}

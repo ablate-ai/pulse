@@ -388,7 +388,16 @@ func (h *Handler) nodesPage(w http.ResponseWriter, r *http.Request) {
 // ─── HTMX Partials ───────────────────────────────────────────────────────────
 
 func (h *Handler) statsPartial(w http.ResponseWriter, r *http.Request) {
-	summary, err := usage.Build(h.nodeStore, h.userStore)
+	days := 14
+	switch r.URL.Query().Get("days") {
+	case "7":
+		days = 7
+	case "30":
+		days = 30
+	case "90":
+		days = 90
+	}
+	summary, err := usage.Build(h.nodeStore, h.userStore, days)
 	if err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to get stats: "+err.Error())
 		return

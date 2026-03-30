@@ -89,7 +89,7 @@ func Run() error {
 	mux.Handle("/v1/auth/me", authManager.Middleware(http.HandlerFunc(authManager.HandleMe)))
 	protectedV1 := http.NewServeMux()
 	protectedV1.HandleFunc("/v1/system/info", func(w http.ResponseWriter, r *http.Request) {
-		summary, err := usage.Build(store, userStore)
+		summary, err := usage.Build(store, userStore, 14)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
