@@ -59,6 +59,7 @@ type UserUsage struct {
 	UploadTotal   int64  `json:"upload_total"`
 	DownloadTotal int64  `json:"download_total"`
 	Connections   int    `json:"connections"`
+	Devices       int    `json:"devices"`
 }
 
 type ConfigRequest struct {

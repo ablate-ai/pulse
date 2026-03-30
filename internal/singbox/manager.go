@@ -82,6 +82,7 @@ type UserUsage struct {
 	UploadTotal   int64  `json:"upload_total"`
 	DownloadTotal int64  `json:"download_total"`
 	Connections   int    `json:"connections"`
+	Devices       int    `json:"devices"`
 }
 
 func NewManager() *Manager {
@@ -335,7 +336,8 @@ func (m *Manager) Usage() UsageStats {
 		ensureUser(user)
 	}
 
-	// 叠加当前活跃连接的字节数
+	// 叠加当前活跃连接的字节数，并统计唯一 source IP 作为在线设备数
+	userIPs := make(map[string]map[string]struct{})
 	for _, meta := range traffic.Connections() {
 		if meta == nil {
 			continue
@@ -352,6 +354,19 @@ func (m *Manager) Usage() UsageStats {
 			item.DownloadTotal += meta.Download.Load()
 		}
 		item.Connections++
+		// 统计唯一 source IP
+		ip := meta.Metadata.Source.Addr.String()
+		if ip != "" {
+			if userIPs[user] == nil {
+				userIPs[user] = make(map[string]struct{})
+			}
+			userIPs[user][ip] = struct{}{}
+		}
+	}
+	for user, ips := range userIPs {
+		if item, ok := userIndex[user]; ok {
+			item.Devices = len(ips)
+		}
 	}
 
 	sort.Slice(stats.Users, func(i, j int) bool {

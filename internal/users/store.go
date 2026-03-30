@@ -40,6 +40,7 @@ type User struct {
 	LastTrafficResetAt     *time.Time `json:"last_traffic_reset_at,omitempty"`
 	OnlineAt               *time.Time `json:"online_at,omitempty"`
 	Connections            int        `json:"connections"`
+	Devices                int        `json:"devices"`
 	CreatedAt              time.Time  `json:"created_at"`
 	SubToken               string     `json:"sub_token,omitempty"`
 }

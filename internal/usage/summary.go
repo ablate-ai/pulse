@@ -56,6 +56,7 @@ type Summary struct {
 
 	// 连接
 	TotalConnections int `json:"total_connections"`
+	TotalDevices     int `json:"total_devices"`
 
 	// 流量
 	TotalUploadBytes   int64 `json:"total_upload_bytes"`
@@ -120,6 +121,7 @@ func Build(nodeStore nodes.Store, userStore users.Store, days int) (Summary, err
 			s.OnlineUsersCount++
 		}
 		s.TotalConnections += u.Connections
+		s.TotalDevices += u.Devices
 		switch u.EffectiveStatus() {
 		case users.StatusActive:
 			s.ActiveUsersCount++

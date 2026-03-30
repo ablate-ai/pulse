@@ -115,6 +115,7 @@ func (db *DB) init() error {
 			last_traffic_reset_at TEXT,
 			online_at TEXT,
 			connections INTEGER NOT NULL DEFAULT 0,
+			devices INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL
 		);`,
 		// user_inbounds：用户对节点的访问凭据（一条记录对应一个 user+node 对）
@@ -305,6 +306,12 @@ func (db *DB) migrateUsersTable() error {
 		}
 	}
 
+	if _, ok := columns["devices"]; !ok {
+		if _, err := db.conn.Exec(`ALTER TABLE users ADD COLUMN devices INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("migrate users add devices: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -447,6 +454,7 @@ func (db *DB) rebuildUsersTable(columns map[string]struct{}) error {
 			last_traffic_reset_at TEXT,
 			online_at TEXT,
 			connections INTEGER NOT NULL DEFAULT 0,
+			devices INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL,
 			sub_token TEXT NOT NULL DEFAULT ''
 		)

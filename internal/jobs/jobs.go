@@ -82,9 +82,10 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			}
 			prevEnabled := user.EffectiveEnabled()
 
-			// 本轮首次处理该用户时，清零连接数，确保跨节点累加从零开始
+			// 本轮首次处理该用户时，清零连接数和设备数，确保跨节点累加从零开始
 			if _, seen := connResetUsers[user.ID]; !seen {
 				user.Connections = 0
+				user.Devices = 0
 				connResetUsers[user.ID] = struct{}{}
 			}
 
@@ -97,8 +98,9 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 				nodeDownloadDelta += downloadDelta
 				acc.SyncedUploadBytes = stats.UploadTotal
 				acc.SyncedDownloadBytes = stats.DownloadTotal
-				// 累加连接数（支持多节点求和）
+				// 累加连接数和在线设备数（支持多节点求和）
 				user.Connections += stats.Connections
+				user.Devices += stats.Devices
 				// 有新增流量则更新在线时间
 				if uploadDelta > 0 || downloadDelta > 0 {
 					now := time.Now().UTC()
