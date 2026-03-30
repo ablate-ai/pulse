@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gofrs/uuid/v5"
 	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
 	_ "github.com/sagernet/sing-box/experimental/clashapi"
@@ -37,6 +38,14 @@ type Manager struct {
 	configFile  string // 持久化路径，非空时 Start/Stop 会读写该文件
 	subscribers map[int64]chan string
 	nextSubID   int64
+
+	// 每用户流量累积器：汇总已关闭连接的字节数。
+	// sing-box 的 ClosedConnections() 是容量 1000 的环形缓冲，超限后旧连接被驱逐，
+	// 驱逐时字节数丢失会导致游标判断误判为节点重启，造成流量重复计算。
+	// 通过追踪已见过的连接 ID，在驱逐发生前捕获字节，保证累积值单调递增。
+	closedUserUpload   map[string]int64
+	closedUserDownload map[string]int64
+	seenClosedConnIDs  map[uuid.UUID]struct{}
 }
 
 type trafficManager interface {
@@ -77,8 +86,11 @@ type UserUsage struct {
 
 func NewManager() *Manager {
 	return &Manager{
-		logs:        make([]string, 0, maxLogs),
-		subscribers: make(map[int64]chan string),
+		logs:               make([]string, 0, maxLogs),
+		subscribers:        make(map[int64]chan string),
+		closedUserUpload:   make(map[string]int64),
+		closedUserDownload: make(map[string]int64),
+		seenClosedConnIDs:  make(map[uuid.UUID]struct{}),
 	}
 }
 
@@ -86,9 +98,12 @@ func NewManager() *Manager {
 // configFile 为保存最近一次配置的文件路径；启动成功后写入，显式 Stop 后删除。
 func NewManagerWithPersistence(configFile string) *Manager {
 	return &Manager{
-		logs:        make([]string, 0, maxLogs),
-		configFile:  configFile,
-		subscribers: make(map[int64]chan string),
+		logs:               make([]string, 0, maxLogs),
+		configFile:         configFile,
+		subscribers:        make(map[int64]chan string),
+		closedUserUpload:   make(map[string]int64),
+		closedUserDownload: make(map[string]int64),
+		seenClosedConnIDs:  make(map[uuid.UUID]struct{}),
 	}
 }
 
@@ -185,6 +200,10 @@ func (m *Manager) Stop() error {
 		m.instance = nil
 		m.startedAt = time.Time{}
 		m.traffic = nil
+		// sing-box 重启后连接计数从零开始，清空累积器避免游标错位
+		m.closedUserUpload = make(map[string]int64)
+		m.closedUserDownload = make(map[string]int64)
+		m.seenClosedConnIDs = make(map[uuid.UUID]struct{})
 		m.appendLogLocked("sing-box stopped")
 	}
 	m.mu.Unlock()
@@ -254,37 +273,85 @@ func (m *Manager) Usage() UsageStats {
 	stats.UploadTotal, stats.DownloadTotal = traffic.Total()
 	stats.Connections = traffic.ConnectionsLen()
 
+	m.mu.Lock()
+
+	// 将新出现的已关闭连接字节数累积到 per-user 计数器中。
+	// ClosedConnections() 是容量 1000 的环形缓冲，超限时旧连接被驱逐导致总量下降。
+	// 通过 seenClosedConnIDs 追踪已处理的连接，确保每条连接只计一次，
+	// 驱逐后字节数已在 closedUserUpload/Download 中保存，不会丢失。
+	closedConns := traffic.ClosedConnections()
+	newSeenIDs := make(map[uuid.UUID]struct{}, len(closedConns))
+	for _, meta := range closedConns {
+		newSeenIDs[meta.ID] = struct{}{}
+		if _, already := m.seenClosedConnIDs[meta.ID]; !already {
+			user := strings.TrimSpace(meta.Metadata.User)
+			if user == "" {
+				user = "anonymous"
+			}
+			if meta.Upload != nil {
+				m.closedUserUpload[user] += meta.Upload.Load()
+			}
+			if meta.Download != nil {
+				m.closedUserDownload[user] += meta.Download.Load()
+			}
+		}
+	}
+	// 只保留仍在缓冲区中的 ID，防止 map 无限增长
+	m.seenClosedConnIDs = newSeenIDs
+
+	// 快照累积值，供后续计算使用
+	closedUploadSnap := make(map[string]int64, len(m.closedUserUpload))
+	for k, v := range m.closedUserUpload {
+		closedUploadSnap[k] = v
+	}
+	closedDownloadSnap := make(map[string]int64, len(m.closedUserDownload))
+	for k, v := range m.closedUserDownload {
+		closedDownloadSnap[k] = v
+	}
+
+	m.mu.Unlock()
+
+	// 构建 per-user 统计：已关闭连接累积值 + 当前活跃连接实时字节数
 	userIndex := make(map[string]*UserUsage)
-	add := func(metadata *trafficontrol.TrackerMetadata, active bool) {
-		if metadata == nil {
-			return
-		}
-		user := strings.TrimSpace(metadata.Metadata.User)
-		if user == "" {
-			user = "anonymous"
-		}
+	ensureUser := func(user string) *UserUsage {
 		item, ok := userIndex[user]
 		if !ok {
-			stats.Users = append(stats.Users, UserUsage{User: user})
+			stats.Users = append(stats.Users, UserUsage{
+				User:          user,
+				UploadTotal:   closedUploadSnap[user],
+				DownloadTotal: closedDownloadSnap[user],
+			})
 			item = &stats.Users[len(stats.Users)-1]
 			userIndex[user] = item
 		}
-		if metadata.Upload != nil {
-			item.UploadTotal += metadata.Upload.Load()
-		}
-		if metadata.Download != nil {
-			item.DownloadTotal += metadata.Download.Load()
-		}
-		if active {
-			item.Connections++
-		}
+		return item
 	}
 
-	for _, metadata := range traffic.Connections() {
-		add(metadata, true)
+	// 预先为有已关闭流量的用户创建条目
+	for user := range closedUploadSnap {
+		ensureUser(user)
 	}
-	for _, metadata := range traffic.ClosedConnections() {
-		add(metadata, false)
+	for user := range closedDownloadSnap {
+		ensureUser(user)
+	}
+
+	// 叠加当前活跃连接的字节数
+	for _, meta := range traffic.Connections() {
+		if meta == nil {
+			continue
+		}
+		user := strings.TrimSpace(meta.Metadata.User)
+		if user == "" {
+			user = "anonymous"
+		}
+		item := ensureUser(user)
+		if meta.Upload != nil {
+			item.UploadTotal += meta.Upload.Load()
+		}
+		if meta.Download != nil {
+			item.DownloadTotal += meta.Download.Load()
+		}
+		item.Connections++
 	}
 
 	sort.Slice(stats.Users, func(i, j int) bool {
