@@ -14,6 +14,21 @@
         <p class="text-sm text-gray-500 mt-0.5">系统设置</p>
       </div>
 
+      <!-- Node 安装证书 -->
+      {{if .Data.ClientCert}}
+      <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-4">
+        <h2 class="text-sm font-semibold text-gray-100 mb-1">Node 客户端证书</h2>
+        <p class="text-xs text-gray-500 mb-3">安装 node 时，将以下证书内容粘贴到安装脚本提示处。</p>
+        <div class="relative">
+          <textarea id="client-cert-pem" readonly rows="8"
+                    class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-300 font-mono resize-none focus:outline-none">{{.Data.ClientCert}}</textarea>
+          <button type="button"
+                  onclick="navigator.clipboard.writeText(document.getElementById('client-cert-pem').value).then(()=>{ this.textContent='已复制'; setTimeout(()=>this.textContent='复制',1500) })"
+                  class="absolute top-2 right-2 px-2 py-1 text-xs text-gray-400 hover:text-gray-100 bg-gray-700 hover:bg-gray-600 rounded transition-colors">复制</button>
+        </div>
+      </div>
+      {{end}}
+
       <!-- 修改密码 -->
       <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-4">
         <h2 class="text-sm font-semibold text-gray-100 mb-4">修改管理员密码</h2>

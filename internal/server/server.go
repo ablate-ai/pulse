@@ -116,7 +116,7 @@ func Run() error {
 	serverapi.RegisterSubAPI(mux, userStore, inboundStore)
 
 	// 面板（HTMX + 服务端模板）
-	panelHandler, err := panel.New(authManager, userStore, store, inboundStore, outboundStore, nodeAPI.Dial, applyOpts, cfg.ServerAddr)
+	panelHandler, err := panel.New(authManager, userStore, store, inboundStore, outboundStore, nodeAPI.Dial, applyOpts, cfg.ServerAddr, cfg.ServerNodeClientCertFile)
 	if err != nil {
 		return fmt.Errorf("初始化面板: %w", err)
 	}

@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -37,15 +38,16 @@ const cookieName = "pulse_token"
 
 // Handler 面板 HTTP 处理器，持有所有依赖。
 type Handler struct {
-	auth          *auth.Manager
-	userStore     users.Store
-	nodeStore     nodes.Store
-	ibStore       inbounds.InboundStore
-	outboundStore outbounds.Store
-	dial          jobs.NodeDialer
-	applyOpts     jobs.ApplyOptions
-	tmpl          *template.Template
-	serverAddr    string
+	auth           *auth.Manager
+	userStore      users.Store
+	nodeStore      nodes.Store
+	ibStore        inbounds.InboundStore
+	outboundStore  outbounds.Store
+	dial           jobs.NodeDialer
+	applyOpts      jobs.ApplyOptions
+	tmpl           *template.Template
+	serverAddr     string
+	clientCertFile string // 面板客户端证书路径，用于 node 安装时粘贴
 }
 
 // pageData 传入完整页面模板的数据结构。
@@ -80,16 +82,18 @@ func New(
 	dial jobs.NodeDialer,
 	applyOpts jobs.ApplyOptions,
 	serverAddr string,
+	clientCertFile string,
 ) (*Handler, error) {
 	h := &Handler{
-		auth:          authMgr,
-		userStore:     userStore,
-		nodeStore:     nodeStore,
-		ibStore:       ibStore,
-		outboundStore: outboundStore,
-		dial:          dial,
-		applyOpts:     applyOpts,
-		serverAddr:    serverAddr,
+		auth:           authMgr,
+		userStore:      userStore,
+		nodeStore:      nodeStore,
+		ibStore:        ibStore,
+		outboundStore:  outboundStore,
+		dial:           dial,
+		applyOpts:      applyOpts,
+		serverAddr:     serverAddr,
+		clientCertFile: clientCertFile,
 	}
 
 	tmpl, err := template.New("").Funcs(templateFuncs()).ParseFS(embedFS, "templates/*.html")
@@ -671,11 +675,22 @@ func (h *Handler) batchUsers(w http.ResponseWriter, r *http.Request) {
 	h.renderUsersListFromStore(w)
 }
 
+type settingsData struct {
+	ClientCert string // 面板客户端证书 PEM，用于 node 安装时粘贴
+}
+
 // settingsPage 渲染设置页面。
 func (h *Handler) settingsPage(w http.ResponseWriter, r *http.Request) {
+	var cert string
+	if h.clientCertFile != "" {
+		if data, err := os.ReadFile(h.clientCertFile); err == nil {
+			cert = strings.TrimSpace(string(data))
+		}
+	}
 	h.renderPage(w, "settings", pageData{
 		Page:     "settings",
 		Username: h.currentUsername(r),
+		Data:     settingsData{ClientCert: cert},
 	})
 }
 
