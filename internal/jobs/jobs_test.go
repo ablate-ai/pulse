@@ -34,12 +34,14 @@ func TestShouldResetTraffic_Day(t *testing.T) {
 }
 
 func TestShouldResetTraffic_Month(t *testing.T) {
-	created := time.Now().AddDate(0, -1, -1)
-	if !ShouldResetTraffic(users.ResetStrategyMonth, created, nil, time.Now()) {
+	// 用固定时间避免月末 AddDate 规范化边界问题（如 3/30 - 1month = Feb30 → March2）
+	now := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
+	created := now.AddDate(0, -1, -1) // 2026-02-14，超过一个月
+	if !ShouldResetTraffic(users.ResetStrategyMonth, created, nil, now) {
 		t.Fatal("超过一个月应触发 month 重置")
 	}
-	created = time.Now().AddDate(0, 0, -15)
-	if ShouldResetTraffic(users.ResetStrategyMonth, created, nil, time.Now()) {
+	created = now.AddDate(0, 0, -15) // 2026-02-28，未超过一个月
+	if ShouldResetTraffic(users.ResetStrategyMonth, created, nil, now) {
 		t.Fatal("未超过一个月不应触发 month 重置")
 	}
 }

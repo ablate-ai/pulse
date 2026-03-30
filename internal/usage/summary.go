@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"fmt"
 	"time"
 
 	"pulse/internal/nodes"
@@ -17,6 +18,16 @@ type NodeStat struct {
 	Name          string `json:"name"`
 	UploadBytes   int64  `json:"upload_bytes"`
 	DownloadBytes int64  `json:"download_bytes"`
+}
+
+// DailyTrafficPoint 某日所有节点合并后的流量点（用于趋势图）。
+type DailyTrafficPoint struct {
+	Date          string  // YYYY-MM-DD
+	Label         string  // 显示标签，如 "3/30"
+	UploadBytes   int64
+	DownloadBytes int64
+	TotalBytes    int64
+	HeightPct     float64 // 0–100，相对于窗口内最大值
 }
 
 // Summary 仪表盘统计摘要。
@@ -38,6 +49,9 @@ type Summary struct {
 	TotalUploadBytes   int64 `json:"total_upload_bytes"`
 	TotalDownloadBytes int64 `json:"total_download_bytes"`
 	TotalUsedBytes     int64 `json:"total_used_bytes"`
+
+	// 近 14 天每日流量趋势
+	DailyTraffic []DailyTrafficPoint `json:"daily_traffic"`
 }
 
 func Build(nodeStore nodes.Store, userStore users.Store) (Summary, error) {
@@ -95,5 +109,57 @@ func Build(nodeStore nodes.Store, userStore users.Store) (Summary, error) {
 		}
 	}
 
+	const dailyDays = 14
+	dailyRaw, _ := nodeStore.ListNodeDailyUsage(dailyDays)
+	s.DailyTraffic = aggregateDailyTraffic(dailyRaw, dailyDays)
+
 	return s, nil
+}
+
+// aggregateDailyTraffic 将原始节点日记录按日期聚合，填充完整的 days 天窗口，并计算图表高度比例。
+func aggregateDailyTraffic(raw []nodes.NodeDailyUsage, days int) []DailyTrafficPoint {
+	byDate := make(map[string]*DailyTrafficPoint, days)
+	for _, r := range raw {
+		p, ok := byDate[r.Date]
+		if !ok {
+			t, _ := time.Parse("2006-01-02", r.Date)
+			byDate[r.Date] = &DailyTrafficPoint{
+				Date:  r.Date,
+				Label: fmt.Sprintf("%d/%d", int(t.Month()), t.Day()),
+			}
+			p = byDate[r.Date]
+		}
+		p.UploadBytes += r.UploadBytes
+		p.DownloadBytes += r.DownloadBytes
+		p.TotalBytes += r.UploadBytes + r.DownloadBytes
+	}
+
+	result := make([]DailyTrafficPoint, days)
+	now := time.Now().UTC()
+	for i := range result {
+		d := now.AddDate(0, 0, -(days - 1 - i))
+		dateStr := d.Format("2006-01-02")
+		if p, ok := byDate[dateStr]; ok {
+			result[i] = *p
+		} else {
+			result[i] = DailyTrafficPoint{
+				Date:  dateStr,
+				Label: fmt.Sprintf("%d/%d", int(d.Month()), d.Day()),
+			}
+		}
+	}
+
+	var maxBytes int64
+	for _, p := range result {
+		if p.TotalBytes > maxBytes {
+			maxBytes = p.TotalBytes
+		}
+	}
+	if maxBytes > 0 {
+		for i := range result {
+			result[i].HeightPct = float64(result[i].TotalBytes) / float64(maxBytes) * 100
+		}
+	}
+
+	return result
 }

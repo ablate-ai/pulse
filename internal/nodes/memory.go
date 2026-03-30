@@ -70,6 +70,14 @@ func (s *MemoryStore) UpdateCaddyConfig(nodeID, acmeEmail, panelDomain string, c
 	return nil
 }
 
+func (s *MemoryStore) AddNodeDailyUsage(nodeID, date string, upload, download int64) error {
+	return nil // 内存 store 仅用于测试，不持久化日统计
+}
+
+func (s *MemoryStore) ListNodeDailyUsage(days int) ([]NodeDailyUsage, error) {
+	return nil, nil
+}
+
 func (s *MemoryStore) List() ([]Node, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"pulse/internal/nodes"
 )
@@ -106,4 +107,42 @@ func (s *NodeStore) AddTraffic(nodeID string, upload, download int64) error {
 		return fmt.Errorf("add node traffic: %w", err)
 	}
 	return nil
+}
+
+func (s *NodeStore) AddNodeDailyUsage(nodeID, date string, upload, download int64) error {
+	_, err := s.db.Exec(`
+		INSERT INTO node_daily_usage (node_id, date, upload_bytes, download_bytes)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(node_id, date) DO UPDATE SET
+			upload_bytes   = upload_bytes   + excluded.upload_bytes,
+			download_bytes = download_bytes + excluded.download_bytes
+	`, nodeID, date, upload, download)
+	if err != nil {
+		return fmt.Errorf("add node daily usage: %w", err)
+	}
+	return nil
+}
+
+func (s *NodeStore) ListNodeDailyUsage(days int) ([]nodes.NodeDailyUsage, error) {
+	cutoff := time.Now().UTC().AddDate(0, 0, -days).Format("2006-01-02")
+	rows, err := s.db.Query(`
+		SELECT node_id, date, upload_bytes, download_bytes
+		FROM node_daily_usage
+		WHERE date >= ?
+		ORDER BY date ASC
+	`, cutoff)
+	if err != nil {
+		return nil, fmt.Errorf("list node daily usage: %w", err)
+	}
+	defer rows.Close()
+
+	var result []nodes.NodeDailyUsage
+	for rows.Next() {
+		var u nodes.NodeDailyUsage
+		if err := rows.Scan(&u.NodeID, &u.Date, &u.UploadBytes, &u.DownloadBytes); err != nil {
+			return nil, fmt.Errorf("scan node daily usage: %w", err)
+		}
+		result = append(result, u)
+	}
+	return result, rows.Err()
 }

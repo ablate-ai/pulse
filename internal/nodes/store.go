@@ -15,6 +15,14 @@ type Node struct {
 	CaddyEnabled     bool   `json:"caddy_enabled"`
 }
 
+// NodeDailyUsage 某节点某日的流量快照。
+type NodeDailyUsage struct {
+	NodeID        string
+	Date          string // YYYY-MM-DD
+	UploadBytes   int64
+	DownloadBytes int64
+}
+
 type Store interface {
 	Upsert(node Node) (Node, error)
 	Delete(id string) error
@@ -23,4 +31,8 @@ type Store interface {
 	// AddTraffic 原子性地将 upload/download 字节数累加到节点流量计数器。
 	AddTraffic(nodeID string, upload, download int64) error
 	UpdateCaddyConfig(nodeID, acmeEmail, panelDomain string, caddyEnabled bool) error
+	// AddNodeDailyUsage 将 delta 流量累加到当日统计桶（幂等 upsert）。
+	AddNodeDailyUsage(nodeID, date string, upload, download int64) error
+	// ListNodeDailyUsage 返回最近 days 天内所有节点的日流量记录。
+	ListNodeDailyUsage(days int) ([]NodeDailyUsage, error)
 }

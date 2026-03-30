@@ -118,6 +118,11 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			if err := nodeStore.AddTraffic(node.ID, nodeUploadDelta, nodeDownloadDelta); err != nil {
 				result.Errors = append(result.Errors, node.ID+": add traffic: "+err.Error())
 			}
+			// 写入日统计桶（用于历史趋势图）
+			date := time.Now().UTC().Format("2006-01-02")
+			if err := nodeStore.AddNodeDailyUsage(node.ID, date, nodeUploadDelta, nodeDownloadDelta); err != nil {
+				result.Errors = append(result.Errors, node.ID+": daily usage: "+err.Error())
+			}
 		}
 
 		if !reloadNeeded {

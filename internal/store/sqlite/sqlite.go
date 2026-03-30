@@ -140,6 +140,14 @@ func (db *DB) init() error {
 			key   TEXT PRIMARY KEY,
 			value TEXT NOT NULL DEFAULT ''
 		);`,
+		// node_daily_usage：节点按天流量 delta，供历史趋势图使用
+		`CREATE TABLE IF NOT EXISTS node_daily_usage (
+			node_id        TEXT NOT NULL,
+			date           TEXT NOT NULL,
+			upload_bytes   INTEGER NOT NULL DEFAULT 0,
+			download_bytes INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (node_id, date)
+		);`,
 	}
 
 	for _, stmt := range stmts {
