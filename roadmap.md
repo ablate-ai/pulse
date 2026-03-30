@@ -101,7 +101,7 @@
 - [x] 单用户多协议（同节点多 inbound，用户自动获得所有协议订阅链接）
 - [x] 订阅响应头（Subscription-Userinfo / Profile-Update-Interval）
 - [ ] 支持 Vmess
-- [ ] 支持分享链接生成
+- [x] 支持分享链接生成（用户列表一键复制订阅链接）
 - [ ] 支持二维码生成
 - [ ] 支持用户模板应用
 
@@ -132,7 +132,8 @@
 - [x] 完成 sing-box 日志查看器（per-node）
 - [x] Settings 页展示 Node 客户端证书（供安装 node 时粘贴）
 - [ ] 完成系统配置页（核心参数编辑）
-- [ ] 完成订阅相关前端交互（二维码 / 分享链接）
+- [x] 完成订阅链接复制（用户列表"订阅"按钮）
+- [ ] 完成订阅二维码生成
 
 ## Phase 7: CLI、发布与运维
 
@@ -161,7 +162,8 @@
 - [ ] 用户模板 CRUD 与批量开通
 - [ ] Vmess 支持
 - [ ] Clash / ClashMeta / V2Ray JSON / Outline 订阅输出
-- [ ] 分享链接与二维码生成
+- [x] 分享链接生成（用户列表一键复制）
+- [ ] 二维码生成
 - [ ] 定时任务：usage record 持久化 / 节点历史用量查询
 - [ ] Webhook 通知
 - [ ] Telegram Bot
