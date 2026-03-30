@@ -446,6 +446,7 @@ func (db *DB) rebuildUsersTable(columns map[string]struct{}) error {
 			on_hold_expire_at TEXT,
 			last_traffic_reset_at TEXT,
 			online_at TEXT,
+			connections INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL,
 			sub_token TEXT NOT NULL DEFAULT ''
 		)
