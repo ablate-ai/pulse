@@ -35,6 +35,8 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 	}
 
 	result := SyncUsageResult{Errors: make([]string, 0)}
+	// 记录本轮已首次处理的用户，确保连接数从零开始累加而非叠加上轮旧值
+	connResetUsers := make(map[string]struct{})
 
 	for _, node := range nodesList {
 		client, err := dial(node.ID)
@@ -80,6 +82,12 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			}
 			prevEnabled := user.EffectiveEnabled()
 
+			// 本轮首次处理该用户时，清零连接数，确保跨节点累加从零开始
+			if _, seen := connResetUsers[user.ID]; !seen {
+				user.Connections = 0
+				connResetUsers[user.ID] = struct{}{}
+			}
+
 			if stats, ok := usageByUser[user.Username]; ok {
 				uploadDelta := usageDelta(stats.UploadTotal, acc.SyncedUploadBytes)
 				downloadDelta := usageDelta(stats.DownloadTotal, acc.SyncedDownloadBytes)
@@ -89,6 +97,8 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 				nodeDownloadDelta += downloadDelta
 				acc.SyncedUploadBytes = stats.UploadTotal
 				acc.SyncedDownloadBytes = stats.DownloadTotal
+				// 累加连接数（支持多节点求和）
+				user.Connections += stats.Connections
 				// 有新增流量则更新在线时间
 				if uploadDelta > 0 || downloadDelta > 0 {
 					now := time.Now().UTC()

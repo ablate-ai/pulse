@@ -39,6 +39,7 @@ type User struct {
 	OnHoldExpireAt         *time.Time `json:"on_hold_expire_at,omitempty"`
 	LastTrafficResetAt     *time.Time `json:"last_traffic_reset_at,omitempty"`
 	OnlineAt               *time.Time `json:"online_at,omitempty"`
+	Connections            int        `json:"connections"`
 	CreatedAt              time.Time  `json:"created_at"`
 	SubToken               string     `json:"sub_token,omitempty"`
 }

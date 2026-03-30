@@ -21,9 +21,9 @@
       <div class="text-xs text-gray-600 mt-1.5">↑ {{formatBytes .Data.TotalUploadBytes}} · ↓ {{formatBytes .Data.TotalDownloadBytes}}</div>
     </div>
     <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-      <div class="text-2xl font-bold text-gray-100">{{.Data.NodesCount}}</div>
-      <div class="text-xs text-gray-500 mt-1">节点数</div>
-      <div class="text-xs text-gray-600 mt-1.5">刷新间隔 30s</div>
+      <div class="text-2xl font-bold text-gray-100">{{.Data.TotalConnections}}</div>
+      <div class="text-xs text-gray-500 mt-1">当前连接数</div>
+      <div class="text-xs text-gray-600 mt-1.5">节点 {{.Data.NodesCount}} 个</div>
     </div>
   </div>
 
@@ -156,6 +156,9 @@
   <td class="px-4 py-3 text-sm text-gray-400">{{formatExpire .ExpireAt}}</td>
   <td class="px-4 py-3 text-xs text-gray-500">
     {{if formatOnlineAt .OnlineAt}}<span class="text-emerald-500/80">● </span>{{formatOnlineAt .OnlineAt}}{{else}}<span class="text-gray-600">从未</span>{{end}}
+  </td>
+  <td class="px-4 py-3 text-xs text-gray-400">
+    {{if gt .Connections 0}}<span class="text-sky-400 font-medium">{{.Connections}}</span>{{else}}<span class="text-gray-600">0</span>{{end}}
   </td>
   <td class="px-4 py-3">
     <div class="flex items-center gap-1">

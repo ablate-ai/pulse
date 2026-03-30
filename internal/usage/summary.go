@@ -54,6 +54,9 @@ type Summary struct {
 	LimitedUsersCount   int `json:"limited_users_count"`
 	ExpiringUsersCount  int `json:"expiring_users_count"` // 7 天内到期的活跃用户
 
+	// 连接
+	TotalConnections int `json:"total_connections"`
+
 	// 流量
 	TotalUploadBytes   int64 `json:"total_upload_bytes"`
 	TotalDownloadBytes int64 `json:"total_download_bytes"`
@@ -116,6 +119,7 @@ func Build(nodeStore nodes.Store, userStore users.Store, days int) (Summary, err
 		if u.OnlineAt != nil && now.Sub(*u.OnlineAt) <= OnlineThreshold {
 			s.OnlineUsersCount++
 		}
+		s.TotalConnections += u.Connections
 		switch u.EffectiveStatus() {
 		case users.StatusActive:
 			s.ActiveUsersCount++

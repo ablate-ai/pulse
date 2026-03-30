@@ -114,6 +114,7 @@ func (db *DB) init() error {
 			on_hold_expire_at TEXT,
 			last_traffic_reset_at TEXT,
 			online_at TEXT,
+			connections INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL
 		);`,
 		// user_inbounds：用户对节点的访问凭据（一条记录对应一个 user+node 对）
@@ -295,6 +296,12 @@ func (db *DB) migrateUsersTable() error {
 	if _, ok := columns["on_hold_expire_at"]; !ok {
 		if _, err := db.conn.Exec(`ALTER TABLE users ADD COLUMN on_hold_expire_at TEXT`); err != nil {
 			return fmt.Errorf("migrate users add on_hold_expire_at: %w", err)
+		}
+	}
+
+	if _, ok := columns["connections"]; !ok {
+		if _, err := db.conn.Exec(`ALTER TABLE users ADD COLUMN connections INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("migrate users add connections: %w", err)
 		}
 	}
 
