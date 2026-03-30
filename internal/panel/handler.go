@@ -618,6 +618,22 @@ func (h *Handler) resetUserTraffic(w http.ResponseWriter, r *http.Request) {
 		htmxError(w, http.StatusInternalServerError, "failed to reset traffic: "+err.Error())
 		return
 	}
+
+	// 清空该用户所有凭据的流量同步游标，否则下次 SyncUsage 会把旧增量重新计入
+	accesses, err := h.userStore.ListUserInboundsByUser(id)
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to list user inbounds: "+err.Error())
+		return
+	}
+	for _, acc := range accesses {
+		acc.SyncedUploadBytes = 0
+		acc.SyncedDownloadBytes = 0
+		if _, err := h.userStore.UpsertUserInbound(acc); err != nil {
+			htmxError(w, http.StatusInternalServerError, "failed to reset cursor: "+err.Error())
+			return
+		}
+	}
+
 	h.renderUsersListFromStore(w)
 }
 
