@@ -47,7 +47,8 @@ func (s *UserStore) UpsertUser(user users.User) (users.User, error) {
 			on_hold_expire_at = excluded.on_hold_expire_at,
 			last_traffic_reset_at = excluded.last_traffic_reset_at,
 			online_at = excluded.online_at,
-			created_at = excluded.created_at
+			created_at = excluded.created_at,
+			sub_token = excluded.sub_token
 	`,
 		user.ID, user.Username, user.Status, user.Note, formatTimePtr(user.ExpireAt), user.DataLimitResetStrategy,
 		user.TrafficLimit, user.UploadBytes, user.DownloadBytes, user.UsedBytes,

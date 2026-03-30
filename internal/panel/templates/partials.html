@@ -165,6 +165,8 @@
               hx-on::after-request="document.getElementById('app-modal').showModal()">编辑</button>
       <button class="text-xs text-gray-400 hover:text-emerald-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
               onclick="copySubLink('{{.SubToken}}')">订阅</button>
+      <a href="/user/{{.SubToken}}" target="_blank"
+         class="text-xs text-gray-400 hover:text-sky-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors">主页</a>
       <button class="text-xs text-gray-400 hover:text-sky-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
               hx-post="/panel/users/{{.ID}}/reset-traffic"
               hx-target="#users-tbody"

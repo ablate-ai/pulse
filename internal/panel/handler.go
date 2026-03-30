@@ -121,6 +121,11 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /login", h.processLogin)
 	mux.HandleFunc("POST /logout", h.processLogout)
 
+	// 用户自助门户（以 sub_token 鉴权，无需管理员登录）
+	mux.HandleFunc("GET /user/{sub_token}", h.userPortalPage)
+	mux.HandleFunc("GET /api/me", h.apiMe)
+	mux.HandleFunc("POST /api/me/reset-token", h.apiResetToken)
+
 	// 页面路由（需要认证）
 	mux.HandleFunc("/", h.requireAuth(h.redirectDashboard))
 	mux.HandleFunc("GET /dashboard", h.requireAuth(h.dashboardPage))
@@ -1943,4 +1948,141 @@ func panelRandomToken(size int) string {
 		return fmt.Sprintf("pulse-secret-%d", time.Now().UnixNano())
 	}
 	return fmt.Sprintf("%x", buf)
+}
+
+// ─── 用户自助门户 ─────────────────────────────────────────────────────────────
+
+// userNodeInfo 用户主页展示的节点信息。
+type userNodeInfo struct {
+	Name      string
+	Protocols []string // e.g. ["VLESS", "Trojan", "Shadowsocks"]
+}
+
+// userPortalData 传入用户主页模板的数据。
+type userPortalData struct {
+	User   users.User
+	SubURL string
+	Nodes  []userNodeInfo
+}
+
+// subURL 根据请求构造完整的订阅链接。
+func subURL(r *http.Request, token string) string {
+	scheme := "https"
+	if r.TLS == nil && r.Header.Get("X-Forwarded-Proto") != "https" {
+		scheme = "http"
+	}
+	host := r.Host
+	if fwdHost := r.Header.Get("X-Forwarded-Host"); fwdHost != "" {
+		host = fwdHost
+	}
+	return scheme + "://" + host + "/sub/" + token
+}
+
+// userPortalPage 渲染用户主页（无需管理员认证，以 sub_token 鉴权）。
+func (h *Handler) userPortalPage(w http.ResponseWriter, r *http.Request) {
+	token := r.PathValue("sub_token")
+	user, err := h.userStore.GetUserBySubToken(token)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	// 收集该用户有权访问的节点及协议列表
+	accesses, _ := h.userStore.ListUserInboundsByUser(user.ID)
+	var nodeInfos []userNodeInfo
+	for _, acc := range accesses {
+		node, err := h.nodeStore.Get(acc.NodeID)
+		if err != nil {
+			continue
+		}
+		nodeInbounds, err := h.ibStore.ListInboundsByNode(acc.NodeID)
+		if err != nil {
+			continue
+		}
+		var protocols []string
+		seen := make(map[string]bool)
+		for _, ib := range nodeInbounds {
+			label := protocolLabel(ib.Protocol)
+			if !seen[label] {
+				seen[label] = true
+				protocols = append(protocols, label)
+			}
+		}
+		nodeInfos = append(nodeInfos, userNodeInfo{Name: node.Name, Protocols: protocols})
+	}
+
+	w.Header().Set("X-Robots-Tag", "noindex")
+	h.renderPage(w, "user_portal", pageData{
+		Page: "user_portal",
+		Data: userPortalData{User: user, SubURL: subURL(r, user.SubToken), Nodes: nodeInfos},
+	})
+}
+
+// protocolLabel 将协议内部名转为展示标签。
+func protocolLabel(p string) string {
+	switch p {
+	case "vless":
+		return "VLESS"
+	case "vmess":
+		return "VMess"
+	case "trojan":
+		return "Trojan"
+	case "shadowsocks":
+		return "Shadowsocks"
+	default:
+		return p
+	}
+}
+
+// apiMe 返回用户自身信息（JSON），以 ?token= 参数鉴权。
+func (h *Handler) apiMe(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	user, err := h.userStore.GetUserBySubToken(token)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"user not found"}`))
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"username":            user.Username,
+		"status":              user.EffectiveStatus(),
+		"upload_bytes":        user.UploadBytes,
+		"download_bytes":      user.DownloadBytes,
+		"used_bytes":          user.UsedBytes,
+		"traffic_limit_bytes": user.TrafficLimit,
+		"expire_at":           user.ExpireAt,
+		"sub_url":             subURL(r, user.SubToken),
+	})
+}
+
+// apiResetToken 重新生成用户订阅 token，以 ?token= 参数鉴权。
+func (h *Handler) apiResetToken(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	user, err := h.userStore.GetUserBySubToken(token)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"user not found"}`))
+		return
+	}
+	user.SubToken = panelRandomToken(16)
+	if _, err := h.userStore.UpsertUser(user); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"failed to reset token"}`))
+		return
+	}
+	// 若是 HTMX 请求，重定向到新门户页面
+	if isHTMX(r) {
+		w.Header().Set("HX-Redirect", "/user/"+user.SubToken)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"token":   user.SubToken,
+		"sub_url": subURL(r, user.SubToken),
+	})
 }
