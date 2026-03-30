@@ -2,14 +2,15 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>{{template "head" .}}</head>
-<body class="bg-gray-950 text-gray-100">
-<div class="flex h-screen overflow-hidden">
-  <aside class="w-60 bg-gray-900 border-r border-gray-800 flex-shrink-0">
+<body class="bg-gray-950 text-gray-100 flex flex-col h-screen">
+{{template "mobile-header" .}}
+<div class="flex flex-1 overflow-hidden">
+  <aside id="sidebar" class="fixed inset-y-0 left-0 z-50 w-60 bg-gray-900 border-r border-gray-800 flex-shrink-0 -translate-x-full lg:relative lg:inset-auto lg:translate-x-0 transition-transform duration-200">
     {{template "nav" .}}
   </aside>
   <div class="flex-1 overflow-auto">
-    <div class="p-6">
-      <div class="flex items-center justify-between mb-6">
+    <div class="p-4 md:p-6">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 class="text-xl font-semibold text-gray-100">Users</h1>
           <p class="text-sm text-gray-500 mt-0.5">用户管理</p>
@@ -23,7 +24,7 @@
         </button>
       </div>
 
-      <div class="flex gap-3 mb-4">
+      <div class="flex flex-wrap gap-3 mb-4">
         <input type="search" name="q" placeholder="搜索用户名..."
                hx-get="/panel/users/list"
                hx-trigger="input delay:300ms, search"
@@ -53,8 +54,8 @@
         <button onclick="batchAction('delete')" class="text-xs px-3 py-1.5 rounded bg-red-600/20 text-red-400 hover:bg-red-600/30 transition-colors">删除</button>
       </div>
 
-      <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-        <table class="w-full text-sm">
+      <div class="rounded-xl border border-gray-800 overflow-auto">
+        <table class="w-full text-sm bg-gray-900 min-w-[700px]">
           <thead>
             <tr class="border-b border-gray-800">
               <th class="px-4 py-3 w-8"><input type="checkbox" class="rounded border-gray-600 bg-gray-800 text-indigo-500 focus:ring-indigo-500" onchange="toggleSelectAll(this)"></th>

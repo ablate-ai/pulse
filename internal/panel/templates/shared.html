@@ -134,7 +134,24 @@ function toggleSelectAll(master) {
   updateBatchBar();
 }
 document.addEventListener('htmx:afterSettle', updateBatchBar);
+function toggleNav() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('nav-overlay');
+  if (!sidebar) return;
+  sidebar.classList.toggle('-translate-x-full');
+  if (overlay) overlay.classList.toggle('hidden');
+}
 </script>
+{{end}}
+
+{{define "mobile-header"}}
+<div class="lg:hidden flex items-center h-12 px-4 bg-gray-900 border-b border-gray-800 flex-shrink-0">
+  <button onclick="toggleNav()" class="p-1 text-gray-400 hover:text-gray-100 mr-3" aria-label="打开导航">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+  </button>
+  <span class="text-indigo-400 font-bold tracking-wide text-sm">◈ Pulse</span>
+</div>
+<div id="nav-overlay" onclick="toggleNav()" class="fixed inset-0 bg-black/60 z-40 lg:hidden hidden"></div>
 {{end}}
 
 {{define "nav"}}

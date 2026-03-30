@@ -2,14 +2,15 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>{{template "head" .}}</head>
-<body class="bg-gray-950 text-gray-100">
-<div class="flex h-screen overflow-hidden">
-  <aside class="w-60 bg-gray-900 border-r border-gray-800 flex-shrink-0">
+<body class="bg-gray-950 text-gray-100 flex flex-col h-screen">
+{{template "mobile-header" .}}
+<div class="flex flex-1 overflow-hidden">
+  <aside id="sidebar" class="fixed inset-y-0 left-0 z-50 w-60 bg-gray-900 border-r border-gray-800 flex-shrink-0 -translate-x-full lg:relative lg:inset-auto lg:translate-x-0 transition-transform duration-200">
     {{template "nav" .}}
   </aside>
   <div class="flex-1 overflow-auto">
-    <div class="p-6">
-      <div class="flex items-center justify-between mb-6">
+    <div class="p-4 md:p-6">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 class="text-xl font-semibold text-gray-100">Caddy</h1>
           <p class="text-sm text-gray-500 mt-0.5">反向代理管理</p>
