@@ -282,33 +282,18 @@ func (db *DB) migrateUsersTable() error {
 		}
 	}
 
-	if _, ok := columns["note"]; !ok {
-		if _, err := db.conn.Exec(`ALTER TABLE users ADD COLUMN note TEXT NOT NULL DEFAULT ''`); err != nil {
-			return fmt.Errorf("migrate users add note: %w", err)
-		}
+	additions := map[string]string{
+		"note":              `ALTER TABLE users ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
+		"online_at":         `ALTER TABLE users ADD COLUMN online_at TEXT`,
+		"on_hold_expire_at": `ALTER TABLE users ADD COLUMN on_hold_expire_at TEXT`,
+		"connections":       `ALTER TABLE users ADD COLUMN connections INTEGER NOT NULL DEFAULT 0`,
+		"devices":           `ALTER TABLE users ADD COLUMN devices INTEGER NOT NULL DEFAULT 0`,
 	}
-
-	if _, ok := columns["online_at"]; !ok {
-		if _, err := db.conn.Exec(`ALTER TABLE users ADD COLUMN online_at TEXT`); err != nil {
-			return fmt.Errorf("migrate users add online_at: %w", err)
-		}
-	}
-
-	if _, ok := columns["on_hold_expire_at"]; !ok {
-		if _, err := db.conn.Exec(`ALTER TABLE users ADD COLUMN on_hold_expire_at TEXT`); err != nil {
-			return fmt.Errorf("migrate users add on_hold_expire_at: %w", err)
-		}
-	}
-
-	if _, ok := columns["connections"]; !ok {
-		if _, err := db.conn.Exec(`ALTER TABLE users ADD COLUMN connections INTEGER NOT NULL DEFAULT 0`); err != nil {
-			return fmt.Errorf("migrate users add connections: %w", err)
-		}
-	}
-
-	if _, ok := columns["devices"]; !ok {
-		if _, err := db.conn.Exec(`ALTER TABLE users ADD COLUMN devices INTEGER NOT NULL DEFAULT 0`); err != nil {
-			return fmt.Errorf("migrate users add devices: %w", err)
+	for col, ddl := range additions {
+		if _, ok := columns[col]; !ok {
+			if _, err := db.conn.Exec(ddl); err != nil {
+				return fmt.Errorf("migrate users add %s: %w", col, err)
+			}
 		}
 	}
 
