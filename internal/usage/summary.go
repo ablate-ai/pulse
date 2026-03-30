@@ -59,11 +59,14 @@ func Build(nodeStore nodes.Store, userStore users.Store) (Summary, error) {
 		UsersCount: len(usersList),
 	}
 
-	for _, u := range usersList {
-		s.TotalUploadBytes += u.UploadBytes
-		s.TotalDownloadBytes += u.DownloadBytes
-		s.TotalUsedBytes += u.UsedBytes
+	// 流量总览从节点累计值汇总，不受用户流量重置影响
+	for _, n := range nodesList {
+		s.TotalUploadBytes += n.UploadBytes
+		s.TotalDownloadBytes += n.DownloadBytes
+	}
+	s.TotalUsedBytes = s.TotalUploadBytes + s.TotalDownloadBytes
 
+	for _, u := range usersList {
 		switch u.EffectiveStatus() {
 		case users.StatusActive:
 			s.ActiveUsersCount++

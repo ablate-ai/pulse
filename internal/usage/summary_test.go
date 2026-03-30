@@ -13,6 +13,9 @@ func TestBuild(t *testing.T) {
 
 	_, _ = nodeStore.Upsert(nodes.Node{ID: "node-1", Name: "node-1", BaseURL: "http://127.0.0.1:8081"})
 	_, _ = nodeStore.Upsert(nodes.Node{ID: "node-2", Name: "node-2", BaseURL: "http://127.0.0.1:8082"})
+	// 模拟节点累计流量（alice+bob 走 node-1，carol 走 node-2）
+	_ = nodeStore.AddTraffic("node-1", 40, 70)
+	_ = nodeStore.AddTraffic("node-2", 30, 30)
 
 	_, _ = userStore.UpsertUser(users.User{ID: "u1", Username: "alice", Status: users.StatusActive, UploadBytes: 10, DownloadBytes: 20})
 	// bob 超限（UsedBytes=80 >= TrafficLimit=70）
