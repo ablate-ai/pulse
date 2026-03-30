@@ -2,6 +2,7 @@ package usage
 
 import (
 	"testing"
+	"time"
 
 	"pulse/internal/nodes"
 	"pulse/internal/users"
@@ -17,10 +18,14 @@ func TestBuild(t *testing.T) {
 	_ = nodeStore.AddTraffic("node-1", 40, 70)
 	_ = nodeStore.AddTraffic("node-2", 30, 30)
 
-	_, _ = userStore.UpsertUser(users.User{ID: "u1", Username: "alice", Status: users.StatusActive, UploadBytes: 10, DownloadBytes: 20})
-	// bob 超限（UsedBytes=80 >= TrafficLimit=70）
-	_, _ = userStore.UpsertUser(users.User{ID: "u2", Username: "bob", Status: users.StatusActive, TrafficLimit: 70, UploadBytes: 30, DownloadBytes: 50})
-	_, _ = userStore.UpsertUser(users.User{ID: "u3", Username: "carol", Status: users.StatusDisabled, TrafficLimit: 50, UploadBytes: 30, DownloadBytes: 30})
+	recentOnline := time.Now().Add(-1 * time.Minute)   // 1 分钟前，在线
+	staleOnline := time.Now().Add(-10 * time.Minute)   // 10 分钟前，离线
+
+	_, _ = userStore.UpsertUser(users.User{ID: "u1", Username: "alice", Status: users.StatusActive, UploadBytes: 10, DownloadBytes: 20, OnlineAt: &recentOnline})
+	// bob 超限（UsedBytes=80 >= TrafficLimit=70），在线
+	_, _ = userStore.UpsertUser(users.User{ID: "u2", Username: "bob", Status: users.StatusActive, TrafficLimit: 70, UploadBytes: 30, DownloadBytes: 50, OnlineAt: &recentOnline})
+	// carol 禁用，10 分钟前有流量，视为离线
+	_, _ = userStore.UpsertUser(users.User{ID: "u3", Username: "carol", Status: users.StatusDisabled, TrafficLimit: 50, UploadBytes: 30, DownloadBytes: 30, OnlineAt: &staleOnline})
 
 	_, _ = userStore.UpsertUserInbound(users.UserInbound{ID: "u1-ib0", UserID: "u1", NodeID: "node-1", UUID: "uuid-alice", Secret: "secret-alice"})
 	_, _ = userStore.UpsertUserInbound(users.UserInbound{ID: "u2-ib0", UserID: "u2", NodeID: "node-1", UUID: "uuid-bob", Secret: "secret-bob"})
@@ -39,5 +44,8 @@ func TestBuild(t *testing.T) {
 	}
 	if summary.ActiveUsersCount != 1 || summary.LimitedUsersCount != 1 || summary.DisabledUsersCount != 1 || summary.ExpiredUsersCount != 0 {
 		t.Fatalf("unexpected status counts: %#v", summary)
+	}
+	if summary.OnlineUsersCount != 2 {
+		t.Fatalf("expected 2 online users, got %d", summary.OnlineUsersCount)
 	}
 }

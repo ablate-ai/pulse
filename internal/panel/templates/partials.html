@@ -7,16 +7,19 @@
       <div class="text-xs text-gray-500 mt-1">活跃用户</div>
     </div>
     <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <div class="flex items-center gap-1.5">
+        <div class="text-2xl font-bold text-teal-400">{{.Data.OnlineUsersCount}}</div>
+        {{if gt .Data.OnlineUsersCount 0}}<span class="inline-block w-2 h-2 rounded-full bg-teal-400 animate-pulse"></span>{{end}}
+      </div>
+      <div class="text-xs text-gray-500 mt-1">当前在线</div>
+    </div>
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
       <div class="text-2xl font-bold text-yellow-400">{{.Data.LimitedUsersCount}}</div>
       <div class="text-xs text-gray-500 mt-1">流量超限</div>
     </div>
     <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
       <div class="text-2xl font-bold text-red-400">{{.Data.ExpiredUsersCount}}</div>
       <div class="text-xs text-gray-500 mt-1">已过期</div>
-    </div>
-    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-      <div class="text-2xl font-bold text-gray-500">{{.Data.DisabledUsersCount}}</div>
-      <div class="text-xs text-gray-500 mt-1">已禁用</div>
     </div>
   </div>
 

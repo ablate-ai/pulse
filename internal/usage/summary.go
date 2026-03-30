@@ -1,9 +1,15 @@
 package usage
 
 import (
+	"time"
+
 	"pulse/internal/nodes"
 	"pulse/internal/users"
 )
+
+// OnlineThreshold 判断用户"在线"的时间窗口。
+// SyncUsage 每分钟运行一次，3 分钟内有流量即视为在线。
+const OnlineThreshold = 3 * time.Minute
 
 // NodeStat 单个节点的流量统计。
 type NodeStat struct {
@@ -21,6 +27,7 @@ type Summary struct {
 
 	// 用户（按有效状态分组）
 	UsersCount         int `json:"users_count"`
+	OnlineUsersCount   int `json:"online_users_count"`
 	ActiveUsersCount   int `json:"active_users_count"`
 	DisabledUsersCount int `json:"disabled_users_count"`
 	ExpiredUsersCount  int `json:"expired_users_count"`
@@ -66,7 +73,11 @@ func Build(nodeStore nodes.Store, userStore users.Store) (Summary, error) {
 	}
 	s.TotalUsedBytes = s.TotalUploadBytes + s.TotalDownloadBytes
 
+	now := time.Now()
 	for _, u := range usersList {
+		if u.OnlineAt != nil && now.Sub(*u.OnlineAt) <= OnlineThreshold {
+			s.OnlineUsersCount++
+		}
 		switch u.EffectiveStatus() {
 		case users.StatusActive:
 			s.ActiveUsersCount++
