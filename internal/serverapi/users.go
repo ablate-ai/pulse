@@ -44,12 +44,12 @@ type updateUserRequest struct {
 	TrafficLimit           int64      `json:"traffic_limit_bytes"`
 }
 
-// createAccessRequest 添加用户到节点的请求（只需指定节点 ID）。
+// createAccessRequest 添加用户到 inbound 的请求（只需指定 inbound ID）。
 type createAccessRequest struct {
-	ID     string `json:"id"`
-	NodeID string `json:"node_id"`
-	UUID   string `json:"uuid,omitempty"`   // 可留空自动生成
-	Secret string `json:"secret,omitempty"` // 可留空自动生成
+	ID        string `json:"id"`
+	InboundID string `json:"inbound_id"`
+	UUID      string `json:"uuid,omitempty"`   // 可留空自动生成
+	Secret    string `json:"secret,omitempty"` // 可留空自动生成
 }
 
 func newUserAPI(usersStore users.Store, nodesStore nodes.Store, ibStore inbounds.InboundStore, outboundStore outbounds.Store, base *API, applyOpts jobs.ApplyOptions) *userAPI {
@@ -241,12 +241,13 @@ func (a *userAPI) handleUserInbounds(w http.ResponseWriter, r *http.Request, use
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 			return
 		}
-		if req.NodeID == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "node_id is required"})
+		if req.InboundID == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "inbound_id is required"})
 			return
 		}
-		if _, err := a.nodes.Get(req.NodeID); err != nil {
-			writeNodeError(w, err)
+		ib, err := a.inboundStore.GetInbound(req.InboundID)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "inbound not found"})
 			return
 		}
 		if strings.TrimSpace(req.ID) == "" {
@@ -259,11 +260,12 @@ func (a *userAPI) handleUserInbounds(w http.ResponseWriter, r *http.Request, use
 			req.Secret = randomToken(12)
 		}
 		acc, err := a.users.UpsertUserInbound(users.UserInbound{
-			ID:     req.ID,
-			UserID: userID,
-			NodeID: req.NodeID,
-			UUID:   req.UUID,
-			Secret: req.Secret,
+			ID:        req.ID,
+			UserID:    userID,
+			InboundID: req.InboundID,
+			NodeID:    ib.NodeID,
+			UUID:      req.UUID,
+			Secret:    req.Secret,
 		})
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
@@ -365,10 +367,21 @@ func (a *userAPI) handleAccessSubscription(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	nodeInbounds, err := a.inboundStore.ListInboundsByNode(acc.NodeID)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
-		return
+	// 按 InboundID 获取对应的 inbound 列表；旧版记录（InboundID 为空）回退到节点级别
+	var ibList []inbounds.Inbound
+	if acc.InboundID != "" {
+		ib, err := a.inboundStore.GetInbound(acc.InboundID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
+		ibList = []inbounds.Inbound{ib}
+	} else {
+		ibList, err = a.inboundStore.ListInboundsByNode(acc.NodeID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return
+		}
 	}
 
 	type linkItem struct {
@@ -378,7 +391,7 @@ func (a *userAPI) handleAccessSubscription(w http.ResponseWriter, r *http.Reques
 	}
 
 	links := make([]linkItem, 0)
-	for _, ib := range nodeInbounds {
+	for _, ib := range ibList {
 		hosts, err := a.inboundStore.ListHostsByInbound(ib.ID)
 		if err != nil {
 			continue

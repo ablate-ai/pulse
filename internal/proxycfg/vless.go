@@ -98,6 +98,15 @@ func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.Us
 
 		method := ""
 		password := ""
+		// 过滤出被分配到此 inbound 的用户凭据
+		// 若 InboundID 为空（旧版数据），则对所有 inbound 生效（向后兼容）
+		ibAccesses := make([]users.UserInbound, 0, len(activeAccesses))
+		for _, acc := range activeAccesses {
+			if acc.InboundID == "" || acc.InboundID == ib.ID {
+				ibAccesses = append(ibAccesses, acc)
+			}
+		}
+
 		var userList []map[string]any
 		if ib.Protocol == "shadowsocks" {
 			method = ib.Method
@@ -107,8 +116,8 @@ func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.Us
 			if strings.HasPrefix(method, "2022-") {
 				// SS 2022 多用户：服务端 PSK + 每人独立密码
 				password = ib.Password
-				userList = make([]map[string]any, 0, len(activeAccesses))
-				for _, acc := range activeAccesses {
+				userList = make([]map[string]any, 0, len(ibAccesses))
+				for _, acc := range ibAccesses {
 					u, ok := userMap[acc.UserID]
 					if !ok {
 						continue
@@ -124,8 +133,8 @@ func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.Us
 				userList = nil
 			}
 		} else {
-			userList = make([]map[string]any, 0, len(activeAccesses))
-			for _, acc := range activeAccesses {
+			userList = make([]map[string]any, 0, len(ibAccesses))
+			for _, acc := range ibAccesses {
 				u, ok := userMap[acc.UserID]
 				if !ok {
 					continue

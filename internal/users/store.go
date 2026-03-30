@@ -45,14 +45,16 @@ type User struct {
 	SubToken               string     `json:"sub_token,omitempty"`
 }
 
-// UserInbound 用户在某个节点上的访问凭据（一条记录对应一个 (user_id, node_id) 对）。
+// UserInbound 用户对某个具体 inbound 的访问凭据（一条记录对应一个 (user_id, inbound_id) 对）。
+// NodeID 从 Inbound 反推，保留用于流量聚合查询。
 // 协议配置由节点的 inbounds.Inbound 定义，此处只存储凭据和流量同步游标。
 type UserInbound struct {
 	ID                  string    `json:"id"`
 	UserID              string    `json:"user_id"`
-	NodeID              string    `json:"node_id"`
-	UUID                string    `json:"uuid"`   // 用于 VLESS / VMess
-	Secret              string    `json:"secret"` // 用于 Trojan / Shadowsocks
+	InboundID           string    `json:"inbound_id"` // 对应具体的 inbound
+	NodeID              string    `json:"node_id"`    // 冗余字段，用于流量聚合
+	UUID                string    `json:"uuid"`       // 用于 VLESS / VMess
+	Secret              string    `json:"secret"`     // 用于 Trojan / Shadowsocks
 	SyncedUploadBytes   int64     `json:"-"`
 	SyncedDownloadBytes int64     `json:"-"`
 	CreatedAt           time.Time `json:"created_at"`
@@ -67,11 +69,12 @@ type Store interface {
 	ListUsers() ([]User, error)
 	DeleteUser(id string) error
 
-	// UserInbound CRUD（每个用户在每个节点上只有一条凭据记录）
+	// UserInbound CRUD（每个用户在每个 inbound 上只有一条凭据记录）
 	UpsertUserInbound(inbound UserInbound) (UserInbound, error)
 	GetUserInbound(id string) (UserInbound, error)
 	ListUserInboundsByUser(userID string) ([]UserInbound, error)
 	ListUserInboundsByNode(nodeID string) ([]UserInbound, error)
+	ListUserInboundsByInbound(inboundID string) ([]UserInbound, error)
 	DeleteUserInbound(id string) error
 	DeleteUserInboundsByUser(userID string) error
 

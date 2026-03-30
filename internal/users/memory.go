@@ -133,6 +133,18 @@ func (s *MemoryStore) ListUserInboundsByNode(nodeID string) ([]UserInbound, erro
 	return sortInbounds(out), nil
 }
 
+func (s *MemoryStore) ListUserInboundsByInbound(inboundID string) ([]UserInbound, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]UserInbound, 0)
+	for _, acc := range s.inbounds {
+		if inboundID == "" || acc.InboundID == inboundID {
+			out = append(out, acc)
+		}
+	}
+	return sortInbounds(out), nil
+}
+
 func (s *MemoryStore) DeleteUserInbound(id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

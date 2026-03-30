@@ -63,10 +63,10 @@ func createUser(t *testing.T, mux *http.ServeMux, body string) string {
 	return out["id"].(string)
 }
 
-// createUserInbound 辅助：POST /v1/users/{userID}/inbounds，返回 inbound ID。
-func createUserInbound(t *testing.T, mux *http.ServeMux, userID, nodeID string) string {
+// createUserInbound 辅助：POST /v1/users/{userID}/inbounds，返回 user_inbound 记录 ID。
+func createUserInbound(t *testing.T, mux *http.ServeMux, userID, inboundID string) string {
 	t.Helper()
-	body := `{"node_id":"` + nodeID + `"}`
+	body := `{"inbound_id":"` + inboundID + `"}`
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/v1/users/"+userID+"/inbounds", bytes.NewReader([]byte(body)))
 	mux.ServeHTTP(rec, req)
@@ -109,9 +109,9 @@ func TestUserSubscriptionAndApplyFlow(t *testing.T) {
 		Port:      443,
 	})
 
-	// 创建 alice 并绑定节点
+	// 创建 alice 并绑定 inbound
 	aliceID := createUser(t, mux, `{"id":"user-1","username":"alice"}`)
-	ibID := createUserInbound(t, mux, aliceID, "node-1")
+	ibID := createUserInbound(t, mux, aliceID, "ib-vless")
 
 	// 获取订阅链接
 	rec := httptest.NewRecorder()
@@ -135,9 +135,9 @@ func TestUserSubscriptionAndApplyFlow(t *testing.T) {
 		t.Fatalf("expected running node status, got %s", rec.Body.String())
 	}
 
-	// 创建 bob 并绑定同一节点
+	// 创建 bob 并绑定同一 inbound
 	bobID := createUser(t, mux, `{"id":"user-2","username":"bob"}`)
-	ibID2 := createUserInbound(t, mux, bobID, "node-1")
+	ibID2 := createUserInbound(t, mux, bobID, "ib-vless")
 
 	// 下发 bob 的配置
 	rec = httptest.NewRecorder()
@@ -219,21 +219,31 @@ func TestUserSupportsMultipleProtocols(t *testing.T) {
 		Port:      8443,
 	})
 
-	// 创建用户并绑定节点
+	// 创建用户，分别绑定 trojan 和 ss 两个 inbound
 	userID := createUser(t, mux, `{"id":"user-multi","username":"alice"}`)
-	ibID := createUserInbound(t, mux, userID, "node-1")
+	trojanAccessID := createUserInbound(t, mux, userID, "ib-trojan")
+	ssAccessID := createUserInbound(t, mux, userID, "ib-ss")
 
-	// 订阅应包含 trojan 和 ss 链接
-	for _, want := range []string{"trojan://", "ss://"} {
-		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/v1/users/"+userID+"/inbounds/"+ibID+"/subscription", nil)
-		mux.ServeHTTP(rec, req)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("subscription status = %d body=%s", rec.Code, rec.Body.String())
-		}
-		if !strings.Contains(rec.Body.String(), want) {
-			t.Fatalf("expected %s link, got %s", want, rec.Body.String())
-		}
+	// trojan 绑定的订阅只包含 trojan 链接
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/users/"+userID+"/inbounds/"+trojanAccessID+"/subscription", nil)
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("trojan subscription status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "trojan://") {
+		t.Fatalf("expected trojan link, got %s", rec.Body.String())
+	}
+
+	// ss 绑定的订阅只包含 ss 链接
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/v1/users/"+userID+"/inbounds/"+ssAccessID+"/subscription", nil)
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ss subscription status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "ss://") {
+		t.Fatalf("expected ss link, got %s", rec.Body.String())
 	}
 }
 

@@ -118,11 +118,12 @@ func (db *DB) init() error {
 			devices INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL
 		);`,
-		// user_inbounds：用户对节点的访问凭据（一条记录对应一个 user+node 对）
+		// user_inbounds：用户对具体 inbound 的访问凭据（一条记录对应一个 user+inbound 对）
 		`CREATE TABLE IF NOT EXISTS user_inbounds (
 			id                   TEXT PRIMARY KEY,
 			user_id              TEXT NOT NULL,
-			node_id              TEXT NOT NULL,
+			inbound_id           TEXT NOT NULL DEFAULT '',
+			node_id              TEXT NOT NULL DEFAULT '',
 			uuid                 TEXT NOT NULL DEFAULT '',
 			secret               TEXT NOT NULL DEFAULT '',
 			synced_upload_bytes  INTEGER NOT NULL DEFAULT 0,
@@ -131,6 +132,7 @@ func (db *DB) init() error {
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_user_inbounds_user_id ON user_inbounds(user_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_user_inbounds_node_id ON user_inbounds(node_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_user_inbounds_inbound_id ON user_inbounds(inbound_id);`,
 		// sessions：管理员登录 session，持久化以便服务重启后保持登录态
 		`CREATE TABLE IF NOT EXISTS sessions (
 			token      TEXT PRIMARY KEY,
@@ -357,9 +359,10 @@ func (db *DB) migrateUserInboundsTable() error {
 		return err
 	}
 
-	// 新版特征：没有 protocol 列
+	// 旧版含 protocol 列：需要重建
 	if _, hasProtocol := columns["protocol"]; !hasProtocol {
-		return nil
+		// 无旧版 protocol 列，跳到 inbound_id 迁移
+		return db.migrateUserInboundsAddInboundID(columns)
 	}
 
 	// 旧表还有 protocol 列，需要重建为简化版本
@@ -410,6 +413,88 @@ func (db *DB) migrateUserInboundsTable() error {
 	}
 	if _, err := db.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_user_inbounds_node_id ON user_inbounds(node_id)`); err != nil {
 		return fmt.Errorf("recreate index node_id: %w", err)
+	}
+
+	// 重建后的表没有 inbound_id，继续执行 inbound_id 迁移
+	newCols, err := db.tableColumns("user_inbounds")
+	if err != nil {
+		return err
+	}
+	return db.migrateUserInboundsAddInboundID(newCols)
+}
+
+// migrateUserInboundsAddInboundID 为 user_inbounds 添加 inbound_id 列，
+// 并将旧版 node 级别记录扩展为 inbound 级别记录（幂等）。
+func (db *DB) migrateUserInboundsAddInboundID(columns map[string]struct{}) error {
+	if _, hasInboundID := columns["inbound_id"]; hasInboundID {
+		return nil // 已迁移
+	}
+
+	if _, err := db.conn.Exec(`ALTER TABLE user_inbounds ADD COLUMN inbound_id TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("migrate user_inbounds add inbound_id: %w", err)
+	}
+	if _, err := db.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_user_inbounds_inbound_id ON user_inbounds(inbound_id)`); err != nil {
+		return fmt.Errorf("migrate user_inbounds add inbound_id index: %w", err)
+	}
+
+	// 将旧版 (user_id, node_id) 记录扩展为 (user_id, inbound_id) 记录
+	// 对每条 inbound_id='' 的记录，按 node_id 查找该节点的所有 inbound，各建一条新记录
+	rows, err := db.conn.Query(`SELECT id, user_id, node_id, uuid, secret, synced_upload_bytes, synced_download_bytes, created_at FROM user_inbounds WHERE inbound_id = ''`)
+	if err != nil {
+		return fmt.Errorf("migrate user_inbounds expand: query: %w", err)
+	}
+	type oldRec struct {
+		id, userID, nodeID, uuid, secret string
+		up, down                         int64
+		createdAt                        string
+	}
+	var olds []oldRec
+	for rows.Next() {
+		var r oldRec
+		if err := rows.Scan(&r.id, &r.userID, &r.nodeID, &r.uuid, &r.secret, &r.up, &r.down, &r.createdAt); err != nil {
+			rows.Close()
+			return fmt.Errorf("migrate user_inbounds expand: scan: %w", err)
+		}
+		olds = append(olds, r)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("migrate user_inbounds expand: rows: %w", err)
+	}
+
+	for _, rec := range olds {
+		// 查找该节点上的所有 inbound
+		ibRows, err := db.conn.Query(`SELECT id FROM inbounds WHERE node_id = ? ORDER BY id`, rec.nodeID)
+		if err != nil {
+			continue
+		}
+		var ibIDs []string
+		for ibRows.Next() {
+			var ibID string
+			if ibRows.Scan(&ibID) == nil {
+				ibIDs = append(ibIDs, ibID)
+			}
+		}
+		ibRows.Close()
+
+		if len(ibIDs) == 0 {
+			// 节点无 inbound，保留原记录不处理（inbound_id 仍为空）
+			continue
+		}
+
+		// 为第一个 inbound 直接更新原记录（复用游标值）
+		if _, err := db.conn.Exec(`UPDATE user_inbounds SET inbound_id = ? WHERE id = ?`, ibIDs[0], rec.id); err != nil {
+			continue
+		}
+
+		// 为其余 inbound 插入新记录（游标清零，凭据与原记录相同）
+		for _, ibID := range ibIDs[1:] {
+			newID := rec.userID + "-" + ibID // 简单唯一性保证
+			db.conn.Exec(`
+				INSERT OR IGNORE INTO user_inbounds (id, user_id, inbound_id, node_id, uuid, secret, synced_upload_bytes, synced_download_bytes, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?)
+			`, newID, rec.userID, ibID, rec.nodeID, rec.uuid, rec.secret, rec.createdAt)
+		}
 	}
 
 	return nil

@@ -540,17 +540,17 @@ func (h *Handler) userEditForm(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		ibList = nil
 	}
-	// 加载用户已关联的节点，用于表单回显勾选状态
+	// 加载用户已关联的 inbound，用于表单回显勾选状态
 	userAccesses, _ := h.userStore.ListUserInboundsByUser(id)
-	userNodeIDs := make(map[string]bool, len(userAccesses))
+	selectedInboundIDs := make(map[string]bool, len(userAccesses))
 	for _, acc := range userAccesses {
-		userNodeIDs[acc.NodeID] = true
+		selectedInboundIDs[acc.InboundID] = true
 	}
 	h.renderPartial(w, "partial-user-edit-form", userFormData{
-		User:        &user,
-		Inbounds:    ibList,
-		UserNodeIDs: userNodeIDs,
-		NodeMap:     h.buildNodeMap(),
+		User:               &user,
+		Inbounds:           ibList,
+		SelectedInboundIDs: selectedInboundIDs,
+		NodeMap:            h.buildNodeMap(),
 	})
 }
 
@@ -1129,10 +1129,10 @@ func (h *Handler) renderNodesListFromStore(w http.ResponseWriter, r *http.Reques
 
 // userFormData 用户表单页面数据，包含 inbound 列表。
 type userFormData struct {
-	User        *users.User
-	Inbounds    []inbounds.Inbound
-	UserNodeIDs map[string]bool   // nodeID → true，用于编辑表单回显已选中状态
-	NodeMap     map[string]string // nodeID → 节点名称，用于 inbound 列表显示
+	User               *users.User
+	Inbounds           []inbounds.Inbound
+	SelectedInboundIDs map[string]bool   // inboundID → true，用于编辑表单回显已选中状态
+	NodeMap            map[string]string // nodeID → 节点名称，用于 inbound 列表显示
 }
 
 // buildNodeMap 返回 nodeID → 节点名称的映射，加载失败时返回空 map。
@@ -1183,65 +1183,61 @@ func (h *Handler) applyNodes(nodeIDs []string) {
 	}
 }
 
-// syncUserInbounds 根据选中的 inbound ID 列表同步用户的节点关联记录。
-// 新增：为没有凭据的节点创建 UserInbound；删除：移除未选中节点的旧记录。
+// syncUserInbounds 根据选中的 inbound ID 列表同步用户的 inbound 访问凭据。
+// 新增：为未有凭据的 inbound 创建 UserInbound；删除：移除未选中 inbound 的旧记录。
 // 返回所有发生变更的 nodeID（新增 + 删除），供调用方触发配置下发。
 func (h *Handler) syncUserInbounds(userID string, selectedInboundIDs []string) ([]string, error) {
-	// 收集选中 inbound 对应的 nodeID（去重），同时记录节点上 SS method
-	wantedNodeIDs := make(map[string]struct{})
-	nodeSSMethod := make(map[string]string) // nodeID → ss method（仅 SS 协议）
+	// 收集选中的 inbound → nodeID 映射
+	wantedInbounds := make(map[string]inbounds.Inbound) // inboundID → Inbound
 	for _, ibID := range selectedInboundIDs {
 		ib, err := h.ibStore.GetInbound(ibID)
 		if err != nil {
 			continue
 		}
-		wantedNodeIDs[ib.NodeID] = struct{}{}
-		if ib.Protocol == "shadowsocks" && ib.Method != "" {
-			nodeSSMethod[ib.NodeID] = ib.Method
-		}
+		wantedInbounds[ibID] = ib
 	}
 
-	// 获取该用户现有凭据
+	// 获取该用户现有凭据，按 inbound_id 索引
 	existing, err := h.userStore.ListUserInboundsByUser(userID)
 	if err != nil {
 		return nil, err
 	}
-	existingByNode := make(map[string]users.UserInbound, len(existing))
+	existingByInbound := make(map[string]users.UserInbound, len(existing))
 	for _, acc := range existing {
-		existingByNode[acc.NodeID] = acc
+		existingByInbound[acc.InboundID] = acc
 	}
 
 	changedNodeIDs := make(map[string]struct{})
 
-	// 创建新增节点的凭据
-	for nodeID := range wantedNodeIDs {
-		if _, ok := existingByNode[nodeID]; !ok {
+	// 创建新增 inbound 的凭据
+	for ibID, ib := range wantedInbounds {
+		if _, ok := existingByInbound[ibID]; !ok {
 			secret := panelRandomToken(12)
-			// SS 2022 系列要求 Base64 编码的原始密钥字节
-			if method, ok := nodeSSMethod[nodeID]; ok && strings.HasPrefix(method, "2022-") {
-				secret = generateSSPassword(method)
+			if ib.Protocol == "shadowsocks" && strings.HasPrefix(ib.Method, "2022-") {
+				secret = generateSSPassword(ib.Method)
 			}
 			acc := users.UserInbound{
-				ID:     idgen.NextString(),
-				UserID: userID,
-				NodeID: nodeID,
-				UUID:   panelRandomUUID(),
-				Secret: secret,
+				ID:        idgen.NextString(),
+				UserID:    userID,
+				InboundID: ibID,
+				NodeID:    ib.NodeID,
+				UUID:      panelRandomUUID(),
+				Secret:    secret,
 			}
 			if _, err := h.userStore.UpsertUserInbound(acc); err != nil {
 				return nil, err
 			}
-			changedNodeIDs[nodeID] = struct{}{}
+			changedNodeIDs[ib.NodeID] = struct{}{}
 		}
 	}
 
-	// 删除不再选中节点的凭据
-	for nodeID, acc := range existingByNode {
-		if _, wanted := wantedNodeIDs[nodeID]; !wanted {
+	// 删除不再选中 inbound 的凭据
+	for ibID, acc := range existingByInbound {
+		if _, wanted := wantedInbounds[ibID]; !wanted {
 			if err := h.userStore.DeleteUserInbound(acc.ID); err != nil {
 				return nil, err
 			}
-			changedNodeIDs[nodeID] = struct{}{}
+			changedNodeIDs[acc.NodeID] = struct{}{}
 		}
 	}
 

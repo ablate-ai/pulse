@@ -50,20 +50,38 @@ func (a *subAPI) handleSub(w http.ResponseWriter, r *http.Request) {
 
 	var links []string
 	for _, acc := range accesses {
-		nodeInbounds, err := a.inbounds.ListInboundsByNode(acc.NodeID)
-		if err != nil {
-			continue
-		}
-		for _, ib := range nodeInbounds {
-			hosts, err := a.inbounds.ListHostsByInbound(ib.ID)
+		// 旧版记录（InboundID 为空）回退到节点级别获取所有 inbound
+		if acc.InboundID == "" {
+			nodeInbounds, err := a.inbounds.ListInboundsByNode(acc.NodeID)
 			if err != nil {
 				continue
 			}
-			for _, h := range hosts {
-				link := subscription.Link(ib, h, acc, user)
-				if link != "" {
-					links = append(links, link)
+			for _, ib := range nodeInbounds {
+				hosts, err := a.inbounds.ListHostsByInbound(ib.ID)
+				if err != nil {
+					continue
 				}
+				for _, h := range hosts {
+					link := subscription.Link(ib, h, acc, user)
+					if link != "" {
+						links = append(links, link)
+					}
+				}
+			}
+			continue
+		}
+		ib, err := a.inbounds.GetInbound(acc.InboundID)
+		if err != nil {
+			continue
+		}
+		hosts, err := a.inbounds.ListHostsByInbound(ib.ID)
+		if err != nil {
+			continue
+		}
+		for _, h := range hosts {
+			link := subscription.Link(ib, h, acc, user)
+			if link != "" {
+				links = append(links, link)
 			}
 		}
 	}

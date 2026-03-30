@@ -329,11 +329,11 @@
       <label class="block text-xs font-medium text-gray-400 mb-1.5">关联 Inbound（可多选）</label>
       <input type="hidden" name="inbound_sync" value="1">
       <div class="space-y-1.5 max-h-32 overflow-y-auto bg-gray-800 border border-gray-700 rounded-lg p-2">
-        {{$nodeIDs := .Data.UserNodeIDs}}
+        {{$selectedIDs := .Data.SelectedInboundIDs}}
         {{range .Data.Inbounds}}
         <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-700 rounded px-1 py-0.5">
           <input type="checkbox" name="inbound_ids" value="{{.ID}}"
-                 {{if index $nodeIDs .NodeID}}checked{{end}}
+                 {{if index $selectedIDs .ID}}checked{{end}}
                  class="rounded border-gray-600 bg-gray-700 text-indigo-500 focus:ring-indigo-500">
           <span class="text-xs text-gray-300"><span class="text-sky-400">{{index $.Data.NodeMap .NodeID}}</span> — {{.Tag}} <span class="text-gray-500">({{.Protocol}}:{{.Port}})</span></span>
         </label>
