@@ -802,14 +802,17 @@
 {{end}}
 
 {{define "partial-node-config"}}
-<div>
+<form hx-post="/panel/nodes/{{.Data.NodeID}}/apply-config"
+      hx-target="#nodes-list"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful) document.getElementById('app-modal').close()">
   <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
     <h3 class="text-sm font-semibold text-gray-100">
       sing-box 配置 — <span class="text-sky-400">{{.Data.NodeName}}</span>
     </h3>
     <div class="flex items-center gap-2">
       <button type="button"
-              onclick="navigator.clipboard.writeText(document.getElementById('node-config-text').textContent).then(()=>{ this.textContent='已复制'; setTimeout(()=>{ this.textContent='复制'; },1500) })"
+              onclick="navigator.clipboard.writeText(document.querySelector('#node-config-editor').value).then(()=>{ this.textContent='已复制'; setTimeout(()=>{ this.textContent='复制'; },1500) })"
               class="text-xs text-gray-400 hover:text-sky-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors">复制</button>
       <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -818,17 +821,21 @@
   </div>
   <div class="px-5 py-4">
     {{if .Data.Config}}
-    <pre id="node-config-text"
-         class="bg-gray-800 border border-gray-700 rounded-lg p-3 text-xs text-gray-300 font-mono overflow-auto max-h-[60vh] whitespace-pre">{{.Data.Config}}</pre>
+    <textarea id="node-config-editor" name="config" rows="28"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-xs text-gray-300 font-mono overflow-auto max-h-[60vh] whitespace-pre resize-y focus:outline-none focus:border-indigo-500 transition-colors">{{.Data.Config}}</textarea>
     {{else}}
     <p class="text-sm text-gray-500 text-center py-6">节点未运行或暂无配置</p>
     {{end}}
   </div>
-  <div class="flex justify-end px-5 py-4 border-t border-gray-700">
+  <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
     <button type="button" onclick="document.getElementById('app-modal').close()"
             class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">关闭</button>
+    {{if .Data.Config}}
+    <button type="submit"
+            class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">保存并重启</button>
+    {{end}}
   </div>
-</div>
+</form>
 {{end}}
 
 

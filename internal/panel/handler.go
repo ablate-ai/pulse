@@ -304,6 +304,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /panel/nodes/{id}/start", h.requireAuth(h.startNode))
 	mux.HandleFunc("POST /panel/nodes/{id}/stop", h.requireAuth(h.stopNode))
 	mux.HandleFunc("GET /panel/nodes/{id}/config", h.requireAuth(h.nodeConfigModal))
+	mux.HandleFunc("POST /panel/nodes/{id}/apply-config", h.requireAuth(h.applyNodeConfig))
 	mux.HandleFunc("GET /panel/nodes/{id}/logs", h.requireAuth(h.nodeLogsModal))
 	mux.HandleFunc("GET /panel/nodes/{id}/logs/stream", h.requireAuth(h.nodeLogsStream))
 
@@ -1459,6 +1460,7 @@ func (h *Handler) nodeEditForm(w http.ResponseWriter, r *http.Request) {
 
 // nodeConfigData 传给配置弹窗模板的数据。
 type nodeConfigData struct {
+	NodeID   string
 	NodeName string
 	Config   string
 }
@@ -1492,9 +1494,42 @@ func (h *Handler) nodeConfigModal(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.renderPartial(w, "partial-node-config", nodeConfigData{
+		NodeID:   id,
 		NodeName: node.Name,
 		Config:   config,
 	})
+}
+
+// applyNodeConfig 接收管理员手动编辑的 sing-box JSON 配置并直接下发到节点。
+func (h *Handler) applyNodeConfig(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	config := r.FormValue("config")
+	if strings.TrimSpace(config) == "" {
+		htmxError(w, http.StatusBadRequest, "config is empty")
+		return
+	}
+
+	client, err := h.dial(id)
+	if err != nil {
+		htmxError(w, http.StatusBadGateway, "failed to connect to node: "+err.Error())
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	status, err := client.Restart(ctx, nodes.ConfigRequest{Config: config})
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to apply config: "+err.Error())
+		return
+	}
+
+	msg := "自定义配置已下发，sing-box 正在运行"
+	if !status.Running {
+		msg = "配置已下发，但 sing-box 启动失败"
+	}
+	w.Header().Set("HX-Trigger", `{"toast":"`+msg+`"}`)
+	h.renderNodesListFromStore(w, r)
 }
 
 func (h *Handler) nodeLogsModal(w http.ResponseWriter, r *http.Request) {
