@@ -681,6 +681,57 @@ func TestSyncUsage_UserNotInUsage_NoChange(t *testing.T) {
 	}
 }
 
+func TestSyncUsage_DeletedUser_NodeTrafficStillCounted(t *testing.T) {
+	// 回归测试：节点上报了已删除用户的流量时，该流量仍应计入节点维度统计。
+	// 修复前，已删除用户的流量在 reset=true 后被丢弃，导致节点累计值偏低。
+	nodeStore := nodes.NewMemoryStore()
+	userStore := users.NewMemoryStore()
+	_, _ = nodeStore.Upsert(nodes.Node{ID: "n1", Name: "n1", BaseURL: "http://node.test"})
+
+	// 只有 alice 在本地系统中，bob 已被删除（但节点上仍有活跃连接）
+	_, _ = userStore.UpsertUser(users.User{
+		ID: "u1", Username: "alice", Status: users.StatusActive,
+		TrafficLimit: 999999,
+	})
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID: "u1-ib0", UserID: "u1", InboundID: "ib1", NodeID: "n1",
+		UUID: "11111111-1111-1111-1111-111111111111", Secret: "s1",
+	})
+
+	// 节点上报 alice + bob（已删除）的流量
+	dial := testDial(t, func(path string, w http.ResponseWriter, r *http.Request) {
+		if path == "/v1/node/runtime/usage" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"available": true, "running": true,
+				"users": []map[string]any{
+					{"user": "alice", "upload_total": 100, "download_total": 50},
+					{"user": "bob", "upload_total": 40, "download_total": 20},
+				},
+			})
+		}
+	})
+
+	_, err := SyncUsage(context.Background(), userStore, nodeStore, inbounds.NewMemoryStore(), dial, ApplyOptions{}, nil)
+	if err != nil {
+		t.Fatalf("SyncUsage() error = %v", err)
+	}
+
+	// alice 的用户流量应正常累加
+	alice, _ := userStore.GetUser("u1")
+	if alice.UploadBytes != 100 {
+		t.Errorf("alice upload: want 100, got %d", alice.UploadBytes)
+	}
+
+	// 节点流量应包含 alice + bob = 140 upload, 70 download
+	node, _ := nodeStore.Get("n1")
+	if node.UploadBytes != 140 {
+		t.Errorf("node upload: want 140 (alice 100 + bob 40), got %d", node.UploadBytes)
+	}
+	if node.DownloadBytes != 70 {
+		t.Errorf("node download: want 70 (alice 50 + bob 20), got %d", node.DownloadBytes)
+	}
+}
+
 // ─── 辅助 ─────────────────────────────────────────────────────────────────────
 
 // usageDial 返回一个固定上报 upload/download 的 dial 函数。

@@ -134,7 +134,7 @@ func (s *NodeStore) AddNodeDailyUsage(nodeID, date string, upload, download int6
 }
 
 func (s *NodeStore) ListNodeDailyUsage(days int) ([]nodes.NodeDailyUsage, error) {
-	cutoff := time.Now().UTC().AddDate(0, 0, -days).Format("2006-01-02")
+	cutoff := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
 	rows, err := s.db.Query(`
 		SELECT node_id, date, upload_bytes, download_bytes
 		FROM node_daily_usage
@@ -155,4 +155,13 @@ func (s *NodeStore) ListNodeDailyUsage(days int) ([]nodes.NodeDailyUsage, error)
 		result = append(result, u)
 	}
 	return result, rows.Err()
+}
+
+func (s *NodeStore) CleanupOldDailyUsage(retainDays int) error {
+	cutoff := time.Now().UTC().AddDate(0, 0, -retainDays).Format("2006-01-02")
+	_, err := s.db.Exec(`DELETE FROM node_daily_usage WHERE date < ?`, cutoff)
+	if err != nil {
+		return fmt.Errorf("cleanup old daily usage: %w", err)
+	}
+	return nil
 }

@@ -80,19 +80,20 @@ type Store interface {
 	GetUsersByIDs(ids []string) (map[string]User, error)
 }
 
-// EffectiveStatus 计算用户的实际运行时状态（不写库，仅计算）。
-func (u User) EffectiveStatus() string {
+// EffectiveStatusAt 使用给定时间计算用户的实际运行时状态（不写库，仅计算）。
+// 在同一同步周期内传入相同的 now 可保证结果确定。
+func (u User) EffectiveStatusAt(now time.Time) string {
 	if u.Status == StatusDisabled {
 		return u.Status
 	}
 	if u.Status == StatusOnHold {
 		// OnHoldExpireAt 到期则自动视为 active（实际状态更新由 job 负责）
-		if u.OnHoldExpireAt != nil && !u.OnHoldExpireAt.IsZero() && time.Now().After(*u.OnHoldExpireAt) {
+		if u.OnHoldExpireAt != nil && !u.OnHoldExpireAt.IsZero() && now.After(*u.OnHoldExpireAt) {
 			return StatusActive
 		}
 		return u.Status
 	}
-	if u.ExpireAt != nil && !u.ExpireAt.IsZero() && time.Now().After(*u.ExpireAt) {
+	if u.ExpireAt != nil && !u.ExpireAt.IsZero() && now.After(*u.ExpireAt) {
 		return StatusExpired
 	}
 	if u.TrafficLimit > 0 && u.UsedBytes >= u.TrafficLimit {
@@ -101,7 +102,17 @@ func (u User) EffectiveStatus() string {
 	return StatusActive
 }
 
-// EffectiveEnabled 判断用户是否应被下发到节点。
+// EffectiveStatus 计算用户的实际运行时状态（便捷方法，使用当前时间）。
+func (u User) EffectiveStatus() string {
+	return u.EffectiveStatusAt(time.Now())
+}
+
+// EffectiveEnabledAt 使用给定时间判断用户是否应被下发到节点。
+func (u User) EffectiveEnabledAt(now time.Time) bool {
+	return u.EffectiveStatusAt(now) == StatusActive
+}
+
+// EffectiveEnabled 判断用户是否应被下发到节点（便捷方法，使用当前时间）。
 func (u User) EffectiveEnabled() bool {
 	return u.EffectiveStatus() == StatusActive
 }

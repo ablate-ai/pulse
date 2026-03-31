@@ -2,6 +2,7 @@ package usage
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"pulse/internal/nodes"
@@ -137,7 +138,10 @@ func Build(nodeStore nodes.Store, userStore users.Store, days int) (Summary, err
 		}
 	}
 
-	dailyRaw, _ := nodeStore.ListNodeDailyUsage(days)
+	dailyRaw, err := nodeStore.ListNodeDailyUsage(days)
+	if err != nil {
+		log.Printf("usage.Build: ListNodeDailyUsage: %v", err)
+	}
 	s.DailyTraffic = aggregateDailyTraffic(dailyRaw, days)
 	s.NodePeriodStats = aggregateNodePeriodStats(dailyRaw, nodesList)
 

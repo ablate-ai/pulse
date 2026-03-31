@@ -119,6 +119,9 @@ func (db *DB) init() error {
 			created_at TEXT NOT NULL
 		);`,
 		// user_inbounds：用户对具体 inbound 的访问凭据（一条记录对应一个 user+inbound 对）
+		// 注：synced_upload_bytes / synced_download_bytes 为旧版 cursor 设计遗留字段，
+		// 当前使用 V2Ray Stats reset=true 获取 delta，不再需要。
+		// 新建表不再包含这两列，旧表中的列保留不删除（兼容性）。
 		`CREATE TABLE IF NOT EXISTS user_inbounds (
 			id                   TEXT PRIMARY KEY,
 			user_id              TEXT NOT NULL,
@@ -126,8 +129,6 @@ func (db *DB) init() error {
 			node_id              TEXT NOT NULL DEFAULT '',
 			uuid                 TEXT NOT NULL DEFAULT '',
 			secret               TEXT NOT NULL DEFAULT '',
-			synced_upload_bytes  INTEGER NOT NULL DEFAULT 0,
-			synced_download_bytes INTEGER NOT NULL DEFAULT 0,
 			created_at           TEXT NOT NULL
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_user_inbounds_user_id ON user_inbounds(user_id);`,

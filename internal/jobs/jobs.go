@@ -37,6 +37,8 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 	result := SyncUsageResult{Errors: make([]string, 0)}
 	// 记录本轮已首次处理的用户，确保连接数从零开始累加而非叠加上轮旧值
 	connResetUsers := make(map[string]struct{})
+	// 同一 sync 周期使用统一时间，避免 EffectiveStatus 边界抖动
+	now := time.Now().UTC()
 
 	for _, node := range nodesList {
 		client, err := dial(node.ID)
@@ -77,7 +79,13 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 		}
 
 		reloadNeeded := false
+
+		// 节点维度流量从所有上报用户汇总（包含已删除用户），避免 reset=true 后丢失流量
 		var nodeUploadDelta, nodeDownloadDelta int64
+		for _, item := range usage.Users {
+			nodeUploadDelta += item.UploadTotal
+			nodeDownloadDelta += item.DownloadTotal
+		}
 
 		// 取节点倍率，≤0 时视为 1.0
 		trafficRate := node.TrafficRate
@@ -97,7 +105,7 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			if !ok {
 				continue
 			}
-			prevEnabled := user.EffectiveEnabled()
+			prevEnabled := user.EffectiveEnabledAt(now)
 
 			// 本轮首次处理该用户时，清零连接数和设备数，确保跨节点累加从零开始
 			if _, seen := connResetUsers[user.ID]; !seen {
@@ -109,23 +117,20 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			if stats, ok := usageByUser[user.Username]; ok {
 				uploadDelta := stats.UploadTotal
 				downloadDelta := stats.DownloadTotal
-				// 节点记录真实流量，用户计费流量乘以节点倍率
+				// 用户计费流量乘以节点倍率
 				user.UploadBytes += applyRate(uploadDelta, trafficRate)
 				user.DownloadBytes += applyRate(downloadDelta, trafficRate)
-				nodeUploadDelta += uploadDelta
-				nodeDownloadDelta += downloadDelta
 				// 累加连接数和在线设备数（支持多节点求和）
 				user.Connections += stats.Connections
 				user.Devices += stats.Devices
 				// 有新增流量则更新在线时间
 				if uploadDelta > 0 || downloadDelta > 0 {
-					now := time.Now().UTC()
 					user.OnlineAt = &now
 				}
 			}
 
 			user.UsedBytes = user.UploadBytes + user.DownloadBytes
-			statusChanged := prevEnabled != user.EffectiveEnabled()
+			statusChanged := prevEnabled != user.EffectiveEnabledAt(now)
 			user, err = store.UpsertUser(user)
 			if err != nil {
 				result.Errors = append(result.Errors, node.ID+": "+err.Error())
@@ -139,13 +144,13 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			userMap[user.ID] = user
 		}
 
-		// 累积节点维度流量
+		// 累积节点维度流量（使用从全部上报用户汇总的真实值）
 		if nodeUploadDelta > 0 || nodeDownloadDelta > 0 {
 			if err := nodeStore.AddTraffic(node.ID, nodeUploadDelta, nodeDownloadDelta); err != nil {
 				result.Errors = append(result.Errors, node.ID+": add traffic: "+err.Error())
 			}
 			// 写入日统计桶（用于历史趋势图）
-			date := time.Now().UTC().Format("2006-01-02")
+			date := now.Format("2006-01-02")
 			if err := nodeStore.AddNodeDailyUsage(node.ID, date, nodeUploadDelta, nodeDownloadDelta); err != nil {
 				result.Errors = append(result.Errors, node.ID+": daily usage: "+err.Error())
 			}
@@ -180,6 +185,11 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 		} else {
 			result.NodesStopped++
 		}
+	}
+
+	// 定期清理过期的日统计数据（保留 180 天）
+	if err := nodeStore.CleanupOldDailyUsage(180); err != nil {
+		result.Errors = append(result.Errors, "cleanup daily usage: "+err.Error())
 	}
 
 	return result, nil

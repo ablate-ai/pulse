@@ -36,4 +36,6 @@ type Store interface {
 	AddNodeDailyUsage(nodeID, date string, upload, download int64) error
 	// ListNodeDailyUsage 返回最近 days 天内所有节点的日流量记录。
 	ListNodeDailyUsage(days int) ([]NodeDailyUsage, error)
+	// CleanupOldDailyUsage 删除超过 retainDays 天的历史日流量记录。
+	CleanupOldDailyUsage(retainDays int) error
 }

@@ -78,6 +78,10 @@ func (s *MemoryStore) ListNodeDailyUsage(days int) ([]NodeDailyUsage, error) {
 	return nil, nil
 }
 
+func (s *MemoryStore) CleanupOldDailyUsage(retainDays int) error {
+	return nil // 内存 store 不持久化日统计，无需清理
+}
+
 func (s *MemoryStore) List() ([]Node, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
