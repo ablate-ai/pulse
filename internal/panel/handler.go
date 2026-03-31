@@ -646,7 +646,7 @@ func (h *Handler) resetUserTraffic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 	user.UploadBytes = 0
 	user.DownloadBytes = 0
 	user.UsedBytes = 0
@@ -657,7 +657,9 @@ func (h *Handler) resetUserTraffic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 清空该用户所有凭据的流量同步游标，否则下次 SyncUsage 会把旧增量重新计入
+	// 清空该用户所有凭据的流量同步游标，否则下次 SyncUsage 会把旧增量重新计入。
+	// 游标清零失败仅记日志，不中断响应——用户字节数已清零，游标残留只影响下次
+	// SyncUsage 的增量精度，不会导致用户字节数二次叠加。
 	accesses, err := h.userStore.ListUserInboundsByUser(id)
 	if err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to list user inbounds: "+err.Error())
@@ -667,8 +669,7 @@ func (h *Handler) resetUserTraffic(w http.ResponseWriter, r *http.Request) {
 		acc.SyncedUploadBytes = 0
 		acc.SyncedDownloadBytes = 0
 		if _, err := h.userStore.UpsertUserInbound(acc); err != nil {
-			htmxError(w, http.StatusInternalServerError, "failed to reset cursor: "+err.Error())
-			return
+			log.Printf("resetUserTraffic: 清零用户 %s inbound %s 游标失败: %v", id, acc.ID, err)
 		}
 	}
 
@@ -687,24 +688,41 @@ func (h *Handler) batchUsers(w http.ResponseWriter, r *http.Request) {
 		htmxError(w, http.StatusBadRequest, "no users selected")
 		return
 	}
+	var errs []string
 	for _, id := range ids {
 		switch action {
 		case "delete":
-			_ = h.userStore.DeleteUser(id)
+			if err := h.userStore.DeleteUser(id); err != nil {
+				errs = append(errs, id+": "+err.Error())
+			}
 		case "enable":
-			if u, err := h.userStore.GetUser(id); err == nil {
-				u.Status = users.StatusActive
-				_, _ = h.userStore.UpsertUser(u)
+			u, err := h.userStore.GetUser(id)
+			if err != nil {
+				errs = append(errs, id+": "+err.Error())
+				continue
+			}
+			u.Status = users.StatusActive
+			if _, err := h.userStore.UpsertUser(u); err != nil {
+				errs = append(errs, id+": "+err.Error())
 			}
 		case "disable":
-			if u, err := h.userStore.GetUser(id); err == nil {
-				u.Status = users.StatusDisabled
-				_, _ = h.userStore.UpsertUser(u)
+			u, err := h.userStore.GetUser(id)
+			if err != nil {
+				errs = append(errs, id+": "+err.Error())
+				continue
+			}
+			u.Status = users.StatusDisabled
+			if _, err := h.userStore.UpsertUser(u); err != nil {
+				errs = append(errs, id+": "+err.Error())
 			}
 		default:
 			htmxError(w, http.StatusBadRequest, "unknown action: "+action)
 			return
 		}
+	}
+	if len(errs) > 0 {
+		htmxError(w, http.StatusInternalServerError, "部分操作失败: "+strings.Join(errs, "; "))
+		return
 	}
 	h.renderUsersListFromStore(w)
 }
