@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -406,6 +407,291 @@ func TestSyncUsage_MultiInbound_NewInboundAdded(t *testing.T) {
 	}
 	if alice.UsedBytes != 40 {
 		t.Errorf("used: want 40, got %d", alice.UsedBytes)
+	}
+}
+
+// ─── SyncUsage 边界场景 ──────────────────────────────────────────────────────
+
+func TestSyncUsage_DialError_SkipsNode(t *testing.T) {
+	// 节点不可达时应跳过并记录错误，不影响其他节点
+	nodeStore := nodes.NewMemoryStore()
+	userStore := users.NewMemoryStore()
+	_, _ = nodeStore.Upsert(nodes.Node{ID: "n1", Name: "n1", BaseURL: "http://node.test"})
+
+	dial := func(nodeID string) (*nodes.Client, error) {
+		return nil, fmt.Errorf("connection refused")
+	}
+
+	result, err := SyncUsage(context.Background(), userStore, nodeStore, inbounds.NewMemoryStore(), dial, ApplyOptions{}, nil)
+	if err != nil {
+		t.Fatalf("SyncUsage() should not return error, got %v", err)
+	}
+	if result.NodesSynced != 0 {
+		t.Errorf("nodes synced: want 0, got %d", result.NodesSynced)
+	}
+	if len(result.Errors) != 1 {
+		t.Errorf("errors: want 1, got %d", len(result.Errors))
+	}
+}
+
+func TestSyncUsage_UsageEndpointError_SkipsNode(t *testing.T) {
+	// usage 端点返回错误时应跳过该节点
+	nodeStore := nodes.NewMemoryStore()
+	userStore := users.NewMemoryStore()
+	_, _ = nodeStore.Upsert(nodes.Node{ID: "n1", Name: "n1", BaseURL: "http://node.test"})
+
+	dial := testDial(t, func(path string, w http.ResponseWriter, r *http.Request) {
+		if path == "/v1/node/runtime/usage" {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":"sing-box crashed"}`))
+		}
+	})
+
+	result, err := SyncUsage(context.Background(), userStore, nodeStore, inbounds.NewMemoryStore(), dial, ApplyOptions{}, nil)
+	if err != nil {
+		t.Fatalf("SyncUsage() should not return error, got %v", err)
+	}
+	if result.NodesSynced != 0 {
+		t.Errorf("nodes synced: want 0, got %d", result.NodesSynced)
+	}
+	if len(result.Errors) == 0 {
+		t.Error("expected at least one error recorded")
+	}
+}
+
+func TestSyncUsage_NodeRestart_DeltaFromZero(t *testing.T) {
+	// 节点重启后 UploadTotal 从 0 开始（小于之前的游标值）
+	// usageDelta 应返回 current（而非负值），模拟重新从 0 计数
+	nodeStore := nodes.NewMemoryStore()
+	userStore := users.NewMemoryStore()
+	_, _ = nodeStore.Upsert(nodes.Node{ID: "n1", Name: "n1", BaseURL: "http://node.test"})
+	_, _ = userStore.UpsertUser(users.User{
+		ID: "u1", Username: "alice", Status: users.StatusActive,
+		TrafficLimit: 999999,
+		UploadBytes: 100, DownloadBytes: 50, // 已有历史流量
+	})
+	// 游标在 100/50（上次同步时节点报 100/50），节点重启后从 0 开始
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID: "u1-ib0", UserID: "u1", InboundID: "ib-vless", NodeID: "n1",
+		UUID: "11111111-1111-1111-1111-111111111111", Secret: "s1",
+		SyncedUploadBytes: 100, SyncedDownloadBytes: 50,
+	})
+
+	// 节点重启后报 10/5（小于之前的游标 100/50）
+	dial := usageDial(t, "alice", 10, 5)
+
+	_, err := SyncUsage(context.Background(), userStore, nodeStore, inbounds.NewMemoryStore(), dial, ApplyOptions{}, nil)
+	if err != nil {
+		t.Fatalf("SyncUsage() error = %v", err)
+	}
+
+	alice, _ := userStore.GetUser("u1")
+	// delta = current（10/5），因为 current < previous 时 usageDelta 返回 current
+	if alice.UploadBytes != 110 {
+		t.Errorf("upload: want 110 (100+10), got %d", alice.UploadBytes)
+	}
+	if alice.DownloadBytes != 55 {
+		t.Errorf("download: want 55 (50+5), got %d", alice.DownloadBytes)
+	}
+}
+
+func TestSyncUsage_MultiNode_ConnectionsReset(t *testing.T) {
+	// 验证跨节点连接数从零累加，而非叠加上轮旧值
+	nodeStore := nodes.NewMemoryStore()
+	userStore := users.NewMemoryStore()
+	_, _ = nodeStore.Upsert(nodes.Node{ID: "n1", Name: "n1", BaseURL: "http://n1.test"})
+	_, _ = nodeStore.Upsert(nodes.Node{ID: "n2", Name: "n2", BaseURL: "http://n2.test"})
+	_, _ = userStore.UpsertUser(users.User{
+		ID: "u1", Username: "alice", Status: users.StatusActive,
+		TrafficLimit: 999999,
+		Connections:  999, // 上一轮的旧值，应被清零
+		Devices:      888,
+	})
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID: "u1-n1", UserID: "u1", InboundID: "ib1", NodeID: "n1",
+		UUID: "11111111-1111-1111-1111-111111111111", Secret: "s1",
+	})
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID: "u1-n2", UserID: "u1", InboundID: "ib2", NodeID: "n2",
+		UUID: "22222222-2222-2222-2222-222222222222", Secret: "s2",
+	})
+
+	dial := testDial(t, func(path string, w http.ResponseWriter, r *http.Request) {
+		if path == "/v1/node/runtime/usage" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"available": true, "running": true,
+				"users": []map[string]any{
+					{"user": "alice", "upload_total": 10, "download_total": 5,
+						"connections": 3, "devices": 2},
+				},
+			})
+		}
+	})
+
+	_, err := SyncUsage(context.Background(), userStore, nodeStore, inbounds.NewMemoryStore(), dial, ApplyOptions{}, nil)
+	if err != nil {
+		t.Fatalf("SyncUsage() error = %v", err)
+	}
+
+	alice, _ := userStore.GetUser("u1")
+	// 两个节点各报 3 连接 2 设备 → 累加 = 6/4
+	if alice.Connections != 6 {
+		t.Errorf("connections: want 6, got %d", alice.Connections)
+	}
+	if alice.Devices != 4 {
+		t.Errorf("devices: want 4, got %d", alice.Devices)
+	}
+}
+
+func TestSyncUsage_OnlineAt_UpdatedOnTraffic(t *testing.T) {
+	// 有新增流量时 OnlineAt 应更新
+	nodeStore := nodes.NewMemoryStore()
+	userStore := users.NewMemoryStore()
+	_, _ = nodeStore.Upsert(nodes.Node{ID: "n1", Name: "n1", BaseURL: "http://node.test"})
+	_, _ = userStore.UpsertUser(users.User{
+		ID: "u1", Username: "alice", Status: users.StatusActive,
+		TrafficLimit: 999999,
+	})
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID: "u1-ib0", UserID: "u1", InboundID: "ib1", NodeID: "n1",
+		UUID: "11111111-1111-1111-1111-111111111111", Secret: "s1",
+	})
+
+	beforeSync := time.Now().Add(-1 * time.Second)
+	dial := usageDial(t, "alice", 50, 20)
+
+	_, err := SyncUsage(context.Background(), userStore, nodeStore, inbounds.NewMemoryStore(), dial, ApplyOptions{}, nil)
+	if err != nil {
+		t.Fatalf("SyncUsage() error = %v", err)
+	}
+
+	alice, _ := userStore.GetUser("u1")
+	if alice.OnlineAt == nil {
+		t.Fatal("expected OnlineAt to be set")
+	}
+	if alice.OnlineAt.Before(beforeSync) {
+		t.Errorf("OnlineAt should be recent, got %v", alice.OnlineAt)
+	}
+}
+
+func TestSyncUsage_NoTraffic_OnlineAtNotSet(t *testing.T) {
+	// 游标与节点报告值一致（无新增流量）→ OnlineAt 不应更新
+	nodeStore := nodes.NewMemoryStore()
+	userStore := users.NewMemoryStore()
+	_, _ = nodeStore.Upsert(nodes.Node{ID: "n1", Name: "n1", BaseURL: "http://node.test"})
+	_, _ = userStore.UpsertUser(users.User{
+		ID: "u1", Username: "alice", Status: users.StatusActive,
+		TrafficLimit: 999999,
+	})
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID: "u1-ib0", UserID: "u1", InboundID: "ib1", NodeID: "n1",
+		UUID: "11111111-1111-1111-1111-111111111111", Secret: "s1",
+		SyncedUploadBytes: 50, SyncedDownloadBytes: 20,
+	})
+
+	// 节点报告与游标一致 → delta = 0
+	dial := usageDial(t, "alice", 50, 20)
+
+	_, err := SyncUsage(context.Background(), userStore, nodeStore, inbounds.NewMemoryStore(), dial, ApplyOptions{}, nil)
+	if err != nil {
+		t.Fatalf("SyncUsage() error = %v", err)
+	}
+
+	alice, _ := userStore.GetUser("u1")
+	if alice.OnlineAt != nil {
+		t.Errorf("expected OnlineAt nil (no new traffic), got %v", alice.OnlineAt)
+	}
+}
+
+func TestSyncUsage_NodeTraffic_AccumulatedCorrectly(t *testing.T) {
+	// 验证节点维度流量（真实值，不含倍率）被正确累加
+	nodeStore := nodes.NewMemoryStore()
+	userStore := users.NewMemoryStore()
+	_, _ = nodeStore.Upsert(nodes.Node{ID: "n1", Name: "n1", BaseURL: "http://node.test", TrafficRate: 3.0})
+	_, _ = userStore.UpsertUser(users.User{
+		ID: "u1", Username: "alice", Status: users.StatusActive, TrafficLimit: 999999,
+	})
+	_, _ = userStore.UpsertUser(users.User{
+		ID: "u2", Username: "bob", Status: users.StatusActive, TrafficLimit: 999999,
+	})
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID: "u1-ib0", UserID: "u1", InboundID: "ib1", NodeID: "n1",
+		UUID: "11111111-1111-1111-1111-111111111111", Secret: "s1",
+	})
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID: "u2-ib0", UserID: "u2", InboundID: "ib1", NodeID: "n1",
+		UUID: "22222222-2222-2222-2222-222222222222", Secret: "s2",
+	})
+
+	dial := testDial(t, func(path string, w http.ResponseWriter, r *http.Request) {
+		if path == "/v1/node/runtime/usage" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"available": true, "running": true,
+				"users": []map[string]any{
+					{"user": "alice", "upload_total": 100, "download_total": 50},
+					{"user": "bob", "upload_total": 40, "download_total": 20},
+				},
+			})
+		}
+	})
+
+	_, err := SyncUsage(context.Background(), userStore, nodeStore, inbounds.NewMemoryStore(), dial, ApplyOptions{}, nil)
+	if err != nil {
+		t.Fatalf("SyncUsage() error = %v", err)
+	}
+
+	node, _ := nodeStore.Get("n1")
+	// 节点流量 = alice(100+50) + bob(40+20) 的真实值（不含倍率）
+	if node.UploadBytes != 140 {
+		t.Errorf("node upload: want 140, got %d", node.UploadBytes)
+	}
+	if node.DownloadBytes != 70 {
+		t.Errorf("node download: want 70, got %d", node.DownloadBytes)
+	}
+
+	// 用户计费流量含倍率 3.0
+	alice, _ := userStore.GetUser("u1")
+	if alice.UploadBytes != 300 {
+		t.Errorf("alice upload: want 300 (100*3), got %d", alice.UploadBytes)
+	}
+	bob, _ := userStore.GetUser("u2")
+	if bob.UploadBytes != 120 {
+		t.Errorf("bob upload: want 120 (40*3), got %d", bob.UploadBytes)
+	}
+}
+
+func TestSyncUsage_UserNotInUsage_NoChange(t *testing.T) {
+	// 用户有 inbound 但节点未报告该用户的流量（例如用户从未连接过）
+	nodeStore := nodes.NewMemoryStore()
+	userStore := users.NewMemoryStore()
+	_, _ = nodeStore.Upsert(nodes.Node{ID: "n1", Name: "n1", BaseURL: "http://node.test"})
+	_, _ = userStore.UpsertUser(users.User{
+		ID: "u1", Username: "alice", Status: users.StatusActive,
+		TrafficLimit: 999999,
+	})
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID: "u1-ib0", UserID: "u1", InboundID: "ib1", NodeID: "n1",
+		UUID: "11111111-1111-1111-1111-111111111111", Secret: "s1",
+	})
+
+	// 节点返回空用户列表
+	dial := testDial(t, func(path string, w http.ResponseWriter, r *http.Request) {
+		if path == "/v1/node/runtime/usage" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"available": true, "running": true,
+				"users":     []map[string]any{},
+			})
+		}
+	})
+
+	_, err := SyncUsage(context.Background(), userStore, nodeStore, inbounds.NewMemoryStore(), dial, ApplyOptions{}, nil)
+	if err != nil {
+		t.Fatalf("SyncUsage() error = %v", err)
+	}
+
+	alice, _ := userStore.GetUser("u1")
+	if alice.UsedBytes != 0 {
+		t.Errorf("used: want 0, got %d", alice.UsedBytes)
 	}
 }
 
