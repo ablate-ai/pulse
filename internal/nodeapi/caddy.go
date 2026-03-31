@@ -187,7 +187,7 @@ func writeCaddyfileFromConfig(acmeEmail, panelDomain string, panelPort int) erro
 		if panelPort <= 0 {
 			panelPort = 8080
 		}
-		fmt.Fprintf(&buf, "# 面板 HTTPS\n%s {\n\thandle {\n\t\treverse_proxy 127.0.0.1:%d\n\t}\n}\n\n",
+		fmt.Fprintf(&buf, "# 面板 HTTPS\n%s {\n\thandle {\n\t\treverse_proxy 127.0.0.1:%d {\n\t\t\tflush_interval -1\n\t\t}\n\t}\n}\n\n",
 			strings.Join(domains, ", "), panelPort)
 	}
 
