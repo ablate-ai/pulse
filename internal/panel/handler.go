@@ -66,6 +66,7 @@ type nodeMetrics struct {
 	DownloadSpeed int64    // bytes/s
 	DailyTraffic  []usage.DailyTrafficPoint // 近 7 天趋势
 	Protocols     []string // 该节点支持的协议列表
+	UserConns     []nodes.UserUsage // per-user 连接数据，仅用于内部缓存聚合，不送入 SSE 模板
 }
 
 // metricsSubscriber SSE 订阅者。
@@ -156,6 +157,12 @@ type Handler struct {
 		mu   sync.RWMutex
 		data []nodeMetrics
 		at   time.Time
+	}
+	// userConnsCache 缓存各节点实时 per-user 连接数聚合结果（每秒更新）。
+	// key=username，value=[connections, devices]，供用户列表叠加真实数据用。
+	userConnsCache struct {
+		mu   sync.RWMutex
+		data map[string][2]int
 	}
 }
 
@@ -542,6 +549,7 @@ func (h *Handler) statsPartial(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) usersListPartial(w http.ResponseWriter, r *http.Request) {
+	h.lastAccessAt.Store(time.Now().UnixNano()) // 保持后台轮询活跃，以获取实时连接数
 	q := strings.ToLower(r.URL.Query().Get("q"))
 	statusFilter := r.URL.Query().Get("status")
 
@@ -573,7 +581,7 @@ func (h *Handler) usersListPartial(w http.ResponseWriter, r *http.Request) {
 		filtered = append(filtered, u)
 	}
 
-	h.renderPartial(w, "partial-user-rows", filtered)
+	h.renderPartial(w, "partial-user-rows", h.overlayLiveConns(filtered))
 }
 
 func (h *Handler) userNewForm(w http.ResponseWriter, r *http.Request) {
@@ -906,6 +914,27 @@ func (h *Handler) saveAnnouncement(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// overlayLiveConns 用实时缓存的连接数据覆盖用户列表中的 Connections/Devices 字段。
+// 缓存为空时原样返回（降级到 DB 值），不影响正常渲染。
+func (h *Handler) overlayLiveConns(us []users.User) []users.User {
+	h.userConnsCache.mu.RLock()
+	conns := h.userConnsCache.data
+	h.userConnsCache.mu.RUnlock()
+	if len(conns) == 0 {
+		return us
+	}
+	for i := range us {
+		if c, ok := conns[us[i].Username]; ok {
+			us[i].Connections = c[0]
+			us[i].Devices = c[1]
+		} else {
+			us[i].Connections = 0
+			us[i].Devices = 0
+		}
+	}
+	return us
+}
+
 // renderUsersListFromStore 从 store 拉取最新用户列表并渲染 partial。
 func (h *Handler) renderUsersListFromStore(w http.ResponseWriter) {
 	allUsers, err := h.userStore.ListUsers()
@@ -913,7 +942,7 @@ func (h *Handler) renderUsersListFromStore(w http.ResponseWriter) {
 		htmxError(w, http.StatusInternalServerError, "failed to get user list: "+err.Error())
 		return
 	}
-	h.renderPartial(w, "partial-user-rows", allUsers)
+	h.renderPartial(w, "partial-user-rows", h.overlayLiveConns(allUsers))
 }
 
 // fetchNodeStatus 查询单个节点的运行状态和版本信息。
@@ -987,6 +1016,7 @@ func (h *Handler) fetchNodeMetrics(ctx context.Context, node nodes.Node, dailyRa
 			m.OnlineDevices += u.Devices
 		}
 	}
+	m.UserConns = stats.Users
 
 	// 计算实时网速（与上次采样对比）
 	now := time.Now()
@@ -1059,6 +1089,20 @@ func (h *Handler) pollAllNodes(ctx context.Context) {
 	h.metricsCache.data = results
 	h.metricsCache.at = time.Now()
 	h.metricsCache.mu.Unlock()
+
+	// 聚合各节点 per-user 连接数到独立缓存，供用户列表实时叠加
+	newConns := make(map[string][2]int)
+	for _, r := range results {
+		for _, u := range r.UserConns {
+			if u.Connections > 0 {
+				prev := newConns[u.User]
+				newConns[u.User] = [2]int{prev[0] + u.Connections, prev[1] + u.Devices}
+			}
+		}
+	}
+	h.userConnsCache.mu.Lock()
+	h.userConnsCache.data = newConns
+	h.userConnsCache.mu.Unlock()
 
 	// 广播给所有 SSE 订阅者
 	h.hub.broadcast(h, results)
