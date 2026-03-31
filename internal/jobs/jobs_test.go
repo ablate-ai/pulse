@@ -177,7 +177,145 @@ func TestSyncUsage_UpdatesBytesAndReloads(t *testing.T) {
 	}
 }
 
+// ─── SyncUsage TrafficRate ────────────────────────────────────────────────────
+
+func TestSyncUsage_TrafficRate_Double(t *testing.T) {
+	nodeStore := nodes.NewMemoryStore()
+	userStore := users.NewMemoryStore()
+	// 倍率 2.0：用户计费流量应翻倍
+	_, _ = nodeStore.Upsert(nodes.Node{ID: "n1", Name: "n1", BaseURL: "http://node.test", TrafficRate: 2.0})
+	_, _ = userStore.UpsertUser(users.User{
+		ID: "u1", Username: "alice", Status: users.StatusActive,
+		TrafficLimit: 999999,
+	})
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID: "u1-ib0", UserID: "u1", NodeID: "n1",
+		UUID: "11111111-1111-1111-1111-111111111111", Secret: "test-secret",
+	})
+
+	dial := usageDial(t, "alice", 80, 30)
+
+	_, err := SyncUsage(context.Background(), userStore, nodeStore, inbounds.NewMemoryStore(), dial, ApplyOptions{}, nil)
+	if err != nil {
+		t.Fatalf("SyncUsage() error = %v", err)
+	}
+
+	alice, _ := userStore.GetUser("u1")
+	// 用户计费流量 = (80+30) * 2 = 220
+	if alice.UploadBytes != 160 {
+		t.Errorf("upload: want 160, got %d", alice.UploadBytes)
+	}
+	if alice.DownloadBytes != 60 {
+		t.Errorf("download: want 60, got %d", alice.DownloadBytes)
+	}
+	if alice.UsedBytes != 220 {
+		t.Errorf("used: want 220, got %d", alice.UsedBytes)
+	}
+
+	// 节点记录真实流量，不受倍率影响
+	node, _ := nodeStore.Get("n1")
+	if node.UploadBytes != 80 {
+		t.Errorf("node upload: want 80, got %d", node.UploadBytes)
+	}
+	if node.DownloadBytes != 30 {
+		t.Errorf("node download: want 30, got %d", node.DownloadBytes)
+	}
+}
+
+func TestSyncUsage_TrafficRate_Half(t *testing.T) {
+	nodeStore := nodes.NewMemoryStore()
+	userStore := users.NewMemoryStore()
+	// 倍率 0.5：用户计费流量应减半
+	_, _ = nodeStore.Upsert(nodes.Node{ID: "n1", Name: "n1", BaseURL: "http://node.test", TrafficRate: 0.5})
+	_, _ = userStore.UpsertUser(users.User{
+		ID: "u1", Username: "alice", Status: users.StatusActive,
+		TrafficLimit: 999999,
+	})
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID: "u1-ib0", UserID: "u1", NodeID: "n1",
+		UUID: "11111111-1111-1111-1111-111111111111", Secret: "test-secret",
+	})
+
+	dial := usageDial(t, "alice", 80, 30)
+
+	_, err := SyncUsage(context.Background(), userStore, nodeStore, inbounds.NewMemoryStore(), dial, ApplyOptions{}, nil)
+	if err != nil {
+		t.Fatalf("SyncUsage() error = %v", err)
+	}
+
+	alice, _ := userStore.GetUser("u1")
+	// 用户计费流量 = (80+30) * 0.5 = 55
+	if alice.UploadBytes != 40 {
+		t.Errorf("upload: want 40, got %d", alice.UploadBytes)
+	}
+	if alice.DownloadBytes != 15 {
+		t.Errorf("download: want 15, got %d", alice.DownloadBytes)
+	}
+	if alice.UsedBytes != 55 {
+		t.Errorf("used: want 55, got %d", alice.UsedBytes)
+	}
+
+	// 节点记录真实流量，不受倍率影响
+	node, _ := nodeStore.Get("n1")
+	if node.UploadBytes != 80 {
+		t.Errorf("node upload: want 80, got %d", node.UploadBytes)
+	}
+	if node.DownloadBytes != 30 {
+		t.Errorf("node download: want 30, got %d", node.DownloadBytes)
+	}
+}
+
+func TestSyncUsage_TrafficRate_QuotaWithRate(t *testing.T) {
+	nodeStore := nodes.NewMemoryStore()
+	userStore := users.NewMemoryStore()
+	// 倍率 2.0，限额 100：实际产生 60 bytes 但计费 120，应触发 limited
+	_, _ = nodeStore.Upsert(nodes.Node{ID: "n1", Name: "n1", BaseURL: "http://node.test", TrafficRate: 2.0})
+	_, _ = userStore.UpsertUser(users.User{
+		ID: "u1", Username: "alice", Status: users.StatusActive,
+		TrafficLimit: 100,
+	})
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID: "u1-ib0", UserID: "u1", NodeID: "n1",
+		UUID: "11111111-1111-1111-1111-111111111111", Secret: "test-secret",
+	})
+
+	dial := usageDial(t, "alice", 40, 20) // 真实 60 bytes，计费 120
+
+	_, err := SyncUsage(context.Background(), userStore, nodeStore, inbounds.NewMemoryStore(), dial, ApplyOptions{}, nil)
+	if err != nil {
+		t.Fatalf("SyncUsage() error = %v", err)
+	}
+
+	alice, _ := userStore.GetUser("u1")
+	if alice.UsedBytes != 120 {
+		t.Errorf("used: want 120, got %d", alice.UsedBytes)
+	}
+	if alice.EffectiveEnabled() {
+		t.Error("alice should be limited (120 > 100) but is still enabled")
+	}
+}
+
 // ─── 辅助 ─────────────────────────────────────────────────────────────────────
+
+// usageDial 返回一个固定上报 upload/download 的 dial 函数。
+func usageDial(t *testing.T, username string, upload, download int64) NodeDialer {
+	t.Helper()
+	return testDial(t, func(path string, w http.ResponseWriter, r *http.Request) {
+		switch path {
+		case "/v1/node/runtime/usage":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"available": true, "running": true,
+				"users": []map[string]any{
+					{"user": username, "upload_total": upload, "download_total": download},
+				},
+			})
+		case "/v1/node/runtime/restart":
+			_ = json.NewEncoder(w).Encode(map[string]any{"running": true})
+		}
+	})
+}
+
+
 
 func testDial(t *testing.T, handler func(path string, w http.ResponseWriter, r *http.Request)) NodeDialer {
 	t.Helper()
