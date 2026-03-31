@@ -2118,23 +2118,59 @@ func (h *Handler) apiMe(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// apiResetToken 重新生成用户订阅 token，以 ?token= 参数鉴权。
+// apiResetToken 重新生成用户订阅 token 及所有 inbound 凭据，以 ?token= 参数鉴权。
 func (h *Handler) apiResetToken(w http.ResponseWriter, r *http.Request) {
+	jsonErr := func(status int, msg string) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = fmt.Fprintf(w, `{"error":%q}`, msg)
+	}
+
 	token := r.URL.Query().Get("token")
 	user, err := h.userStore.GetUserBySubToken(token)
 	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte(`{"error":"user not found"}`))
+		jsonErr(http.StatusNotFound, "user not found")
 		return
 	}
+
+	// 重置订阅 token
 	user.SubToken = panelRandomToken(16)
 	if _, err := h.userStore.UpsertUser(user); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`{"error":"failed to reset token"}`))
+		jsonErr(http.StatusInternalServerError, "failed to reset token")
 		return
 	}
+
+	// 重置该用户所有 inbound 的代理凭据，并收集受影响的节点
+	accesses, err := h.userStore.ListUserInboundsByUser(user.ID)
+	if err != nil {
+		jsonErr(http.StatusInternalServerError, "failed to list user inbounds")
+		return
+	}
+	affectedNodeIDs := make(map[string]struct{})
+	for _, acc := range accesses {
+		ib, err := h.ibStore.GetInbound(acc.InboundID)
+		if err != nil {
+			// inbound 已删除则跳过
+			continue
+		}
+		secret := panelRandomToken(12)
+		if ib.Protocol == "shadowsocks" && strings.HasPrefix(ib.Method, "2022-") {
+			secret = generateSSPassword(ib.Method)
+		}
+		acc.UUID = panelRandomUUID()
+		acc.Secret = secret
+		if _, err := h.userStore.UpsertUserInbound(acc); err != nil {
+			jsonErr(http.StatusInternalServerError, "failed to reset inbound credentials")
+			return
+		}
+		affectedNodeIDs[acc.NodeID] = struct{}{}
+	}
+	affected := make([]string, 0, len(affectedNodeIDs))
+	for id := range affectedNodeIDs {
+		affected = append(affected, id)
+	}
+	h.applyNodes(affected)
+
 	// 若是 HTMX 请求，重定向到新门户页面
 	if isHTMX(r) {
 		w.Header().Set("HX-Redirect", "/user/"+user.SubToken)
