@@ -113,13 +113,15 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 				}
 			}
 			user.UsedBytes = user.UploadBytes + user.DownloadBytes
-			if prevEnabled != user.EffectiveEnabled() {
-				reloadNeeded = true
-			}
+			statusChanged := prevEnabled != user.EffectiveEnabled()
 			user, err = store.UpsertUser(user)
 			if err != nil {
 				result.Errors = append(result.Errors, node.ID+": "+err.Error())
 				continue
+			}
+			// 仅在用户状态持久化成功后才触发节点重下发，避免基于未保存状态重载
+			if statusChanged {
+				reloadNeeded = true
 			}
 			result.UsersUpdated++
 			userMap[user.ID] = user
@@ -194,8 +196,10 @@ func ActivateExpiredOnHold(ctx context.Context, store users.Store, nodeStore nod
 		u.Status = users.StatusActive
 		u.OnHoldExpireAt = nil
 		if _, err := store.UpsertUser(u); err != nil {
+			log.Printf("ActivateExpiredOnHold: 激活用户 %s (%s) 失败: %v", u.Username, u.ID, err)
 			continue
 		}
+		log.Printf("ActivateExpiredOnHold: 用户 %s (%s) 已激活", u.Username, u.ID)
 		accesses, _ := store.ListUserInboundsByUser(u.ID)
 		for _, acc := range accesses {
 			dirtyNodes[acc.NodeID] = struct{}{}
