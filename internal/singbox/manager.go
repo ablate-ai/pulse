@@ -312,20 +312,21 @@ func (m *Manager) Usage() UsageStats {
 
 	m.mu.Unlock()
 
-	// 构建 per-user 统计：已关闭连接累积值 + 当前活跃连接实时字节数
-	userIndex := make(map[string]*UserUsage)
+	// 构建 per-user 统计：已关闭连接累积值 + 当前活跃连接实时字节数。
+	// 使用 slice 下标而非指针，避免 append 扩容后指针悬空。
+	userIndex := make(map[string]int)
 	ensureUser := func(user string) *UserUsage {
-		item, ok := userIndex[user]
-		if !ok {
-			stats.Users = append(stats.Users, UserUsage{
-				User:          user,
-				UploadTotal:   closedUploadSnap[user],
-				DownloadTotal: closedDownloadSnap[user],
-			})
-			item = &stats.Users[len(stats.Users)-1]
-			userIndex[user] = item
+		if idx, ok := userIndex[user]; ok {
+			return &stats.Users[idx]
 		}
-		return item
+		stats.Users = append(stats.Users, UserUsage{
+			User:          user,
+			UploadTotal:   closedUploadSnap[user],
+			DownloadTotal: closedDownloadSnap[user],
+		})
+		idx := len(stats.Users) - 1
+		userIndex[user] = idx
+		return &stats.Users[idx]
 	}
 
 	// 预先为有已关闭流量的用户创建条目
@@ -364,8 +365,8 @@ func (m *Manager) Usage() UsageStats {
 		}
 	}
 	for user, ips := range userIPs {
-		if item, ok := userIndex[user]; ok {
-			item.Devices = len(ips)
+		if idx, ok := userIndex[user]; ok {
+			stats.Users[idx].Devices = len(ips)
 		}
 	}
 
