@@ -285,8 +285,21 @@ func (a *userAPI) handleUserInbound(w http.ResponseWriter, r *http.Request, user
 			writeUserInboundError(w, err)
 			return
 		}
+		if acc.UserID != userID {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "user inbound not found"})
+			return
+		}
 		writeJSON(w, http.StatusOK, acc)
 	case http.MethodDelete:
+		acc, err := a.users.GetUserInbound(ibID)
+		if err != nil {
+			writeUserInboundError(w, err)
+			return
+		}
+		if acc.UserID != userID {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "user inbound not found"})
+			return
+		}
 		if err := a.users.DeleteUserInbound(ibID); err != nil {
 			writeUserInboundError(w, err)
 			return
@@ -306,6 +319,10 @@ func (a *userAPI) handleAccessApply(w http.ResponseWriter, r *http.Request, user
 	acc, err := a.users.GetUserInbound(ibID)
 	if err != nil {
 		writeUserInboundError(w, err)
+		return
+	}
+	if acc.UserID != userID {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "user inbound not found"})
 		return
 	}
 
@@ -359,6 +376,10 @@ func (a *userAPI) handleAccessSubscription(w http.ResponseWriter, r *http.Reques
 	acc, err := a.users.GetUserInbound(ibID)
 	if err != nil {
 		writeUserInboundError(w, err)
+		return
+	}
+	if acc.UserID != userID {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "user inbound not found"})
 		return
 	}
 	user, err := a.users.GetUser(userID)
