@@ -155,21 +155,18 @@ func (s *UserStore) UpsertUserInbound(acc users.UserInbound) (users.UserInbound,
 
 	_, err := s.db.Exec(`
 		INSERT INTO user_inbounds (
-			id, user_id, inbound_id, node_id, uuid, secret,
-			synced_upload_bytes, synced_download_bytes, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			id, user_id, inbound_id, node_id, uuid, secret, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
-			user_id               = excluded.user_id,
-			inbound_id            = excluded.inbound_id,
-			node_id               = excluded.node_id,
-			uuid                  = excluded.uuid,
-			secret                = excluded.secret,
-			synced_upload_bytes   = excluded.synced_upload_bytes,
-			synced_download_bytes = excluded.synced_download_bytes,
-			created_at            = excluded.created_at
+			user_id    = excluded.user_id,
+			inbound_id = excluded.inbound_id,
+			node_id    = excluded.node_id,
+			uuid       = excluded.uuid,
+			secret     = excluded.secret,
+			created_at = excluded.created_at
 	`,
 		acc.ID, acc.UserID, acc.InboundID, acc.NodeID, acc.UUID, acc.Secret,
-		acc.SyncedUploadBytes, acc.SyncedDownloadBytes, acc.CreatedAt.Format(time.RFC3339Nano),
+		acc.CreatedAt.Format(time.RFC3339Nano),
 	)
 	if err != nil {
 		return users.UserInbound{}, fmt.Errorf("upsert user inbound: %w", err)
@@ -179,8 +176,7 @@ func (s *UserStore) UpsertUserInbound(acc users.UserInbound) (users.UserInbound,
 
 func (s *UserStore) GetUserInbound(id string) (users.UserInbound, error) {
 	row := s.db.QueryRow(`
-		SELECT id, user_id, inbound_id, node_id, uuid, secret,
-		       synced_upload_bytes, synced_download_bytes, created_at
+		SELECT id, user_id, inbound_id, node_id, uuid, secret, created_at
 		FROM user_inbounds WHERE id = ?
 	`, id)
 	return scanUserInbound(row)
@@ -188,8 +184,7 @@ func (s *UserStore) GetUserInbound(id string) (users.UserInbound, error) {
 
 func (s *UserStore) ListUserInboundsByUser(userID string) ([]users.UserInbound, error) {
 	rows, err := s.db.Query(`
-		SELECT id, user_id, inbound_id, node_id, uuid, secret,
-		       synced_upload_bytes, synced_download_bytes, created_at
+		SELECT id, user_id, inbound_id, node_id, uuid, secret, created_at
 		FROM user_inbounds WHERE user_id = ? ORDER BY id
 	`, userID)
 	if err != nil {
@@ -201,8 +196,7 @@ func (s *UserStore) ListUserInboundsByUser(userID string) ([]users.UserInbound, 
 
 func (s *UserStore) ListUserInboundsByNode(nodeID string) ([]users.UserInbound, error) {
 	rows, err := s.db.Query(`
-		SELECT id, user_id, inbound_id, node_id, uuid, secret,
-		       synced_upload_bytes, synced_download_bytes, created_at
+		SELECT id, user_id, inbound_id, node_id, uuid, secret, created_at
 		FROM user_inbounds WHERE node_id = ? ORDER BY id
 	`, nodeID)
 	if err != nil {
@@ -214,8 +208,7 @@ func (s *UserStore) ListUserInboundsByNode(nodeID string) ([]users.UserInbound, 
 
 func (s *UserStore) ListUserInboundsByInbound(inboundID string) ([]users.UserInbound, error) {
 	rows, err := s.db.Query(`
-		SELECT id, user_id, inbound_id, node_id, uuid, secret,
-		       synced_upload_bytes, synced_download_bytes, created_at
+		SELECT id, user_id, inbound_id, node_id, uuid, secret, created_at
 		FROM user_inbounds WHERE inbound_id = ? ORDER BY id
 	`, inboundID)
 	if err != nil {
@@ -351,7 +344,7 @@ func scanUserInbound(row scanner) (users.UserInbound, error) {
 
 	err := row.Scan(
 		&acc.ID, &acc.UserID, &acc.InboundID, &acc.NodeID, &acc.UUID, &acc.Secret,
-		&acc.SyncedUploadBytes, &acc.SyncedDownloadBytes, &createdAt,
+		&createdAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return users.UserInbound{}, users.ErrUserInboundNotFound

@@ -11,11 +11,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofrs/uuid/v5"
 	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
 	_ "github.com/sagernet/sing-box/experimental/clashapi"
 	"github.com/sagernet/sing-box/experimental/clashapi/trafficontrol"
+	"github.com/sagernet/sing-box/experimental/v2rayapi"
 	"github.com/sagernet/sing-box/include"
 	sbLog "github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -23,41 +23,34 @@ import (
 	"github.com/sagernet/sing/service"
 )
 
+// v2rayQuerier abstracts the V2Ray StatsService for per-user traffic counters.
+type v2rayQuerier interface {
+	QueryStats(ctx context.Context, request *v2rayapi.QueryStatsRequest) (*v2rayapi.QueryStatsResponse, error)
+}
+
 const maxLogs = 200
 
 var ErrNotRunning = errors.New("sing-box is not running")
 
 type Manager struct {
 	mu          sync.Mutex
+	resetMu     sync.Mutex // serializes Usage(reset=true) to prevent concurrent Swap(0) races
 	instance    *box.Box
 	starting    bool
 	startedAt   time.Time
 	logs        []string
-	traffic     trafficManager
+	traffic     trafficManager // Clash API: connections/devices only
+	v2rayStats  v2rayQuerier   // V2Ray Stats: per-user traffic (atomic read-and-reset)
 	lastConfig  string
 	configFile  string // 持久化路径，非空时 Start/Stop 会读写该文件
 	subscribers map[int64]chan string
 	nextSubID   int64
-
-	// 每用户流量累积器：汇总已关闭连接的字节数。
-	// sing-box 的 ClosedConnections() 是容量 1000 的环形缓冲，超限后旧连接被驱逐，
-	// 驱逐时字节数丢失会导致游标判断误判为节点重启，造成流量重复计算。
-	// 通过追踪已见过的连接 ID，在驱逐发生前捕获字节，保证累积值单调递增。
-	closedUserUpload   map[string]int64
-	closedUserDownload map[string]int64
-	seenClosedConnIDs  map[uuid.UUID]struct{}
-
-	// 上一次 Usage() 调用时的活跃连接快照。
-	// 用于检测在两次调用间关闭且已被环形缓冲驱逐的连接（从未出现在 ClosedConnections 中），
-	// 将其上次已知字节数补入累积器，避免因缓冲区容量限制（1000）导致流量静默丢失。
-	lastActiveConns map[uuid.UUID]activeConnSnapshot
 }
 
 type trafficManager interface {
 	Total() (up int64, down int64)
 	ConnectionsLen() int
 	Connections() []*trafficontrol.TrackerMetadata
-	ClosedConnections() []*trafficontrol.TrackerMetadata
 }
 
 type Status struct {
@@ -90,21 +83,10 @@ type UserUsage struct {
 	Devices       int    `json:"devices"`
 }
 
-// activeConnSnapshot 记录一条活跃连接在某次 Usage() 快照时的字节数。
-type activeConnSnapshot struct {
-	user     string
-	upload   int64
-	download int64
-}
-
 func NewManager() *Manager {
 	return &Manager{
-		logs:               make([]string, 0, maxLogs),
-		subscribers:        make(map[int64]chan string),
-		closedUserUpload:   make(map[string]int64),
-		closedUserDownload: make(map[string]int64),
-		seenClosedConnIDs:  make(map[uuid.UUID]struct{}),
-		lastActiveConns:    make(map[uuid.UUID]activeConnSnapshot),
+		logs:        make([]string, 0, maxLogs),
+		subscribers: make(map[int64]chan string),
 	}
 }
 
@@ -112,13 +94,9 @@ func NewManager() *Manager {
 // configFile 为保存最近一次配置的文件路径；启动成功后写入，显式 Stop 后删除。
 func NewManagerWithPersistence(configFile string) *Manager {
 	return &Manager{
-		logs:               make([]string, 0, maxLogs),
-		configFile:         configFile,
-		subscribers:        make(map[int64]chan string),
-		closedUserUpload:   make(map[string]int64),
-		closedUserDownload: make(map[string]int64),
-		seenClosedConnIDs:  make(map[uuid.UUID]struct{}),
-		lastActiveConns:    make(map[uuid.UUID]activeConnSnapshot),
+		logs:        make([]string, 0, maxLogs),
+		configFile:  configFile,
+		subscribers: make(map[int64]chan string),
 	}
 }
 
@@ -178,6 +156,7 @@ func (m *Manager) Start(config string) error {
 	m.startedAt = time.Now().UTC()
 	m.lastConfig = config
 	m.traffic = extractTrafficManager(ctx)
+	m.v2rayStats = extractV2RayStats(ctx)
 	m.appendLogLocked("sing-box started")
 	configFile := m.configFile
 	m.mu.Unlock()
@@ -215,11 +194,7 @@ func (m *Manager) Stop() error {
 		m.instance = nil
 		m.startedAt = time.Time{}
 		m.traffic = nil
-		// sing-box 重启后连接计数从零开始，清空累积器避免游标错位
-		m.closedUserUpload = make(map[string]int64)
-		m.closedUserDownload = make(map[string]int64)
-		m.seenClosedConnIDs = make(map[uuid.UUID]struct{})
-		m.lastActiveConns = make(map[uuid.UUID]activeConnSnapshot)
+		m.v2rayStats = nil
 		m.appendLogLocked("sing-box stopped")
 	}
 	m.mu.Unlock()
@@ -269,163 +244,93 @@ func (m *Manager) Logs() []string {
 	return out
 }
 
-func (m *Manager) Usage() UsageStats {
+func (m *Manager) Usage(reset bool) UsageStats {
 	m.mu.Lock()
 	running := m.instance != nil
 	startedAt := m.startedAt
 	traffic := m.traffic
+	v2ray := m.v2rayStats
 	m.mu.Unlock()
 
 	stats := UsageStats{
-		Available: traffic != nil,
+		Available: v2ray != nil || traffic != nil,
 		Running:   running,
 		StartedAt: startedAt,
 		Users:     make([]UserUsage, 0),
 	}
-	if traffic == nil {
-		return stats
+
+	// V2Ray Stats: per-user traffic (precise, no ring buffer)
+	if v2ray != nil {
+		if reset {
+			m.resetMu.Lock()
+			defer m.resetMu.Unlock()
+		}
+		resp, err := v2ray.QueryStats(context.Background(), &v2rayapi.QueryStatsRequest{
+			Patterns: []string{"user>>>"},
+			Reset_:   reset,
+		})
+		if err == nil && resp != nil {
+			userTraffic := make(map[string]*UserUsage)
+			for _, stat := range resp.Stat {
+				// stat.Name format: "user>>>alice>>>traffic>>>uplink"
+				parts := strings.SplitN(stat.Name, ">>>", 4)
+				if len(parts) != 4 || parts[0] != "user" {
+					continue
+				}
+				username := parts[1]
+				direction := parts[3] // "uplink" or "downlink"
+				uu, ok := userTraffic[username]
+				if !ok {
+					uu = &UserUsage{User: username}
+					userTraffic[username] = uu
+				}
+				switch direction {
+				case "uplink":
+					uu.UploadTotal = stat.Value
+				case "downlink":
+					uu.DownloadTotal = stat.Value
+				}
+			}
+			for _, uu := range userTraffic {
+				stats.Users = append(stats.Users, *uu)
+				stats.UploadTotal += uu.UploadTotal
+				stats.DownloadTotal += uu.DownloadTotal
+			}
+		}
 	}
 
-	stats.UploadTotal, stats.DownloadTotal = traffic.Total()
-	stats.Connections = traffic.ConnectionsLen()
-
-	m.mu.Lock()
-
-	// 将新出现的已关闭连接字节数累积到 per-user 计数器中。
-	// ClosedConnections() 是容量 1000 的环形缓冲，超限时旧连接被驱逐导致总量下降。
-	// 通过 seenClosedConnIDs 追踪已处理的连接，确保每条连接只计一次，
-	// 驱逐后字节数已在 closedUserUpload/Download 中保存，不会丢失。
-	closedConns := traffic.ClosedConnections()
-	newSeenIDs := make(map[uuid.UUID]struct{}, len(closedConns))
-	for _, meta := range closedConns {
-		newSeenIDs[meta.ID] = struct{}{}
-		if _, already := m.seenClosedConnIDs[meta.ID]; !already {
+	// Clash API: connections, devices, connection count
+	if traffic != nil {
+		stats.Connections = traffic.ConnectionsLen()
+		userIPs := make(map[string]map[string]struct{})
+		userConns := make(map[string]int)
+		for _, meta := range traffic.Connections() {
+			if meta == nil {
+				continue
+			}
 			user := strings.TrimSpace(meta.Metadata.User)
 			if user == "" {
 				user = "anonymous"
 			}
-			if meta.Upload != nil {
-				m.closedUserUpload[user] += meta.Upload.Load()
+			userConns[user]++
+			ip := meta.Metadata.Source.Addr.String()
+			if ip != "" {
+				if userIPs[user] == nil {
+					userIPs[user] = make(map[string]struct{})
+				}
+				userIPs[user][ip] = struct{}{}
 			}
-			if meta.Download != nil {
-				m.closedUserDownload[user] += meta.Download.Load()
+		}
+		// Merge connection/device info into user entries
+		userIndex := make(map[string]int, len(stats.Users))
+		for i, u := range stats.Users {
+			userIndex[u.User] = i
+		}
+		for user, conns := range userConns {
+			if idx, ok := userIndex[user]; ok {
+				stats.Users[idx].Connections = conns
+				stats.Users[idx].Devices = len(userIPs[user])
 			}
-		}
-	}
-	// 只保留仍在缓冲区中的 ID，防止 map 无限增长
-	m.seenClosedConnIDs = newSeenIDs
-
-	// 获取当前活跃连接（在锁内完成，以便同时更新 lastActiveConns）
-	activeConns := traffic.Connections()
-	currentActiveIDs := make(map[uuid.UUID]struct{}, len(activeConns))
-	for _, meta := range activeConns {
-		if meta != nil {
-			currentActiveIDs[meta.ID] = struct{}{}
-		}
-	}
-
-	// 检测"消失"的连接：上次活跃但现在既不活跃也不在环形缓冲中。
-	// 这些连接在两次 Usage() 调用间关闭且被驱逐出 1000 条的环形缓冲，
-	// 从未被 ClosedConnections() 扫描到。用上次快照的字节数补入累积器。
-	for id, snap := range m.lastActiveConns {
-		if _, active := currentActiveIDs[id]; active {
-			continue // 仍然活跃
-		}
-		if _, inClosed := newSeenIDs[id]; inClosed {
-			continue // 已在环形缓冲中被正常处理
-		}
-		// 连接关闭后被驱逐，使用上次已知字节数（可能略低于实际关闭值）
-		m.closedUserUpload[snap.user] += snap.upload
-		m.closedUserDownload[snap.user] += snap.download
-	}
-
-	// 更新活跃连接快照
-	m.lastActiveConns = make(map[uuid.UUID]activeConnSnapshot, len(activeConns))
-	for _, meta := range activeConns {
-		if meta == nil {
-			continue
-		}
-		user := strings.TrimSpace(meta.Metadata.User)
-		if user == "" {
-			user = "anonymous"
-		}
-		var up, down int64
-		if meta.Upload != nil {
-			up = meta.Upload.Load()
-		}
-		if meta.Download != nil {
-			down = meta.Download.Load()
-		}
-		m.lastActiveConns[meta.ID] = activeConnSnapshot{user: user, upload: up, download: down}
-	}
-
-	// 快照累积值，供后续计算使用
-	closedUploadSnap := make(map[string]int64, len(m.closedUserUpload))
-	for k, v := range m.closedUserUpload {
-		closedUploadSnap[k] = v
-	}
-	closedDownloadSnap := make(map[string]int64, len(m.closedUserDownload))
-	for k, v := range m.closedUserDownload {
-		closedDownloadSnap[k] = v
-	}
-
-	m.mu.Unlock()
-
-	// 构建 per-user 统计：已关闭连接累积值 + 当前活跃连接实时字节数。
-	// 使用 slice 下标而非指针，避免 append 扩容后指针悬空。
-	userIndex := make(map[string]int)
-	ensureUser := func(user string) *UserUsage {
-		if idx, ok := userIndex[user]; ok {
-			return &stats.Users[idx]
-		}
-		stats.Users = append(stats.Users, UserUsage{
-			User:          user,
-			UploadTotal:   closedUploadSnap[user],
-			DownloadTotal: closedDownloadSnap[user],
-		})
-		idx := len(stats.Users) - 1
-		userIndex[user] = idx
-		return &stats.Users[idx]
-	}
-
-	// 预先为有已关闭流量的用户创建条目
-	for user := range closedUploadSnap {
-		ensureUser(user)
-	}
-	for user := range closedDownloadSnap {
-		ensureUser(user)
-	}
-
-	// 叠加当前活跃连接的字节数，并统计唯一 source IP 作为在线设备数
-	userIPs := make(map[string]map[string]struct{})
-	for _, meta := range activeConns {
-		if meta == nil {
-			continue
-		}
-		user := strings.TrimSpace(meta.Metadata.User)
-		if user == "" {
-			user = "anonymous"
-		}
-		item := ensureUser(user)
-		if meta.Upload != nil {
-			item.UploadTotal += meta.Upload.Load()
-		}
-		if meta.Download != nil {
-			item.DownloadTotal += meta.Download.Load()
-		}
-		item.Connections++
-		// 统计唯一 source IP
-		ip := meta.Metadata.Source.Addr.String()
-		if ip != "" {
-			if userIPs[user] == nil {
-				userIPs[user] = make(map[string]struct{})
-			}
-			userIPs[user][ip] = struct{}{}
-		}
-	}
-	for user, ips := range userIPs {
-		if idx, ok := userIndex[user]; ok {
-			stats.Users[idx].Devices = len(ips)
 		}
 	}
 
@@ -520,6 +425,21 @@ func extractTrafficManager(ctx context.Context) trafficManager {
 		return nil
 	}
 	return provider.TrafficManager()
+}
+
+func extractV2RayStats(ctx context.Context) v2rayQuerier {
+	v2ray := service.FromContext[adapter.V2RayServer](ctx)
+	if v2ray == nil {
+		return nil
+	}
+	tracker := v2ray.StatsService()
+	if tracker == nil {
+		return nil
+	}
+	if querier, ok := tracker.(v2rayQuerier); ok {
+		return querier
+	}
+	return nil
 }
 
 type platformWriter struct {

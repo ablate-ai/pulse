@@ -786,22 +786,6 @@ func (h *Handler) resetUserTraffic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 清空该用户所有凭据的流量同步游标，否则下次 SyncUsage 会把旧增量重新计入。
-	// 游标清零失败仅记日志，不中断响应——用户字节数已清零，游标残留只影响下次
-	// SyncUsage 的增量精度，不会导致用户字节数二次叠加。
-	accesses, err := h.userStore.ListUserInboundsByUser(id)
-	if err != nil {
-		htmxError(w, http.StatusInternalServerError, "failed to list user inbounds: "+err.Error())
-		return
-	}
-	for _, acc := range accesses {
-		acc.SyncedUploadBytes = 0
-		acc.SyncedDownloadBytes = 0
-		if _, err := h.userStore.UpsertUserInbound(acc); err != nil {
-			log.Printf("resetUserTraffic: 清零用户 %s inbound %s 游标失败: %v", id, acc.ID, err)
-		}
-	}
-
 	h.renderUsersListFromStore(w)
 }
 
@@ -996,7 +980,7 @@ func (h *Handler) fetchNodeMetrics(ctx context.Context, node nodes.Node, dailyRa
 
 	// 获取 sing-box 运行状态及用量
 	uCtx, uCancel := context.WithTimeout(ctx, 3*time.Second)
-	stats, uErr := client.Usage(uCtx)
+	stats, uErr := client.Usage(uCtx, false)
 	uCancel()
 	if uErr != nil {
 		m.Status = "idle"

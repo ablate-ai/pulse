@@ -223,9 +223,13 @@ func (c *Client) Config(ctx context.Context) (ConfigResponse, error) {
 	return out, err
 }
 
-func (c *Client) Usage(ctx context.Context) (UsageStats, error) {
+func (c *Client) Usage(ctx context.Context, reset bool) (UsageStats, error) {
+	path := "/v1/node/runtime/usage"
+	if reset {
+		path += "?reset=true"
+	}
 	var out UsageStats
-	err := c.do(ctx, http.MethodGet, "/v1/node/runtime/usage", nil, &out)
+	err := c.do(ctx, http.MethodGet, path, nil, &out)
 	return out, err
 }
 

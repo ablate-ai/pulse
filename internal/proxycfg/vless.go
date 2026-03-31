@@ -14,10 +14,25 @@ import (
 )
 
 type singboxConfig struct {
-	Log       map[string]any   `json:"log"`
-	Inbounds  []inboundBlock   `json:"inbounds"`
-	Outbounds []map[string]any `json:"outbounds"`
-	Route     *routeBlock      `json:"route,omitempty"`
+	Log          map[string]any     `json:"log"`
+	Inbounds     []inboundBlock     `json:"inbounds"`
+	Outbounds    []map[string]any   `json:"outbounds"`
+	Route        *routeBlock        `json:"route,omitempty"`
+	Experimental *experimentalBlock `json:"experimental,omitempty"`
+}
+
+type experimentalBlock struct {
+	V2RayAPI *v2rayAPIBlock `json:"v2ray_api,omitempty"`
+}
+
+type v2rayAPIBlock struct {
+	Listen string      `json:"listen"`
+	Stats  *v2rayStats `json:"stats,omitempty"`
+}
+
+type v2rayStats struct {
+	Enabled bool     `json:"enabled"`
+	Users   []string `json:"users"`
 }
 
 type routeBlock struct {
@@ -195,12 +210,36 @@ func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.Us
 		})
 	}
 
+	// 收集去重后的活跃用户名，用于 V2Ray Stats 流量统计
+	seenUsers := make(map[string]struct{})
+	var statUsers []string
+	for _, acc := range activeAccesses {
+		u, ok := userMap[acc.UserID]
+		if !ok {
+			continue
+		}
+		if _, dup := seenUsers[u.Username]; !dup {
+			seenUsers[u.Username] = struct{}{}
+			statUsers = append(statUsers, u.Username)
+		}
+	}
+	sort.Strings(statUsers)
+
 	cfg := singboxConfig{
 		Log: map[string]any{
 			"level": "warn",
 		},
 		Inbounds:  blocks,
 		Outbounds: outboundList,
+		Experimental: &experimentalBlock{
+			V2RayAPI: &v2rayAPIBlock{
+				Listen: "127.0.0.1:0",
+				Stats: &v2rayStats{
+					Enabled: true,
+					Users:   statUsers,
+				},
+			},
+		},
 	}
 	if len(rules) > 0 {
 		cfg.Route = &routeBlock{Rules: rules, Final: "direct"}

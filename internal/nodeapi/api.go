@@ -75,8 +75,8 @@ func (a *API) handleUsage(w http.ResponseWriter, r *http.Request) {
 		writeMethodNotAllowed(w, http.MethodGet)
 		return
 	}
-
-	writeJSON(w, http.StatusOK, a.manager.Usage())
+	reset := r.URL.Query().Get("reset") == "true"
+	writeJSON(w, http.StatusOK, a.manager.Usage(reset))
 }
 
 func (a *API) handleVersion(w http.ResponseWriter, r *http.Request) {

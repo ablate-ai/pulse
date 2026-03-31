@@ -354,22 +354,12 @@ func TestSyncUsage_MultiInbound_NoDuplicateCounting(t *testing.T) {
 	if node.DownloadBytes != 30 {
 		t.Errorf("node download: want 30, got %d", node.DownloadBytes)
 	}
-
-	// 所有 inbound 的游标都应更新到当前值
-	for _, ibID := range []string{"u1-ib0", "u1-ib1", "u1-ib2", "u1-ib3"} {
-		acc, _ := userStore.GetUserInbound(ibID)
-		if acc.SyncedUploadBytes != 80 {
-			t.Errorf("%s synced upload: want 80, got %d", ibID, acc.SyncedUploadBytes)
-		}
-		if acc.SyncedDownloadBytes != 30 {
-			t.Errorf("%s synced download: want 30, got %d", ibID, acc.SyncedDownloadBytes)
-		}
-	}
 }
 
 func TestSyncUsage_MultiInbound_NewInboundAdded(t *testing.T) {
-	// 测试：已有 inbound 游标在 50/20，新增一条 inbound（游标为 0）。
-	// 节点报告 80/30 → delta 应基于最大游标 50/20 计算为 30/10，而非基于 0 计算为 80/30。
+	// With V2Ray Stats reset=true, there are no cursors.
+	// Each call returns the delta since last reset.
+	// A new inbound doesn't affect traffic counting.
 	nodeStore := nodes.NewMemoryStore()
 	userStore := users.NewMemoryStore()
 	_, _ = nodeStore.Upsert(nodes.Node{ID: "n1", Name: "n1", BaseURL: "http://node.test"})
@@ -377,20 +367,19 @@ func TestSyncUsage_MultiInbound_NewInboundAdded(t *testing.T) {
 		ID: "u1", Username: "alice", Status: users.StatusActive,
 		TrafficLimit: 999999,
 	})
-	// 旧 inbound，已同步到 50/20
+	// Old inbound
 	_, _ = userStore.UpsertUserInbound(users.UserInbound{
 		ID: "u1-ib0", UserID: "u1", InboundID: "ib-vless", NodeID: "n1",
 		UUID: "11111111-1111-1111-1111-111111111111", Secret: "s1",
-		SyncedUploadBytes: 50, SyncedDownloadBytes: 20,
 	})
-	// 新增 inbound，游标为 0
+	// New inbound added
 	_, _ = userStore.UpsertUserInbound(users.UserInbound{
 		ID: "u1-ib1", UserID: "u1", InboundID: "ib-trojan", NodeID: "n1",
 		UUID: "22222222-2222-2222-2222-222222222222", Secret: "s2",
-		SyncedUploadBytes: 0, SyncedDownloadBytes: 0,
 	})
 
-	dial := usageDial(t, "alice", 80, 30)
+	// V2Ray Stats returns delta directly (reset=true), no cursor needed
+	dial := usageDial(t, "alice", 30, 10)
 
 	_, err := SyncUsage(context.Background(), userStore, nodeStore, inbounds.NewMemoryStore(), dial, ApplyOptions{}, nil)
 	if err != nil {
@@ -398,7 +387,7 @@ func TestSyncUsage_MultiInbound_NewInboundAdded(t *testing.T) {
 	}
 
 	alice, _ := userStore.GetUser("u1")
-	// delta 应基于最大游标 (50, 20): upload delta=30, download delta=10
+	// Delta is directly 30/10 from V2Ray Stats
 	if alice.UploadBytes != 30 {
 		t.Errorf("upload: want 30, got %d", alice.UploadBytes)
 	}
@@ -460,8 +449,8 @@ func TestSyncUsage_UsageEndpointError_SkipsNode(t *testing.T) {
 }
 
 func TestSyncUsage_NodeRestart_DeltaFromZero(t *testing.T) {
-	// 节点重启后 UploadTotal 从 0 开始（小于之前的游标值）
-	// usageDelta 应返回 current（而非负值），模拟重新从 0 计数
+	// With V2Ray Stats reset=true, node restart simply means counters start from 0.
+	// The delta returned is whatever traffic occurred since restart, no cursor involved.
 	nodeStore := nodes.NewMemoryStore()
 	userStore := users.NewMemoryStore()
 	_, _ = nodeStore.Upsert(nodes.Node{ID: "n1", Name: "n1", BaseURL: "http://node.test"})
@@ -470,14 +459,12 @@ func TestSyncUsage_NodeRestart_DeltaFromZero(t *testing.T) {
 		TrafficLimit: 999999,
 		UploadBytes: 100, DownloadBytes: 50, // 已有历史流量
 	})
-	// 游标在 100/50（上次同步时节点报 100/50），节点重启后从 0 开始
 	_, _ = userStore.UpsertUserInbound(users.UserInbound{
 		ID: "u1-ib0", UserID: "u1", InboundID: "ib-vless", NodeID: "n1",
 		UUID: "11111111-1111-1111-1111-111111111111", Secret: "s1",
-		SyncedUploadBytes: 100, SyncedDownloadBytes: 50,
 	})
 
-	// 节点重启后报 10/5（小于之前的游标 100/50）
+	// Node restarted and reports 10/5 delta since restart
 	dial := usageDial(t, "alice", 10, 5)
 
 	_, err := SyncUsage(context.Background(), userStore, nodeStore, inbounds.NewMemoryStore(), dial, ApplyOptions{}, nil)
@@ -486,7 +473,7 @@ func TestSyncUsage_NodeRestart_DeltaFromZero(t *testing.T) {
 	}
 
 	alice, _ := userStore.GetUser("u1")
-	// delta = current（10/5），因为 current < previous 时 usageDelta 返回 current
+	// V2Ray Stats returns delta directly: 10/5
 	if alice.UploadBytes != 110 {
 		t.Errorf("upload: want 110 (100+10), got %d", alice.UploadBytes)
 	}
@@ -575,7 +562,7 @@ func TestSyncUsage_OnlineAt_UpdatedOnTraffic(t *testing.T) {
 }
 
 func TestSyncUsage_NoTraffic_OnlineAtNotSet(t *testing.T) {
-	// 游标与节点报告值一致（无新增流量）→ OnlineAt 不应更新
+	// V2Ray Stats with reset=true returns 0 delta when no new traffic
 	nodeStore := nodes.NewMemoryStore()
 	userStore := users.NewMemoryStore()
 	_, _ = nodeStore.Upsert(nodes.Node{ID: "n1", Name: "n1", BaseURL: "http://node.test"})
@@ -586,11 +573,10 @@ func TestSyncUsage_NoTraffic_OnlineAtNotSet(t *testing.T) {
 	_, _ = userStore.UpsertUserInbound(users.UserInbound{
 		ID: "u1-ib0", UserID: "u1", InboundID: "ib1", NodeID: "n1",
 		UUID: "11111111-1111-1111-1111-111111111111", Secret: "s1",
-		SyncedUploadBytes: 50, SyncedDownloadBytes: 20,
 	})
 
-	// 节点报告与游标一致 → delta = 0
-	dial := usageDial(t, "alice", 50, 20)
+	// Node reports zero delta (no new traffic since last reset)
+	dial := usageDial(t, "alice", 0, 0)
 
 	_, err := SyncUsage(context.Background(), userStore, nodeStore, inbounds.NewMemoryStore(), dial, ApplyOptions{}, nil)
 	if err != nil {

@@ -47,17 +47,15 @@ type User struct {
 
 // UserInbound 用户对某个具体 inbound 的访问凭据（一条记录对应一个 (user_id, inbound_id) 对）。
 // NodeID 从 Inbound 反推，保留用于流量聚合查询。
-// 协议配置由节点的 inbounds.Inbound 定义，此处只存储凭据和流量同步游标。
+// 协议配置由节点的 inbounds.Inbound 定义，此处只存储凭据。
 type UserInbound struct {
-	ID                  string    `json:"id"`
-	UserID              string    `json:"user_id"`
-	InboundID           string    `json:"inbound_id"` // 对应具体的 inbound
-	NodeID              string    `json:"node_id"`    // 冗余字段，用于流量聚合
-	UUID                string    `json:"uuid"`       // 用于 VLESS / VMess
-	Secret              string    `json:"secret"`     // 用于 Trojan / Shadowsocks
-	SyncedUploadBytes   int64     `json:"-"`
-	SyncedDownloadBytes int64     `json:"-"`
-	CreatedAt           time.Time `json:"created_at"`
+	ID        string    `json:"id"`
+	UserID    string    `json:"user_id"`
+	InboundID string    `json:"inbound_id"` // 对应具体的 inbound
+	NodeID    string    `json:"node_id"`    // 冗余字段，用于流量聚合
+	UUID      string    `json:"uuid"`       // 用于 VLESS / VMess
+	Secret    string    `json:"secret"`     // 用于 Trojan / Shadowsocks
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Store 用户和入站数据的持久化接口。

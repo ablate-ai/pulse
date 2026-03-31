@@ -2,194 +2,169 @@ package singbox
 
 import (
 	"context"
-	"sync/atomic"
+	"strings"
+	"sync"
 	"testing"
 
-	"github.com/gofrs/uuid/v5"
 	"github.com/sagernet/sing-box/experimental/clashapi/trafficontrol"
+	"github.com/sagernet/sing-box/experimental/v2rayapi"
 )
 
-// fakeTrafficManager 模拟 trafficontrol.Manager 的行为，用于测试。
+// fakeTrafficManager 模拟 trafficontrol.Manager 的行为，用于测试连接/设备统计。
 type fakeTrafficManager struct {
 	active []*trafficontrol.TrackerMetadata
-	closed []*trafficontrol.TrackerMetadata
 }
 
-func (f *fakeTrafficManager) Total() (int64, int64)                           { return 0, 0 }
-func (f *fakeTrafficManager) ConnectionsLen() int                             { return len(f.active) }
-func (f *fakeTrafficManager) Connections() []*trafficontrol.TrackerMetadata   { return f.active }
-func (f *fakeTrafficManager) ClosedConnections() []*trafficontrol.TrackerMetadata { return f.closed }
+func (f *fakeTrafficManager) Total() (int64, int64)                         { return 0, 0 }
+func (f *fakeTrafficManager) ConnectionsLen() int                           { return len(f.active) }
+func (f *fakeTrafficManager) Connections() []*trafficontrol.TrackerMetadata { return f.active }
 
-func makeConn(user string, upload, download int64) *trafficontrol.TrackerMetadata {
-	id, _ := uuid.NewV4()
-	up := new(atomic.Int64)
-	up.Store(upload)
-	down := new(atomic.Int64)
-	down.Store(download)
-	meta := &trafficontrol.TrackerMetadata{
-		ID:       id,
-		Upload:   up,
-		Download: down,
+// fakeV2RayStats 模拟 V2Ray StatsService 的 QueryStats 行为。
+type fakeV2RayStats struct {
+	mu       sync.Mutex
+	counters map[string]int64
+}
+
+func newFakeV2RayStats() *fakeV2RayStats {
+	return &fakeV2RayStats{counters: make(map[string]int64)}
+}
+
+func (f *fakeV2RayStats) QueryStats(_ context.Context, req *v2rayapi.QueryStatsRequest) (*v2rayapi.QueryStatsResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var stats []*v2rayapi.Stat
+	for name, value := range f.counters {
+		matched := false
+		for _, pattern := range req.Patterns {
+			if strings.Contains(name, pattern) {
+				matched = true
+				break
+			}
+		}
+		if len(req.Patterns) == 0 || matched {
+			stats = append(stats, &v2rayapi.Stat{Name: name, Value: value})
+			if req.Reset_ {
+				f.counters[name] = 0
+			}
+		}
 	}
+	return &v2rayapi.QueryStatsResponse{Stat: stats}, nil
+}
+
+func (f *fakeV2RayStats) addTraffic(user string, upload, download int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.counters["user>>>"+user+">>>traffic>>>uplink"] += upload
+	f.counters["user>>>"+user+">>>traffic>>>downlink"] += download
+}
+
+func makeConn(user string) *trafficontrol.TrackerMetadata {
+	meta := &trafficontrol.TrackerMetadata{}
 	meta.Metadata.User = user
 	return meta
 }
 
-// TestUsage_ClosedBufferEviction 验证：当已关闭连接被驱逐出环形缓冲区时，
-// 流量不会被重复计算（这是之前 double-count bug 的复现）。
-func TestUsage_ClosedBufferEviction(t *testing.T) {
+// TestUsage_V2RayStats_ResetDelta verifies that read-and-reset returns correct deltas
+// and subsequent reads return zero.
+func TestUsage_V2RayStats_ResetDelta(t *testing.T) {
 	mgr := NewManager()
-	fake := &fakeTrafficManager{}
-	mgr.traffic = fake
+	v2ray := newFakeV2RayStats()
+	mgr.v2rayStats = v2ray
 
-	// 第一轮：连接 A 活跃，100 字节
-	connA := makeConn("alice", 100, 0)
-	fake.active = []*trafficontrol.TrackerMetadata{connA}
-	fake.closed = nil
+	// Add traffic for alice
+	v2ray.addTraffic("alice", 100, 50)
+	v2ray.addTraffic("bob", 200, 80)
 
-	stats1 := mgr.Usage()
-	alice1 := int64(0)
+	// Read with reset=true: should get the full values
+	stats1 := mgr.Usage(true)
+	if !stats1.Available {
+		t.Fatal("expected available=true")
+	}
+	aliceFound, bobFound := false, false
 	for _, u := range stats1.Users {
-		if u.User == "alice" {
-			alice1 = u.UploadTotal
-		}
-	}
-	if alice1 != 100 {
-		t.Fatalf("第一轮 alice upload = %d, 期望 100", alice1)
-	}
-
-	// 第二轮：A 关闭（100 字节），进入 closed 缓冲
-	fake.active = nil
-	fake.closed = []*trafficontrol.TrackerMetadata{connA}
-
-	stats2 := mgr.Usage()
-	alice2 := int64(0)
-	for _, u := range stats2.Users {
-		if u.User == "alice" {
-			alice2 = u.UploadTotal
-		}
-	}
-	if alice2 != 100 {
-		t.Fatalf("第二轮 alice upload = %d, 期望 100（连接关闭，总量不变）", alice2)
-	}
-
-	// 第三轮：模拟缓冲区驱逐（连接 A 消失）+ 新连接 B 也关闭（50 字节）
-	connB := makeConn("alice", 50, 0)
-	fake.closed = []*trafficontrol.TrackerMetadata{connB} // A 被驱逐
-
-	stats3 := mgr.Usage()
-	alice3 := int64(0)
-	for _, u := range stats3.Users {
-		if u.User == "alice" {
-			alice3 = u.UploadTotal
-		}
-	}
-	// 正确结果：100（A，已在第二轮累积）+ 50（B，本轮新增）= 150
-	// Bug 行为：A 被驱逐后 total 变成 50 < cursor，错误地当成重启，返回 50，导致重复计算
-	if alice3 != 150 {
-		t.Fatalf("第三轮 alice upload = %d, 期望 150（缓冲驱逐后不应丢失 A 的 100 字节）", alice3)
-	}
-}
-
-// TestUsage_EvictedWithoutScan 验证：连接在两次 Usage() 调用间关闭且被驱逐出环形缓冲，
-// 从未出现在 ClosedConnections() 中时，通过活跃连接追踪机制回收其字节数。
-func TestUsage_EvictedWithoutScan(t *testing.T) {
-	mgr := NewManager()
-	fake := &fakeTrafficManager{}
-	mgr.traffic = fake
-
-	// 第一轮：连接 A 活跃，200/100 字节
-	connA := makeConn("alice", 200, 100)
-	fake.active = []*trafficontrol.TrackerMetadata{connA}
-	fake.closed = nil
-
-	stats1 := mgr.Usage()
-	var alice1 UserUsage
-	for _, u := range stats1.Users {
-		if u.User == "alice" {
-			alice1 = u
-		}
-	}
-	if alice1.UploadTotal != 200 || alice1.DownloadTotal != 100 {
-		t.Fatalf("第一轮: upload=%d download=%d, 期望 200/100", alice1.UploadTotal, alice1.DownloadTotal)
-	}
-
-	// 第二轮：A 关闭且被驱逐（不出现在 active 和 closed 中）
-	// 模拟：两次调用间 A 关闭，且 1000+ 其他连接也关闭把 A 挤出缓冲
-	fake.active = nil
-	fake.closed = nil // A 从未出现在 ClosedConnections 中
-
-	stats2 := mgr.Usage()
-	var alice2 UserUsage
-	for _, u := range stats2.Users {
-		if u.User == "alice" {
-			alice2 = u
-		}
-	}
-	// 修复前：alice 的 200/100 字节完全丢失，UploadTotal=0
-	// 修复后：通过 lastActiveConns 检测到 A 消失，补入上次已知的 200/100 字节
-	if alice2.UploadTotal != 200 {
-		t.Fatalf("第二轮 upload=%d, 期望 200（消失连接应通过活跃追踪回收）", alice2.UploadTotal)
-	}
-	if alice2.DownloadTotal != 100 {
-		t.Fatalf("第二轮 download=%d, 期望 100", alice2.DownloadTotal)
-	}
-
-	// 第三轮：新连接 B 活跃
-	connB := makeConn("alice", 50, 30)
-	fake.active = []*trafficontrol.TrackerMetadata{connB}
-
-	stats3 := mgr.Usage()
-	var alice3 UserUsage
-	for _, u := range stats3.Users {
-		if u.User == "alice" {
-			alice3 = u
-		}
-	}
-	// A 的 200/100 在累积器中 + B 的 50/30 活跃 = 250/130
-	if alice3.UploadTotal != 250 {
-		t.Fatalf("第三轮 upload=%d, 期望 250 (200+50)", alice3.UploadTotal)
-	}
-	if alice3.DownloadTotal != 130 {
-		t.Fatalf("第三轮 download=%d, 期望 130 (100+30)", alice3.DownloadTotal)
-	}
-}
-
-// TestUsage_EvictedMultiUser 验证多用户场景下消失连接的回收。
-func TestUsage_EvictedMultiUser(t *testing.T) {
-	mgr := NewManager()
-	fake := &fakeTrafficManager{}
-	mgr.traffic = fake
-
-	// 第一轮：两个用户各有活跃连接
-	connA := makeConn("alice", 100, 50)
-	connB := makeConn("bob", 200, 80)
-	fake.active = []*trafficontrol.TrackerMetadata{connA, connB}
-	fake.closed = nil
-
-	mgr.Usage()
-
-	// 第二轮：alice 的连接消失（驱逐），bob 的连接仍活跃
-	connB.Upload.Store(300) // bob 继续传输
-	connB.Download.Store(120)
-	fake.active = []*trafficontrol.TrackerMetadata{connB}
-	fake.closed = nil
-
-	stats2 := mgr.Usage()
-	var alice2, bob2 UserUsage
-	for _, u := range stats2.Users {
 		switch u.User {
 		case "alice":
-			alice2 = u
+			aliceFound = true
+			if u.UploadTotal != 100 || u.DownloadTotal != 50 {
+				t.Errorf("alice: want 100/50, got %d/%d", u.UploadTotal, u.DownloadTotal)
+			}
 		case "bob":
-			bob2 = u
+			bobFound = true
+			if u.UploadTotal != 200 || u.DownloadTotal != 80 {
+				t.Errorf("bob: want 200/80, got %d/%d", u.UploadTotal, u.DownloadTotal)
+			}
 		}
 	}
-	if alice2.UploadTotal != 100 {
-		t.Errorf("alice upload=%d, want 100 (recovered from lastActive)", alice2.UploadTotal)
+	if !aliceFound || !bobFound {
+		t.Fatalf("expected both alice and bob in stats, got %+v", stats1.Users)
 	}
-	if bob2.UploadTotal != 300 {
-		t.Errorf("bob upload=%d, want 300 (still active)", bob2.UploadTotal)
+	if stats1.UploadTotal != 300 || stats1.DownloadTotal != 130 {
+		t.Errorf("totals: want 300/130, got %d/%d", stats1.UploadTotal, stats1.DownloadTotal)
+	}
+
+	// Read again with reset=true: counters were cleared, should get zero
+	stats2 := mgr.Usage(true)
+	for _, u := range stats2.Users {
+		if u.UploadTotal != 0 || u.DownloadTotal != 0 {
+			t.Errorf("%s: expected 0/0 after reset, got %d/%d", u.User, u.UploadTotal, u.DownloadTotal)
+		}
+	}
+
+	// Add more traffic, read without reset
+	v2ray.addTraffic("alice", 30, 10)
+	stats3 := mgr.Usage(false)
+	for _, u := range stats3.Users {
+		if u.User == "alice" {
+			if u.UploadTotal != 30 || u.DownloadTotal != 10 {
+				t.Errorf("alice after new traffic: want 30/10, got %d/%d", u.UploadTotal, u.DownloadTotal)
+			}
+		}
+	}
+	// Read again without reset: values should be the same
+	stats4 := mgr.Usage(false)
+	for _, u := range stats4.Users {
+		if u.User == "alice" {
+			if u.UploadTotal != 30 || u.DownloadTotal != 10 {
+				t.Errorf("alice (no reset): want 30/10, got %d/%d", u.UploadTotal, u.DownloadTotal)
+			}
+		}
+	}
+}
+
+// TestUsage_V2RayStats_WithConnections verifies connection/device info from Clash API
+// is correctly merged with V2Ray traffic stats.
+func TestUsage_V2RayStats_WithConnections(t *testing.T) {
+	mgr := NewManager()
+	v2ray := newFakeV2RayStats()
+	fake := &fakeTrafficManager{}
+	mgr.v2rayStats = v2ray
+	mgr.traffic = fake
+
+	// Set up V2Ray traffic
+	v2ray.addTraffic("alice", 100, 50)
+
+	// Set up Clash API connections for alice
+	conn1 := makeConn("alice")
+	conn2 := makeConn("alice")
+	fake.active = []*trafficontrol.TrackerMetadata{conn1, conn2}
+
+	stats := mgr.Usage(false)
+
+	var alice UserUsage
+	for _, u := range stats.Users {
+		if u.User == "alice" {
+			alice = u
+			break
+		}
+	}
+	if alice.UploadTotal != 100 || alice.DownloadTotal != 50 {
+		t.Errorf("traffic: want 100/50, got %d/%d", alice.UploadTotal, alice.DownloadTotal)
+	}
+	if alice.Connections != 2 {
+		t.Errorf("connections: want 2, got %d", alice.Connections)
+	}
+	if stats.Connections != 2 {
+		t.Errorf("total connections: want 2, got %d", stats.Connections)
 	}
 }
 

@@ -50,7 +50,7 @@ func Run() error {
 	scheduler := jobs.NewScheduler(nil)
 	scheduler.Add(jobs.Job{
 		Name:     "sync-usage",
-		Interval: 1 * time.Minute,
+		Interval: 30 * time.Second,
 		Fn: func(ctx context.Context) error {
 			_, err := jobs.SyncUsage(ctx, userStore, store, inboundStore, nodeAPI.Dial, applyOpts, outboundStore)
 			return err

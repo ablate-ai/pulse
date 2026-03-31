@@ -45,9 +45,13 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			continue
 		}
 
-		usage, err := client.Usage(ctx)
+		usage, err := client.Usage(ctx, true)
 		if err != nil {
 			result.Errors = append(result.Errors, node.ID+": "+err.Error())
+			continue
+		}
+		if !usage.Available {
+			result.Errors = append(result.Errors, node.ID+": V2Ray Stats not available")
 			continue
 		}
 		result.NodesSynced++
@@ -81,32 +85,15 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			trafficRate = 1.0
 		}
 
-		// 按 UserID 分组，避免同一用户在同一节点有多条 inbound 时流量被重复计算。
-		// 节点流量统计按用户名汇报，每个用户只有一条汇总值，
-		// 但 UserInbound 是 per-inbound 的，直接遍历会导致同一 delta 被累加多次。
-		type perUserGroup struct {
-			accesses          []users.UserInbound
-			maxSyncedUpload   int64
-			maxSyncedDownload int64
-		}
-		byUser := make(map[string]*perUserGroup)
+		// 按 UserID 去重，避免同一用户在同一节点有多条 inbound 时流量被重复计算。
+		seenUsers := make(map[string]struct{})
 		for _, acc := range userAccesses {
-			pu, ok := byUser[acc.UserID]
-			if !ok {
-				pu = &perUserGroup{}
-				byUser[acc.UserID] = pu
+			if _, seen := seenUsers[acc.UserID]; seen {
+				continue
 			}
-			pu.accesses = append(pu.accesses, acc)
-			if acc.SyncedUploadBytes > pu.maxSyncedUpload {
-				pu.maxSyncedUpload = acc.SyncedUploadBytes
-			}
-			if acc.SyncedDownloadBytes > pu.maxSyncedDownload {
-				pu.maxSyncedDownload = acc.SyncedDownloadBytes
-			}
-		}
+			seenUsers[acc.UserID] = struct{}{}
 
-		for userID, pu := range byUser {
-			user, ok := userMap[userID]
+			user, ok := userMap[acc.UserID]
 			if !ok {
 				continue
 			}
@@ -120,10 +107,8 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			}
 
 			if stats, ok := usageByUser[user.Username]; ok {
-				// 使用该用户所有 inbound 中最大的游标计算 delta，
-				// 避免新增 inbound（游标为 0）导致历史流量被重复计入。
-				uploadDelta := usageDelta(stats.UploadTotal, pu.maxSyncedUpload)
-				downloadDelta := usageDelta(stats.DownloadTotal, pu.maxSyncedDownload)
+				uploadDelta := stats.UploadTotal
+				downloadDelta := stats.DownloadTotal
 				// 节点记录真实流量，用户计费流量乘以节点倍率
 				user.UploadBytes += applyRate(uploadDelta, trafficRate)
 				user.DownloadBytes += applyRate(downloadDelta, trafficRate)
@@ -137,15 +122,8 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 					now := time.Now().UTC()
 					user.OnlineAt = &now
 				}
-				// 将所有 inbound 游标统一更新到当前值
-				for _, acc := range pu.accesses {
-					acc.SyncedUploadBytes = stats.UploadTotal
-					acc.SyncedDownloadBytes = stats.DownloadTotal
-					if _, err := store.UpsertUserInbound(acc); err != nil {
-						result.Errors = append(result.Errors, node.ID+": "+err.Error())
-					}
-				}
 			}
+
 			user.UsedBytes = user.UploadBytes + user.DownloadBytes
 			statusChanged := prevEnabled != user.EffectiveEnabled()
 			user, err = store.UpsertUser(user)
@@ -299,18 +277,13 @@ func ResetTraffic(ctx context.Context, store users.Store, nodeStore nodes.Store,
 			continue
 		}
 
-		// 清空该用户所有 access 的流量同步游标
+		// 标记涉及的节点为 dirty，需要重新下发配置
 		userAccesses, err := store.ListUserInboundsByUser(user.ID)
 		if err != nil {
 			result.Errors = append(result.Errors, user.ID+": list accesses: "+err.Error())
 			continue
 		}
 		for _, acc := range userAccesses {
-			acc.SyncedUploadBytes = 0
-			acc.SyncedDownloadBytes = 0
-			if _, err := store.UpsertUserInbound(acc); err != nil {
-				result.Errors = append(result.Errors, user.ID+": reset cursor: "+err.Error())
-			}
 			dirtyNodes[acc.NodeID] = struct{}{}
 		}
 
@@ -518,13 +491,6 @@ func collectUserIDs(accesses []users.UserInbound) []string {
 		}
 	}
 	return out
-}
-
-func usageDelta(current, previous int64) int64 {
-	if current < previous {
-		return current
-	}
-	return current - previous
 }
 
 // applyRate 将 delta 乘以倍率并防止 int64 溢出。

@@ -274,7 +274,7 @@ func (a *API) handleNodeUsage(w http.ResponseWriter, r *http.Request, nodeID str
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	out, err := client.Usage(ctx)
+	out, err := client.Usage(ctx, false)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
