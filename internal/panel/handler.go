@@ -153,7 +153,6 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /panel/users/{id}", h.requireAuth(h.deleteUser))
 	mux.HandleFunc("POST /panel/users/{id}/reset-traffic", h.requireAuth(h.resetUserTraffic))
 	mux.HandleFunc("POST /panel/users/batch", h.requireAuth(h.batchUsers))
-	mux.HandleFunc("POST /panel/settings/password", h.requireAuth(h.changePassword))
 	mux.HandleFunc("POST /panel/settings/announcement", h.requireAuth(h.saveAnnouncement))
 
 	mux.HandleFunc("GET /inbounds", h.requireAuth(h.inboundsPage))
@@ -783,23 +782,6 @@ func (h *Handler) saveAnnouncement(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("HX-Reswap", "none")
 	w.Header().Set("HX-Trigger", `{"showToast":{"msg":"公告已保存","type":"success"}}`)
 	w.WriteHeader(http.StatusOK)
-}
-
-// changePassword 修改管理员密码。
-func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
-	current := r.FormValue("current_password")
-	newPw := r.FormValue("new_password")
-	confirm := r.FormValue("confirm_password")
-	if newPw != confirm {
-		htmxError(w, http.StatusBadRequest, "passwords do not match")
-		return
-	}
-	if err := h.auth.ChangePassword(current, newPw); err != nil {
-		htmxError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, `<div class="text-sm text-emerald-400 py-2">密码已更新并持久化</div>`)
 }
 
 // renderUsersListFromStore 从 store 拉取最新用户列表并渲染 partial。
