@@ -324,6 +324,12 @@
       <input type="text" name="note" value="{{.Data.User.Note}}" placeholder="用于标识用户的备注信息"
              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
     </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">订阅 Token</label>
+      <input type="text" name="sub_token" value="{{.Data.User.SubToken}}" pattern="[a-zA-Z0-9_-]+" title="仅允许字母、数字、下划线、短横线"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors font-mono text-xs">
+      <p class="mt-1 text-xs text-gray-600">订阅链接 /sub/{token}，留空保持不变</p>
+    </div>
     {{if .Data.Inbounds}}
     <div>
       <label class="block text-xs font-medium text-gray-400 mb-1.5">关联 Inbound（可多选）</label>

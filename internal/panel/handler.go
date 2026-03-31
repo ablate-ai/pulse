@@ -740,6 +740,10 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if subToken := r.FormValue("sub_token"); subToken != "" {
+		user.SubToken = subToken
+	}
+
 	if _, err := h.userStore.UpsertUser(user); err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to update user: "+err.Error())
 		return
