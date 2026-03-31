@@ -182,22 +182,18 @@ func (m *Manager) Stop() error {
 		m.mu.Unlock()
 		return ErrNotRunning
 	}
+	// 立即清除引用，防止并发 Stop/Restart 对同一 instance 重复 Close
+	m.instance = nil
+	m.startedAt = time.Time{}
+	m.traffic = nil
+	m.v2rayStats = nil
+	configFile := m.configFile
+	m.appendLogLocked("sing-box stopped")
 	m.mu.Unlock()
 
 	if err := instance.Close(); err != nil {
 		return fmt.Errorf("close sing-box: %w", err)
 	}
-
-	m.mu.Lock()
-	configFile := m.configFile
-	if m.instance == instance {
-		m.instance = nil
-		m.startedAt = time.Time{}
-		m.traffic = nil
-		m.v2rayStats = nil
-		m.appendLogLocked("sing-box stopped")
-	}
-	m.mu.Unlock()
 
 	// 显式停止时清除持久化配置，避免下次进程启动时自动恢复
 	if configFile != "" {
