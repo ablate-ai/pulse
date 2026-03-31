@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"runtime/debug"
 	"sort"
@@ -191,7 +192,7 @@ func (m *Manager) Stop() error {
 	m.appendLogLocked("sing-box stopped")
 	m.mu.Unlock()
 
-	if err := instance.Close(); err != nil {
+	if err := instance.Close(); err != nil && !isClosedConnError(err) {
 		return fmt.Errorf("close sing-box: %w", err)
 	}
 
@@ -446,4 +447,18 @@ func (w platformWriter) WriteMessage(level sbLog.Level, message string) {
 	w.manager.mu.Lock()
 	defer w.manager.mu.Unlock()
 	w.manager.appendLogLocked(sbLog.FormatLevel(level) + ": " + message)
+}
+
+// isClosedConnError 检查错误链中是否包含 "use of closed network connection"。
+// sing-box Close() 时内部组件（如 V2Ray Stats TCP listener）可能已被先行关闭，
+// 再关一次产生此错误；资源实际已释放，可安全忽略。
+func isClosedConnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var netErr *net.OpError
+	if errors.As(err, &netErr) {
+		return strings.Contains(netErr.Err.Error(), "use of closed network connection")
+	}
+	return strings.Contains(err.Error(), "use of closed network connection")
 }
