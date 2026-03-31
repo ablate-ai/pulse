@@ -46,6 +46,11 @@ type Manager struct {
 	closedUserUpload   map[string]int64
 	closedUserDownload map[string]int64
 	seenClosedConnIDs  map[uuid.UUID]struct{}
+
+	// 上一次 Usage() 调用时的活跃连接快照。
+	// 用于检测在两次调用间关闭且已被环形缓冲驱逐的连接（从未出现在 ClosedConnections 中），
+	// 将其上次已知字节数补入累积器，避免因缓冲区容量限制（1000）导致流量静默丢失。
+	lastActiveConns map[uuid.UUID]activeConnSnapshot
 }
 
 type trafficManager interface {
@@ -85,6 +90,13 @@ type UserUsage struct {
 	Devices       int    `json:"devices"`
 }
 
+// activeConnSnapshot 记录一条活跃连接在某次 Usage() 快照时的字节数。
+type activeConnSnapshot struct {
+	user     string
+	upload   int64
+	download int64
+}
+
 func NewManager() *Manager {
 	return &Manager{
 		logs:               make([]string, 0, maxLogs),
@@ -92,6 +104,7 @@ func NewManager() *Manager {
 		closedUserUpload:   make(map[string]int64),
 		closedUserDownload: make(map[string]int64),
 		seenClosedConnIDs:  make(map[uuid.UUID]struct{}),
+		lastActiveConns:    make(map[uuid.UUID]activeConnSnapshot),
 	}
 }
 
@@ -105,6 +118,7 @@ func NewManagerWithPersistence(configFile string) *Manager {
 		closedUserUpload:   make(map[string]int64),
 		closedUserDownload: make(map[string]int64),
 		seenClosedConnIDs:  make(map[uuid.UUID]struct{}),
+		lastActiveConns:    make(map[uuid.UUID]activeConnSnapshot),
 	}
 }
 
@@ -205,6 +219,7 @@ func (m *Manager) Stop() error {
 		m.closedUserUpload = make(map[string]int64)
 		m.closedUserDownload = make(map[string]int64)
 		m.seenClosedConnIDs = make(map[uuid.UUID]struct{})
+		m.lastActiveConns = make(map[uuid.UUID]activeConnSnapshot)
 		m.appendLogLocked("sing-box stopped")
 	}
 	m.mu.Unlock()
@@ -300,6 +315,50 @@ func (m *Manager) Usage() UsageStats {
 	// 只保留仍在缓冲区中的 ID，防止 map 无限增长
 	m.seenClosedConnIDs = newSeenIDs
 
+	// 获取当前活跃连接（在锁内完成，以便同时更新 lastActiveConns）
+	activeConns := traffic.Connections()
+	currentActiveIDs := make(map[uuid.UUID]struct{}, len(activeConns))
+	for _, meta := range activeConns {
+		if meta != nil {
+			currentActiveIDs[meta.ID] = struct{}{}
+		}
+	}
+
+	// 检测"消失"的连接：上次活跃但现在既不活跃也不在环形缓冲中。
+	// 这些连接在两次 Usage() 调用间关闭且被驱逐出 1000 条的环形缓冲，
+	// 从未被 ClosedConnections() 扫描到。用上次快照的字节数补入累积器。
+	for id, snap := range m.lastActiveConns {
+		if _, active := currentActiveIDs[id]; active {
+			continue // 仍然活跃
+		}
+		if _, inClosed := newSeenIDs[id]; inClosed {
+			continue // 已在环形缓冲中被正常处理
+		}
+		// 连接关闭后被驱逐，使用上次已知字节数（可能略低于实际关闭值）
+		m.closedUserUpload[snap.user] += snap.upload
+		m.closedUserDownload[snap.user] += snap.download
+	}
+
+	// 更新活跃连接快照
+	m.lastActiveConns = make(map[uuid.UUID]activeConnSnapshot, len(activeConns))
+	for _, meta := range activeConns {
+		if meta == nil {
+			continue
+		}
+		user := strings.TrimSpace(meta.Metadata.User)
+		if user == "" {
+			user = "anonymous"
+		}
+		var up, down int64
+		if meta.Upload != nil {
+			up = meta.Upload.Load()
+		}
+		if meta.Download != nil {
+			down = meta.Download.Load()
+		}
+		m.lastActiveConns[meta.ID] = activeConnSnapshot{user: user, upload: up, download: down}
+	}
+
 	// 快照累积值，供后续计算使用
 	closedUploadSnap := make(map[string]int64, len(m.closedUserUpload))
 	for k, v := range m.closedUserUpload {
@@ -339,7 +398,7 @@ func (m *Manager) Usage() UsageStats {
 
 	// 叠加当前活跃连接的字节数，并统计唯一 source IP 作为在线设备数
 	userIPs := make(map[string]map[string]struct{})
-	for _, meta := range traffic.Connections() {
+	for _, meta := range activeConns {
 		if meta == nil {
 			continue
 		}
