@@ -121,6 +121,7 @@ func Run() error {
 		return fmt.Errorf("初始化面板: %w", err)
 	}
 	panelHandler.Register(mux)
+	panelHandler.Start(ctx)
 	serverapi.NewWithUsers(store, userStore, inboundStore, outboundStore, clientOptions, applyOpts).Register(protectedV1)
 	serverapi.RegisterUsersAPI(protectedV1, userStore, store, inboundStore, outboundStore, clientOptions, applyOpts)
 	serverapi.RegisterSystemAPIWithInbounds(protectedV1, userStore, store, inboundStore, clientOptions, applyOpts)

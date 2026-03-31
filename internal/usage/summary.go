@@ -144,6 +144,12 @@ func Build(nodeStore nodes.Store, userStore users.Store, days int) (Summary, err
 	return s, nil
 }
 
+// AggregateDailyTraffic 将原始节点日记录按日期聚合，填充完整的 days 天窗口，并计算图表高度比例。
+// 调用前可按 NodeID 过滤 raw，以获得单节点趋势。
+func AggregateDailyTraffic(raw []nodes.NodeDailyUsage, days int) []DailyTrafficPoint {
+	return aggregateDailyTraffic(raw, days)
+}
+
 // aggregateDailyTraffic 将原始节点日记录按日期聚合，填充完整的 days 天窗口，并计算图表高度比例。
 func aggregateDailyTraffic(raw []nodes.NodeDailyUsage, days int) []DailyTrafficPoint {
 	byDate := make(map[string]*DailyTrafficPoint, days)

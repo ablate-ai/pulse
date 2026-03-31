@@ -88,26 +88,15 @@
     <p class="text-xs text-gray-600">在订阅客户端中导入此链接以获取代理配置。</p>
   </div>
 
-  <!-- 3. 可用节点 -->
-  {{if .Data.Nodes}}
+  <!-- 3. 可用节点（HTMX 懒加载，避免阻塞首屏渲染） -->
   <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
     <div class="px-5 py-3 border-b border-gray-800">
       <span class="text-xs font-medium text-gray-400 uppercase tracking-wider">可用节点</span>
     </div>
-    <div class="divide-y divide-gray-800">
-      {{range .Data.Nodes}}
-      <div class="flex items-center justify-between px-5 py-3">
-        <span class="text-sm text-gray-300">{{.Name}}</span>
-        <div class="flex items-center gap-1.5">
-          {{range .Protocols}}
-          <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-500/15 text-indigo-400">{{.}}</span>
-          {{end}}
-        </div>
-      </div>
-      {{end}}
+    <div id="user-nodes-container" class="divide-y divide-gray-800">
+      <div class="px-5 py-3 text-xs text-gray-600 animate-pulse">正在获取节点状态...</div>
     </div>
   </div>
-  {{end}}
 
   <!-- 4. 重置订阅 Token（危险操作，置底） -->
   <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 space-y-3">
@@ -123,6 +112,16 @@
 
   <p class="text-center text-xs text-gray-700">请勿将订阅链接分享给他人</p>
 </div>
+
+<script>
+(function() {
+  var container = document.getElementById('user-nodes-container');
+  var es = new EventSource('/panel/user-node-status/{{.Data.User.SubToken}}/stream');
+  es.addEventListener('update', function(e) {
+    container.innerHTML = e.data;
+  });
+})();
+</script>
 
 <script>
 function copySubURL() {

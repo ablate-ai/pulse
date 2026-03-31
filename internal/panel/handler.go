@@ -16,8 +16,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"pulse/internal/auth"
@@ -42,6 +45,96 @@ var embedFS embed.FS
 
 const cookieName = "pulse_token"
 
+// nodeTrafficSample 记录某次采样时节点的累计字节数，用于计算实时速率。
+type nodeTrafficSample struct {
+	UploadTotal   int64
+	DownloadTotal int64
+	SampledAt     time.Time
+}
+
+// nodeMetrics 节点实时运行指标，用于 Overview 仪表盘。
+type nodeMetrics struct {
+	Node          nodes.Node
+	Status        string // "online" / "idle" / "offline"
+	SingboxVer    string
+	NodeVer       string
+	PingMs        int64    // 往返延迟（ms），-1 表示不可达
+	Connections   int      // 活跃连接数
+	OnlineUsers   int      // 有活跃连接的用户数
+	OnlineDevices int      // 在线设备数
+	UploadSpeed   int64    // bytes/s（前后采样估算）
+	DownloadSpeed int64    // bytes/s
+	DailyTraffic  []usage.DailyTrafficPoint // 近 7 天趋势
+	Protocols     []string // 该节点支持的协议列表
+}
+
+// metricsSubscriber SSE 订阅者。
+type metricsSubscriber struct {
+	ch      chan string
+	nodeIDs map[string]struct{} // nil = 管理端（全部节点）
+}
+
+// metricsHub SSE fan-out 广播中心。
+type metricsHub struct {
+	mu   sync.RWMutex
+	subs map[*metricsSubscriber]struct{}
+}
+
+func (hub *metricsHub) subscribe(nodeIDs map[string]struct{}) *metricsSubscriber {
+	sub := &metricsSubscriber{ch: make(chan string, 4), nodeIDs: nodeIDs}
+	hub.mu.Lock()
+	hub.subs[sub] = struct{}{}
+	hub.mu.Unlock()
+	return sub
+}
+
+func (hub *metricsHub) unsubscribe(sub *metricsSubscriber) {
+	hub.mu.Lock()
+	delete(hub.subs, sub)
+	hub.mu.Unlock()
+}
+
+// broadcast 向所有订阅者按需渲染并推送 HTML。
+func (hub *metricsHub) broadcast(h *Handler, allMetrics []nodeMetrics) {
+	hub.mu.RLock()
+	defer hub.mu.RUnlock()
+	for sub := range hub.subs {
+		var filtered []nodeMetrics
+		if sub.nodeIDs == nil {
+			filtered = allMetrics
+		} else {
+			for _, m := range allMetrics {
+				if _, ok := sub.nodeIDs[m.Node.ID]; ok {
+					filtered = append(filtered, m)
+				}
+			}
+		}
+		var html string
+		if sub.nodeIDs == nil {
+			html = h.renderToString("partial-node-metrics", filtered)
+		} else {
+			html = h.renderToString("partial-user-node-status", metricsToUserNodeInfos(filtered))
+		}
+		if html == "" {
+			continue
+		}
+		select {
+		case sub.ch <- html:
+		default:
+		}
+	}
+}
+
+// nodeIDsKey 将 nodeID 集合序列化为唯一字符串 key。
+func nodeIDsKey(ids map[string]struct{}) string {
+	keys := make([]string, 0, len(ids))
+	for k := range ids {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return strings.Join(keys, ",")
+}
+
 // Handler 面板 HTTP 处理器，持有所有依赖。
 type Handler struct {
 	auth           *auth.Manager
@@ -55,6 +148,15 @@ type Handler struct {
 	serverAddr     string
 	clientCertFile string // 面板客户端证书路径，用于 node 安装时粘贴
 	settingsStore  SettingsStore
+	speedCache     sync.Map // key=nodeID, value=nodeTrafficSample；重启丢失可接受
+	hub            metricsHub
+	lastAccessAt   atomic.Int64 // unix nano，有人访问时更新
+	polling        atomic.Bool  // 防止并发轮询堆积
+	metricsCache   struct {
+		mu   sync.RWMutex
+		data []nodeMetrics
+		at   time.Time
+	}
 }
 
 // pageData 传入完整页面模板的数据结构。
@@ -104,6 +206,7 @@ func New(
 		clientCertFile: clientCertFile,
 		settingsStore:  settingsStore,
 	}
+	h.hub.subs = make(map[*metricsSubscriber]struct{})
 
 	tmpl, err := template.New("").Funcs(templateFuncs()).ParseFS(embedFS, "templates/*.html")
 	if err != nil {
@@ -180,6 +283,11 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /panel/hosts/{id}", h.requireAuth(h.deleteHost))
 
 	mux.HandleFunc("GET /panel/nodes/list", h.requireAuth(h.nodesListPartial))
+	mux.HandleFunc("GET /panel/node-metrics", h.requireAuth(h.nodeMetricsPartial))
+	mux.HandleFunc("GET /panel/node-metrics/stream", h.requireAuth(h.nodeMetricsStreamHandler))
+	// 用户主页节点状态（以 sub_token 鉴权，无需 cookie）
+	mux.HandleFunc("GET /panel/user-node-status/{sub_token}", h.userNodeStatusPartial)
+	mux.HandleFunc("GET /panel/user-node-status/{sub_token}/stream", h.userNodeStatusStreamHandler)
 	mux.HandleFunc("GET /panel/nodes/new", h.requireAuth(h.nodeNewForm))
 	mux.HandleFunc("POST /panel/nodes", h.requireAuth(h.createNode))
 	mux.HandleFunc("GET /panel/nodes/{id}/edit", h.requireAuth(h.nodeEditForm))
@@ -833,6 +941,310 @@ func (h *Handler) fetchNodeStatus(ctx context.Context, n nodes.Node) nodeWithSta
 		ns.Status = "idle"
 	}
 	return ns
+}
+
+// fetchNodeMetrics 并发查询单个节点的实时指标（Ping、Usage、速率）。
+// dailyRaw 为全量日统计原始记录，方法内按节点 ID 过滤后计算 7 天趋势。
+func (h *Handler) fetchNodeMetrics(ctx context.Context, node nodes.Node, dailyRaw []nodes.NodeDailyUsage) nodeMetrics {
+	m := nodeMetrics{Node: node, Status: "offline", PingMs: -1}
+
+	client, err := h.dial(node.ID)
+	if err != nil {
+		return m
+	}
+
+	// Ping = Runtime() 调用耗时（顺带获取版本信息）
+	t0 := time.Now()
+	rtCtx, rtCancel := context.WithTimeout(ctx, 3*time.Second)
+	rt, rtErr := client.Runtime(rtCtx)
+	rtCancel()
+	if rtErr != nil {
+		return m
+	}
+	m.PingMs = time.Since(t0).Milliseconds()
+	m.SingboxVer = rt.Version
+	m.NodeVer = rt.NodeVersion
+
+	// 获取 sing-box 运行状态及用量
+	uCtx, uCancel := context.WithTimeout(ctx, 3*time.Second)
+	stats, uErr := client.Usage(uCtx)
+	uCancel()
+	if uErr != nil {
+		m.Status = "idle"
+		return m
+	}
+
+	if stats.Running {
+		m.Status = "online"
+	} else {
+		m.Status = "idle"
+	}
+	m.Connections = stats.Connections
+
+	for _, u := range stats.Users {
+		if u.Connections > 0 {
+			m.OnlineUsers++
+			m.OnlineDevices += u.Devices
+		}
+	}
+
+	// 计算实时网速（与上次采样对比）
+	now := time.Now()
+	cur := nodeTrafficSample{UploadTotal: stats.UploadTotal, DownloadTotal: stats.DownloadTotal, SampledAt: now}
+	if prev, ok := h.speedCache.Load(node.ID); ok {
+		p := prev.(nodeTrafficSample)
+		dt := now.Sub(p.SampledAt).Seconds()
+		if dt > 0.1 {
+			up := int64(float64(cur.UploadTotal-p.UploadTotal) / dt)
+			dl := int64(float64(cur.DownloadTotal-p.DownloadTotal) / dt)
+			if up > 0 {
+				m.UploadSpeed = up
+			}
+			if dl > 0 {
+				m.DownloadSpeed = dl
+			}
+		}
+	}
+	h.speedCache.Store(node.ID, cur)
+
+	// 填充该节点支持的协议列表
+	nodeInbounds, _ := h.ibStore.ListInboundsByNode(node.ID)
+	seenP := make(map[string]bool)
+	for _, ib := range nodeInbounds {
+		label := protocolLabel(ib.Protocol)
+		if !seenP[label] {
+			seenP[label] = true
+			m.Protocols = append(m.Protocols, label)
+		}
+	}
+
+	// 过滤本节点的 7 天日统计，生成迷你柱状图数据
+	var filtered []nodes.NodeDailyUsage
+	for _, r := range dailyRaw {
+		if r.NodeID == node.ID {
+			filtered = append(filtered, r)
+		}
+	}
+	m.DailyTraffic = usage.AggregateDailyTraffic(filtered, 7)
+
+	return m
+}
+
+const (
+	metricsPollInterval = time.Second
+	metricsIdleTimeout  = 2 * time.Minute
+)
+
+// pollAllNodes 并发查询所有节点指标，更新缓存并广播 SSE。
+func (h *Handler) pollAllNodes(ctx context.Context) {
+	nodeList, err := h.nodeStore.List()
+	if err != nil {
+		return
+	}
+	dailyRaw, _ := h.nodeStore.ListNodeDailyUsage(7)
+
+	results := make([]nodeMetrics, len(nodeList))
+	var wg sync.WaitGroup
+	for i, node := range nodeList {
+		wg.Add(1)
+		go func(idx int, n nodes.Node) {
+			defer wg.Done()
+			results[idx] = h.fetchNodeMetrics(ctx, n, dailyRaw)
+		}(i, node)
+	}
+	wg.Wait()
+
+	// 更新缓存
+	h.metricsCache.mu.Lock()
+	h.metricsCache.data = results
+	h.metricsCache.at = time.Now()
+	h.metricsCache.mu.Unlock()
+
+	// 广播给所有 SSE 订阅者
+	h.hub.broadcast(h, results)
+}
+
+// Start 启动后台指标轮询 goroutine。
+func (h *Handler) Start(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(metricsPollInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				// 无人访问时暂停轮询
+				last := time.Unix(0, h.lastAccessAt.Load())
+				if !last.IsZero() && time.Since(last) > metricsIdleTimeout {
+					continue
+				}
+				// 上轮未完成时跳过
+				if !h.polling.CompareAndSwap(false, true) {
+					continue
+				}
+				go func() {
+					defer h.polling.Store(false)
+					pCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+					defer cancel()
+					h.pollAllNodes(pCtx)
+				}()
+			}
+		}
+	}()
+}
+
+// renderToString 将模板渲染为字符串，失败时返回空字符串。
+func (h *Handler) renderToString(tmplName string, data any) string {
+	var buf strings.Builder
+	pd := pageData{Data: data}
+	if err := h.tmpl.ExecuteTemplate(&buf, tmplName, pd); err != nil {
+		return ""
+	}
+	return buf.String()
+}
+
+// htmlToSSEData 将 HTML 换行转换为 SSE 多行 data 格式。
+func htmlToSSEData(html string) string {
+	return strings.ReplaceAll(strings.TrimSpace(html), "\n", "\ndata: ")
+}
+
+// getUserNodeIDs 返回用户可访问的 nodeID 集合。
+func (h *Handler) getUserNodeIDs(userID string) map[string]struct{} {
+	accesses, _ := h.userStore.ListUserInboundsByUser(userID)
+	ids := make(map[string]struct{})
+	for _, acc := range accesses {
+		ids[acc.NodeID] = struct{}{}
+	}
+	return ids
+}
+
+// metricsToUserNodeInfos 将 []nodeMetrics 转为 []userNodeInfo。
+func metricsToUserNodeInfos(ms []nodeMetrics) []userNodeInfo {
+	infos := make([]userNodeInfo, 0, len(ms))
+	for _, m := range ms {
+		info := userNodeInfo{
+			Name:          m.Node.Name,
+			Protocols:     m.Protocols,
+			Status:        m.Status,
+			OnlineUsers:   m.OnlineUsers,
+			UploadSpeed:   m.UploadSpeed,
+			DownloadSpeed: m.DownloadSpeed,
+		}
+		infos = append(infos, info)
+	}
+	return infos
+}
+
+// nodeMetricsPartial 返回所有节点的实时指标区块（读缓存，供首屏加载用）。
+func (h *Handler) nodeMetricsPartial(w http.ResponseWriter, r *http.Request) {
+	h.lastAccessAt.Store(time.Now().UnixNano())
+	h.metricsCache.mu.RLock()
+	data := h.metricsCache.data
+	h.metricsCache.mu.RUnlock()
+	h.renderPartial(w, "partial-node-metrics", data)
+}
+
+// nodeMetricsStreamHandler SSE 端点：推送节点指标 HTML 给管理端浏览器。
+func (h *Handler) nodeMetricsStreamHandler(w http.ResponseWriter, r *http.Request) {
+	h.lastAccessAt.Store(time.Now().UnixNano())
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	sub := h.hub.subscribe(nil) // nil = 管理端，订阅所有节点
+	defer h.hub.unsubscribe(sub)
+
+	// 首次立即推送当前缓存
+	h.metricsCache.mu.RLock()
+	cur := h.metricsCache.data
+	h.metricsCache.mu.RUnlock()
+	if cur != nil {
+		html := h.renderToString("partial-node-metrics", cur)
+		fmt.Fprintf(w, "event: update\ndata: %s\n\n", htmlToSSEData(html))
+		w.(http.Flusher).Flush()
+	}
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case html := <-sub.ch:
+			h.lastAccessAt.Store(time.Now().UnixNano())
+			fmt.Fprintf(w, "event: update\ndata: %s\n\n", htmlToSSEData(html))
+			w.(http.Flusher).Flush()
+		}
+	}
+}
+
+// userNodeStatusPartial 返回用户主页的节点状态区块（读缓存，以 sub_token 鉴权）。
+func (h *Handler) userNodeStatusPartial(w http.ResponseWriter, r *http.Request) {
+	token := r.PathValue("sub_token")
+	user, err := h.userStore.GetUserBySubToken(token)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	h.lastAccessAt.Store(time.Now().UnixNano())
+	nodeIDs := h.getUserNodeIDs(user.ID)
+
+	h.metricsCache.mu.RLock()
+	all := h.metricsCache.data
+	h.metricsCache.mu.RUnlock()
+
+	var filtered []nodeMetrics
+	for _, m := range all {
+		if _, ok := nodeIDs[m.Node.ID]; ok {
+			filtered = append(filtered, m)
+		}
+	}
+	h.renderPartial(w, "partial-user-node-status", metricsToUserNodeInfos(filtered))
+}
+
+// userNodeStatusStreamHandler SSE 端点：推送节点状态 HTML 给用户端浏览器（以 sub_token 鉴权）。
+func (h *Handler) userNodeStatusStreamHandler(w http.ResponseWriter, r *http.Request) {
+	token := r.PathValue("sub_token")
+	user, err := h.userStore.GetUserBySubToken(token)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	h.lastAccessAt.Store(time.Now().UnixNano())
+	nodeIDs := h.getUserNodeIDs(user.ID)
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	sub := h.hub.subscribe(nodeIDs)
+	defer h.hub.unsubscribe(sub)
+
+	// 首次立即推送当前缓存
+	h.metricsCache.mu.RLock()
+	all := h.metricsCache.data
+	h.metricsCache.mu.RUnlock()
+	var filtered []nodeMetrics
+	for _, m := range all {
+		if _, ok := nodeIDs[m.Node.ID]; ok {
+			filtered = append(filtered, m)
+		}
+	}
+	if filtered != nil {
+		html := h.renderToString("partial-user-node-status", metricsToUserNodeInfos(filtered))
+		fmt.Fprintf(w, "event: update\ndata: %s\n\n", htmlToSSEData(html))
+		w.(http.Flusher).Flush()
+	}
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case html := <-sub.ch:
+			h.lastAccessAt.Store(time.Now().UnixNano())
+			fmt.Fprintf(w, "event: update\ndata: %s\n\n", htmlToSSEData(html))
+			w.(http.Flusher).Flush()
+		}
+	}
 }
 
 func (h *Handler) nodesListPartial(w http.ResponseWriter, r *http.Request) {
@@ -1750,6 +2162,24 @@ func templateFuncs() template.FuncMap {
 				return fmt.Sprintf("%d B", n)
 			}
 		},
+		// formatSpeed 将 bytes/s 格式化为可读速率字符串（如 "1.23 MB/s"）。
+		"formatSpeed": func(n int64) string {
+			const (
+				kb = int64(1024)
+				mb = kb * 1024
+				gb = mb * 1024
+			)
+			switch {
+			case n >= gb:
+				return fmt.Sprintf("%.2f GB/s", float64(n)/float64(gb))
+			case n >= mb:
+				return fmt.Sprintf("%.1f MB/s", float64(n)/float64(mb))
+			case n >= kb:
+				return fmt.Sprintf("%.0f KB/s", float64(n)/float64(kb))
+			default:
+				return fmt.Sprintf("%d B/s", n)
+			}
+		},
 		// formatGB 将字节数转换为 GB 数值字符串（两位小数）。
 		"formatGB": func(n int64) string {
 			return fmt.Sprintf("%.2f", float64(n)/float64(1024*1024*1024))
@@ -2054,8 +2484,14 @@ func panelRandomToken(size int) string {
 
 // userNodeInfo 用户主页展示的节点信息。
 type userNodeInfo struct {
-	Name      string
-	Protocols []string // e.g. ["VLESS", "Trojan", "Shadowsocks"]
+	Name          string
+	Protocols     []string // e.g. ["VLESS", "Trojan", "Shadowsocks"]
+	Status        string   // "online" / "idle" / "offline"
+	PingMs        int64    // 管理后台专用，用户主页不使用
+	OnlineUsers   int      // 当前在线用户数
+	Connections   int      // 当前活跃连接数
+	UploadSpeed   int64    // bytes/s
+	DownloadSpeed int64    // bytes/s
 }
 
 // userPortalData 传入用户主页模板的数据。

@@ -23,9 +23,24 @@
           </div>
         </div>
       </div>
+
+      <!-- 节点实时状态（SSE 推送） -->
+      <div id="node-metrics-container">
+        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 text-sm text-gray-600 animate-pulse">正在获取节点状态...</div>
+      </div>
     </div>
   </div>
 </div>
+
+<script>
+(function() {
+  var container = document.getElementById('node-metrics-container');
+  var es = new EventSource('/panel/node-metrics/stream');
+  es.addEventListener('update', function(e) {
+    container.innerHTML = e.data;
+  });
+})();
+</script>
 
 {{template "modal-container" .}}
 {{template "toast" .}}
