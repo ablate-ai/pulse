@@ -42,6 +42,7 @@ type updateUserRequest struct {
 	ExpireAt               *time.Time `json:"expire_at,omitempty"`
 	DataLimitResetStrategy string     `json:"data_limit_reset_strategy"`
 	TrafficLimit           int64      `json:"traffic_limit_bytes"`
+	SubToken               string     `json:"sub_token,omitempty"`
 }
 
 // createAccessRequest 添加用户到 inbound 的请求（只需指定 inbound ID）。
@@ -211,6 +212,9 @@ func (a *userAPI) handleUpdateUser(w http.ResponseWriter, r *http.Request, userI
 	}
 	if req.TrafficLimit >= 0 && req.TrafficLimit != user.TrafficLimit {
 		user.TrafficLimit = req.TrafficLimit
+	}
+	if req.SubToken != "" {
+		user.SubToken = req.SubToken
 	}
 
 	updated, err := a.users.UpsertUser(user)
