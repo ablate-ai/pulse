@@ -230,6 +230,20 @@ func (h *Handler) currentUsername(r *http.Request) string {
 
 // ─── 辅助函数 ────────────────────────────────────────────────────────────────
 
+const (
+	trafficRateMin = 0.1   // 与前端 min 保持一致
+	trafficRateMax = 100.0 // 防止极端倍率写入
+)
+
+// parseTrafficRate 解析流量倍率字符串，超出 [0.1, 100] 范围或非法时返回 1.0。
+func parseTrafficRate(s string) float64 {
+	v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil || v < trafficRateMin || v > trafficRateMax {
+		return 1.0
+	}
+	return v
+}
+
 // isHTMX 判断请求是否来自 HTMX。
 func isHTMX(r *http.Request) bool {
 	return r.Header.Get("HX-Request") == "true"
@@ -847,10 +861,12 @@ func (h *Handler) createNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	trafficRate := parseTrafficRate(r.FormValue("traffic_rate"))
 	newNode := nodes.Node{
-		ID:      idgen.NextString(),
-		Name:    name,
-		BaseURL: baseURL,
+		ID:          idgen.NextString(),
+		Name:        name,
+		BaseURL:     baseURL,
+		TrafficRate: trafficRate,
 	}
 
 	if _, err := h.nodeStore.Upsert(newNode); err != nil {
@@ -1104,6 +1120,9 @@ func (h *Handler) updateNode(w http.ResponseWriter, r *http.Request) {
 	}
 	if baseURL := r.FormValue("base_url"); baseURL != "" {
 		node.BaseURL = baseURL
+	}
+	if rateStr := r.FormValue("traffic_rate"); rateStr != "" {
+		node.TrafficRate = parseTrafficRate(rateStr)
 	}
 	if _, err := h.nodeStore.Upsert(node); err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to update node: "+err.Error())

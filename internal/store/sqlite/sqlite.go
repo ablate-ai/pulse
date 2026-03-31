@@ -247,6 +247,11 @@ func (db *DB) migrateNodesTable() error {
 			return fmt.Errorf("migrate nodes add caddy_enabled: %w", err)
 		}
 	}
+	if _, ok := columns["traffic_rate"]; !ok {
+		if _, err := db.conn.Exec(`ALTER TABLE nodes ADD COLUMN traffic_rate REAL NOT NULL DEFAULT 1.0`); err != nil {
+			return fmt.Errorf("migrate nodes add traffic_rate: %w", err)
+		}
+	}
 	return nil
 }
 

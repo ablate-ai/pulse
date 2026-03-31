@@ -14,14 +14,18 @@ type NodeStore struct {
 }
 
 func (s *NodeStore) Upsert(node nodes.Node) (nodes.Node, error) {
+	if node.TrafficRate <= 0 {
+		node.TrafficRate = 1.0
+	}
 	_, err := s.db.Exec(`
-		INSERT INTO nodes (id, name, base_url, certificate)
-		VALUES (?, ?, ?, ?)
+		INSERT INTO nodes (id, name, base_url, certificate, traffic_rate)
+		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name = excluded.name,
 			base_url = excluded.base_url,
-			certificate = excluded.certificate
-	`, node.ID, node.Name, node.BaseURL, "")
+			certificate = excluded.certificate,
+			traffic_rate = excluded.traffic_rate
+	`, node.ID, node.Name, node.BaseURL, "", node.TrafficRate)
 	if err != nil {
 		return nodes.Node{}, fmt.Errorf("upsert node: %w", err)
 	}
@@ -47,9 +51,9 @@ func (s *NodeStore) Get(id string) (nodes.Node, error) {
 	var node nodes.Node
 	var caddyEnabled int
 	err := s.db.QueryRow(
-		`SELECT id, name, base_url, upload_bytes, download_bytes, caddy_acme_email, caddy_panel_domain, caddy_enabled
+		`SELECT id, name, base_url, upload_bytes, download_bytes, caddy_acme_email, caddy_panel_domain, caddy_enabled, traffic_rate
 		 FROM nodes WHERE id = ?`, id,
-	).Scan(&node.ID, &node.Name, &node.BaseURL, &node.UploadBytes, &node.DownloadBytes, &node.CaddyACMEEmail, &node.CaddyPanelDomain, &caddyEnabled)
+	).Scan(&node.ID, &node.Name, &node.BaseURL, &node.UploadBytes, &node.DownloadBytes, &node.CaddyACMEEmail, &node.CaddyPanelDomain, &caddyEnabled, &node.TrafficRate)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nodes.Node{}, nodes.ErrNodeNotFound
 	}
@@ -57,12 +61,15 @@ func (s *NodeStore) Get(id string) (nodes.Node, error) {
 		return nodes.Node{}, fmt.Errorf("get node: %w", err)
 	}
 	node.CaddyEnabled = caddyEnabled != 0
+	if node.TrafficRate <= 0 {
+		node.TrafficRate = 1.0
+	}
 	return node, nil
 }
 
 func (s *NodeStore) List() ([]nodes.Node, error) {
 	rows, err := s.db.Query(
-		`SELECT id, name, base_url, upload_bytes, download_bytes, caddy_acme_email, caddy_panel_domain, caddy_enabled
+		`SELECT id, name, base_url, upload_bytes, download_bytes, caddy_acme_email, caddy_panel_domain, caddy_enabled, traffic_rate
 		 FROM nodes ORDER BY id`,
 	)
 	if err != nil {
@@ -74,10 +81,13 @@ func (s *NodeStore) List() ([]nodes.Node, error) {
 	for rows.Next() {
 		var node nodes.Node
 		var caddyEnabled int
-		if err := rows.Scan(&node.ID, &node.Name, &node.BaseURL, &node.UploadBytes, &node.DownloadBytes, &node.CaddyACMEEmail, &node.CaddyPanelDomain, &caddyEnabled); err != nil {
+		if err := rows.Scan(&node.ID, &node.Name, &node.BaseURL, &node.UploadBytes, &node.DownloadBytes, &node.CaddyACMEEmail, &node.CaddyPanelDomain, &caddyEnabled, &node.TrafficRate); err != nil {
 			return nil, fmt.Errorf("scan node: %w", err)
 		}
 		node.CaddyEnabled = caddyEnabled != 0
+		if node.TrafficRate <= 0 {
+			node.TrafficRate = 1.0
+		}
 		items = append(items, node)
 	}
 	return items, rows.Err()

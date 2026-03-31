@@ -5,14 +5,15 @@ import "errors"
 var ErrNodeNotFound = errors.New("node not found")
 
 type Node struct {
-	ID               string `json:"id"`
-	Name             string `json:"name"`
-	BaseURL          string `json:"base_url"`
-	UploadBytes      int64  `json:"upload_bytes"`
-	DownloadBytes    int64  `json:"download_bytes"`
-	CaddyACMEEmail   string `json:"caddy_acme_email"`
-	CaddyPanelDomain string `json:"caddy_panel_domain"`
-	CaddyEnabled     bool   `json:"caddy_enabled"`
+	ID               string  `json:"id"`
+	Name             string  `json:"name"`
+	BaseURL          string  `json:"base_url"`
+	TrafficRate      float64 `json:"traffic_rate"` // 流量倍率，默认 1.0，影响用户计费流量
+	UploadBytes      int64   `json:"upload_bytes"`
+	DownloadBytes    int64   `json:"download_bytes"`
+	CaddyACMEEmail   string  `json:"caddy_acme_email"`
+	CaddyPanelDomain string  `json:"caddy_panel_domain"`
+	CaddyEnabled     bool    `json:"caddy_enabled"`
 }
 
 // NodeDailyUsage 某节点某日的流量快照。

@@ -480,7 +480,10 @@
 {{range .Data}}
 <div class="bg-gray-900 rounded-xl border border-gray-800 px-5 py-4 flex items-center justify-between" id="node-{{.Node.ID}}">
   <div class="flex-1 min-w-0 mr-4">
-    <div class="font-medium text-gray-100 text-sm">{{.Node.Name}}</div>
+    <div class="flex items-center gap-2">
+      <span class="font-medium text-gray-100 text-sm">{{.Node.Name}}</span>
+      {{if ne .Node.TrafficRate 1.0}}<span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">×{{printf "%.2g" .Node.TrafficRate}}</span>{{end}}
+    </div>
     <div class="text-xs text-gray-500 mt-0.5 truncate">{{.Node.BaseURL}}</div>
     {{if or .SingboxVer .NodeVer}}
     <div class="flex items-center gap-2 mt-1">
@@ -554,6 +557,12 @@
       <label class="block text-xs font-medium text-gray-400 mb-1.5">节点地址</label>
       <input type="url" name="base_url" required placeholder="https://127.0.0.1:8081"
              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">流量倍率</label>
+      <input type="number" name="traffic_rate" value="1" min="0.1" max="100" step="0.1"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      <p class="mt-1 text-xs text-gray-600">用户在此节点产生的流量将乘以该倍率计入配额，默认 1</p>
     </div>
   </div>
   <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
@@ -838,6 +847,12 @@
       <label class="block text-xs font-medium text-gray-400 mb-1.5">节点地址</label>
       <input type="url" name="base_url" value="{{.Data.BaseURL}}" required
              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">流量倍率</label>
+      <input type="number" name="traffic_rate" value="{{printf "%.2g" .Data.TrafficRate}}" min="0.1" max="100" step="0.1"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      <p class="mt-1 text-xs text-gray-600">用户在此节点产生的流量将乘以该倍率计入配额，默认 1</p>
     </div>
   </div>
   <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">

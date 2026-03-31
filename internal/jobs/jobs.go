@@ -75,6 +75,12 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 		reloadNeeded := false
 		var nodeUploadDelta, nodeDownloadDelta int64
 
+		// 取节点倍率，≤0 时视为 1.0
+		trafficRate := node.TrafficRate
+		if trafficRate <= 0 {
+			trafficRate = 1.0
+		}
+
 		for _, acc := range userAccesses {
 			user, ok := userMap[acc.UserID]
 			if !ok {
@@ -92,8 +98,9 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			if stats, ok := usageByUser[user.Username]; ok {
 				uploadDelta := usageDelta(stats.UploadTotal, acc.SyncedUploadBytes)
 				downloadDelta := usageDelta(stats.DownloadTotal, acc.SyncedDownloadBytes)
-				user.UploadBytes += uploadDelta
-				user.DownloadBytes += downloadDelta
+				// 节点记录真实流量，用户计费流量乘以节点倍率
+				user.UploadBytes += applyRate(uploadDelta, trafficRate)
+				user.DownloadBytes += applyRate(downloadDelta, trafficRate)
 				nodeUploadDelta += uploadDelta
 				nodeDownloadDelta += downloadDelta
 				acc.SyncedUploadBytes = stats.UploadTotal
@@ -491,4 +498,14 @@ func usageDelta(current, previous int64) int64 {
 		return current
 	}
 	return current - previous
+}
+
+// applyRate 将 delta 乘以倍率并防止 int64 溢出。
+func applyRate(delta int64, rate float64) int64 {
+	const maxInt64 = float64(1<<62) * 4 // math.MaxInt64 的近似值，避免直接转换精度问题
+	scaled := float64(delta) * rate
+	if scaled >= maxInt64 {
+		return 1<<63 - 1 // math.MaxInt64
+	}
+	return int64(scaled)
 }
