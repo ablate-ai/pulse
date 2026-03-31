@@ -81,8 +81,32 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			trafficRate = 1.0
 		}
 
+		// 按 UserID 分组，避免同一用户在同一节点有多条 inbound 时流量被重复计算。
+		// 节点流量统计按用户名汇报，每个用户只有一条汇总值，
+		// 但 UserInbound 是 per-inbound 的，直接遍历会导致同一 delta 被累加多次。
+		type perUserGroup struct {
+			accesses          []users.UserInbound
+			maxSyncedUpload   int64
+			maxSyncedDownload int64
+		}
+		byUser := make(map[string]*perUserGroup)
 		for _, acc := range userAccesses {
-			user, ok := userMap[acc.UserID]
+			pu, ok := byUser[acc.UserID]
+			if !ok {
+				pu = &perUserGroup{}
+				byUser[acc.UserID] = pu
+			}
+			pu.accesses = append(pu.accesses, acc)
+			if acc.SyncedUploadBytes > pu.maxSyncedUpload {
+				pu.maxSyncedUpload = acc.SyncedUploadBytes
+			}
+			if acc.SyncedDownloadBytes > pu.maxSyncedDownload {
+				pu.maxSyncedDownload = acc.SyncedDownloadBytes
+			}
+		}
+
+		for userID, pu := range byUser {
+			user, ok := userMap[userID]
 			if !ok {
 				continue
 			}
@@ -96,15 +120,15 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			}
 
 			if stats, ok := usageByUser[user.Username]; ok {
-				uploadDelta := usageDelta(stats.UploadTotal, acc.SyncedUploadBytes)
-				downloadDelta := usageDelta(stats.DownloadTotal, acc.SyncedDownloadBytes)
+				// 使用该用户所有 inbound 中最大的游标计算 delta，
+				// 避免新增 inbound（游标为 0）导致历史流量被重复计入。
+				uploadDelta := usageDelta(stats.UploadTotal, pu.maxSyncedUpload)
+				downloadDelta := usageDelta(stats.DownloadTotal, pu.maxSyncedDownload)
 				// 节点记录真实流量，用户计费流量乘以节点倍率
 				user.UploadBytes += applyRate(uploadDelta, trafficRate)
 				user.DownloadBytes += applyRate(downloadDelta, trafficRate)
 				nodeUploadDelta += uploadDelta
 				nodeDownloadDelta += downloadDelta
-				acc.SyncedUploadBytes = stats.UploadTotal
-				acc.SyncedDownloadBytes = stats.DownloadTotal
 				// 累加连接数和在线设备数（支持多节点求和）
 				user.Connections += stats.Connections
 				user.Devices += stats.Devices
@@ -113,10 +137,13 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 					now := time.Now().UTC()
 					user.OnlineAt = &now
 				}
-				// 保存更新后的游标
-				if _, err := store.UpsertUserInbound(acc); err != nil {
-					result.Errors = append(result.Errors, node.ID+": "+err.Error())
-					continue
+				// 将所有 inbound 游标统一更新到当前值
+				for _, acc := range pu.accesses {
+					acc.SyncedUploadBytes = stats.UploadTotal
+					acc.SyncedDownloadBytes = stats.DownloadTotal
+					if _, err := store.UpsertUserInbound(acc); err != nil {
+						result.Errors = append(result.Errors, node.ID+": "+err.Error())
+					}
 				}
 			}
 			user.UsedBytes = user.UploadBytes + user.DownloadBytes

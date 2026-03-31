@@ -295,6 +295,120 @@ func TestSyncUsage_TrafficRate_QuotaWithRate(t *testing.T) {
 	}
 }
 
+// ─── SyncUsage MultiInbound ───────────────────────────────────────────────────
+
+func TestSyncUsage_MultiInbound_NoDuplicateCounting(t *testing.T) {
+	// 回归测试：一个用户在同一节点有多条 inbound 时，流量只应计算一次。
+	// 修复前，流量会被乘以 inbound 数量（例如 4 条 inbound → 4 倍流量）。
+	nodeStore := nodes.NewMemoryStore()
+	userStore := users.NewMemoryStore()
+	_, _ = nodeStore.Upsert(nodes.Node{ID: "n1", Name: "n1", BaseURL: "http://node.test"})
+	_, _ = userStore.UpsertUser(users.User{
+		ID: "u1", Username: "alice", Status: users.StatusActive,
+		TrafficLimit: 999999,
+	})
+	// 同一个用户在同一节点上有 4 条 inbound（模拟 VLESS、VMess、Trojan、Shadowsocks）
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID: "u1-ib0", UserID: "u1", InboundID: "ib-vless", NodeID: "n1",
+		UUID: "11111111-1111-1111-1111-111111111111", Secret: "s1",
+	})
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID: "u1-ib1", UserID: "u1", InboundID: "ib-vmess", NodeID: "n1",
+		UUID: "22222222-2222-2222-2222-222222222222", Secret: "s2",
+	})
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID: "u1-ib2", UserID: "u1", InboundID: "ib-trojan", NodeID: "n1",
+		UUID: "33333333-3333-3333-3333-333333333333", Secret: "s3",
+	})
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID: "u1-ib3", UserID: "u1", InboundID: "ib-ss", NodeID: "n1",
+		UUID: "44444444-4444-4444-4444-444444444444", Secret: "s4",
+	})
+
+	// 节点报告 alice 总共 upload=80, download=30（聚合值，不分 inbound）
+	dial := usageDial(t, "alice", 80, 30)
+
+	_, err := SyncUsage(context.Background(), userStore, nodeStore, inbounds.NewMemoryStore(), dial, ApplyOptions{}, nil)
+	if err != nil {
+		t.Fatalf("SyncUsage() error = %v", err)
+	}
+
+	alice, _ := userStore.GetUser("u1")
+	// 流量应只计一次：80 + 30 = 110，而非 4 倍的 440
+	if alice.UploadBytes != 80 {
+		t.Errorf("upload: want 80, got %d", alice.UploadBytes)
+	}
+	if alice.DownloadBytes != 30 {
+		t.Errorf("download: want 30, got %d", alice.DownloadBytes)
+	}
+	if alice.UsedBytes != 110 {
+		t.Errorf("used: want 110, got %d", alice.UsedBytes)
+	}
+
+	// 节点流量也只应计一次
+	node, _ := nodeStore.Get("n1")
+	if node.UploadBytes != 80 {
+		t.Errorf("node upload: want 80, got %d", node.UploadBytes)
+	}
+	if node.DownloadBytes != 30 {
+		t.Errorf("node download: want 30, got %d", node.DownloadBytes)
+	}
+
+	// 所有 inbound 的游标都应更新到当前值
+	for _, ibID := range []string{"u1-ib0", "u1-ib1", "u1-ib2", "u1-ib3"} {
+		acc, _ := userStore.GetUserInbound(ibID)
+		if acc.SyncedUploadBytes != 80 {
+			t.Errorf("%s synced upload: want 80, got %d", ibID, acc.SyncedUploadBytes)
+		}
+		if acc.SyncedDownloadBytes != 30 {
+			t.Errorf("%s synced download: want 30, got %d", ibID, acc.SyncedDownloadBytes)
+		}
+	}
+}
+
+func TestSyncUsage_MultiInbound_NewInboundAdded(t *testing.T) {
+	// 测试：已有 inbound 游标在 50/20，新增一条 inbound（游标为 0）。
+	// 节点报告 80/30 → delta 应基于最大游标 50/20 计算为 30/10，而非基于 0 计算为 80/30。
+	nodeStore := nodes.NewMemoryStore()
+	userStore := users.NewMemoryStore()
+	_, _ = nodeStore.Upsert(nodes.Node{ID: "n1", Name: "n1", BaseURL: "http://node.test"})
+	_, _ = userStore.UpsertUser(users.User{
+		ID: "u1", Username: "alice", Status: users.StatusActive,
+		TrafficLimit: 999999,
+	})
+	// 旧 inbound，已同步到 50/20
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID: "u1-ib0", UserID: "u1", InboundID: "ib-vless", NodeID: "n1",
+		UUID: "11111111-1111-1111-1111-111111111111", Secret: "s1",
+		SyncedUploadBytes: 50, SyncedDownloadBytes: 20,
+	})
+	// 新增 inbound，游标为 0
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID: "u1-ib1", UserID: "u1", InboundID: "ib-trojan", NodeID: "n1",
+		UUID: "22222222-2222-2222-2222-222222222222", Secret: "s2",
+		SyncedUploadBytes: 0, SyncedDownloadBytes: 0,
+	})
+
+	dial := usageDial(t, "alice", 80, 30)
+
+	_, err := SyncUsage(context.Background(), userStore, nodeStore, inbounds.NewMemoryStore(), dial, ApplyOptions{}, nil)
+	if err != nil {
+		t.Fatalf("SyncUsage() error = %v", err)
+	}
+
+	alice, _ := userStore.GetUser("u1")
+	// delta 应基于最大游标 (50, 20): upload delta=30, download delta=10
+	if alice.UploadBytes != 30 {
+		t.Errorf("upload: want 30, got %d", alice.UploadBytes)
+	}
+	if alice.DownloadBytes != 10 {
+		t.Errorf("download: want 10, got %d", alice.DownloadBytes)
+	}
+	if alice.UsedBytes != 40 {
+		t.Errorf("used: want 40, got %d", alice.UsedBytes)
+	}
+}
+
 // ─── 辅助 ─────────────────────────────────────────────────────────────────────
 
 // usageDial 返回一个固定上报 upload/download 的 dial 函数。
