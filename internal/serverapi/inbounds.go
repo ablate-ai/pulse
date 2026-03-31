@@ -1,21 +1,33 @@
 package serverapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"pulse/internal/idgen"
 	"pulse/internal/inbounds"
+	"pulse/internal/jobs"
+	"pulse/internal/nodes"
+	"pulse/internal/outbounds"
+	"pulse/internal/users"
 )
 
 type inboundAPI struct {
-	store inbounds.InboundStore
+	store         inbounds.InboundStore
+	userStore     users.Store
+	nodeStore     nodes.Store
+	outboundStore outbounds.Store
+	dial          jobs.NodeDialer
+	applyOpts     jobs.ApplyOptions
 }
 
-func RegisterInboundsAPI(mux *http.ServeMux, store inbounds.InboundStore) {
-	a := &inboundAPI{store: store}
+func RegisterInboundsAPI(mux *http.ServeMux, store inbounds.InboundStore, userStore users.Store, nodeStore nodes.Store, outboundStore outbounds.Store, dial jobs.NodeDialer, applyOpts jobs.ApplyOptions) {
+	a := &inboundAPI{store: store, userStore: userStore, nodeStore: nodeStore, outboundStore: outboundStore, dial: dial, applyOpts: applyOpts}
 	mux.HandleFunc("/v1/inbounds", a.handleInbounds)
 	mux.HandleFunc("/v1/inbounds/", a.handleInboundRoutes)
 	mux.HandleFunc("/v1/hosts", a.handleHosts)
@@ -64,6 +76,7 @@ func (a *inboundAPI) handleInbounds(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
 		}
+		a.applyInboundNode(item.NodeID)
 		writeJSON(w, http.StatusOK, item)
 	default:
 		writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
@@ -118,12 +131,19 @@ func (a *inboundAPI) handleInboundRoutes(w http.ResponseWriter, r *http.Request)
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
 		}
+		a.applyInboundNode(item.NodeID)
 		writeJSON(w, http.StatusOK, item)
 	case http.MethodDelete:
+		existing, err := a.store.GetInbound(id)
+		if err != nil {
+			writeInboundError(w, err)
+			return
+		}
 		if err := a.store.DeleteInbound(id); err != nil {
 			writeInboundError(w, err)
 			return
 		}
+		a.applyInboundNode(existing.NodeID)
 		writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
 	default:
 		writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodPut+", "+http.MethodDelete)
@@ -219,6 +239,17 @@ func (a *inboundAPI) handleHostRoutes(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodPut+", "+http.MethodDelete)
 	}
+}
+
+// applyInboundNode 在后台异步将指定节点的最新配置下发到节点（inbound 变更后调用）。
+func (a *inboundAPI) applyInboundNode(nodeID string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := jobs.ApplyNode(ctx, nodeID, a.nodeStore, a.userStore, a.store, a.outboundStore, a.dial, a.applyOpts); err != nil {
+			log.Printf("warn: apply node %s after inbound change: %v", nodeID, err)
+		}
+	}()
 }
 
 func writeInboundError(w http.ResponseWriter, err error) {

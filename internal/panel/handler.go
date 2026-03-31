@@ -1380,6 +1380,7 @@ func (h *Handler) createInbound(w http.ResponseWriter, r *http.Request) {
 			htmxError(w, http.StatusInternalServerError, "failed to create inbound: "+err.Error())
 			return
 		}
+		h.applyInboundNode(nodeID)
 
 		// 自动创建默认 host，从节点 BaseURL 提取地址
 		if node, err := h.nodeStore.Get(nodeID); err == nil {
@@ -1452,15 +1453,22 @@ func (h *Handler) updateInbound(w http.ResponseWriter, r *http.Request) {
 		htmxError(w, http.StatusInternalServerError, "failed to update inbound: "+err.Error())
 		return
 	}
+	h.applyInboundNode(ib.NodeID)
 	h.renderInboundsListFromStore(w)
 }
 
 func (h *Handler) deleteInbound(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	ib, err := h.ibStore.GetInbound(id)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "inbound not found")
+		return
+	}
 	if err := h.ibStore.DeleteInbound(id); err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to delete inbound: "+err.Error())
 		return
 	}
+	h.applyInboundNode(ib.NodeID)
 	h.renderInboundsListFromStore(w)
 }
 
@@ -1476,6 +1484,17 @@ func (h *Handler) renderInboundsListFromStore(w http.ResponseWriter) {
 		return
 	}
 	h.renderPartial(w, "partial-inbound-rows", inboundListData{Inbounds: list, NodeMap: h.buildNodeMap()})
+}
+
+// applyInboundNode 在后台异步将指定节点的最新配置下发到节点（inbound 变更后调用）。
+func (h *Handler) applyInboundNode(nodeID string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := jobs.ApplyNode(ctx, nodeID, h.nodeStore, h.userStore, h.ibStore, h.outboundStore, h.dial, h.applyOpts); err != nil {
+			log.Printf("warn: apply node %s after inbound change: %v", nodeID, err)
+		}
+	}()
 }
 
 // ─── Host Handlers ────────────────────────────────────────────────────────────

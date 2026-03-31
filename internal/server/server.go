@@ -124,7 +124,7 @@ func Run() error {
 	serverapi.NewWithUsers(store, userStore, inboundStore, outboundStore, clientOptions, applyOpts).Register(protectedV1)
 	serverapi.RegisterUsersAPI(protectedV1, userStore, store, inboundStore, outboundStore, clientOptions, applyOpts)
 	serverapi.RegisterSystemAPIWithInbounds(protectedV1, userStore, store, inboundStore, clientOptions, applyOpts)
-	serverapi.RegisterInboundsAPI(protectedV1, inboundStore)
+	serverapi.RegisterInboundsAPI(protectedV1, inboundStore, userStore, store, outboundStore, nodeAPI.Dial, applyOpts)
 	serverapi.RegisterOutboundsAPI(protectedV1, outboundStore)
 	serverapi.RegisterToolsAPI(protectedV1)
 	mux.Handle("/v1/tools/", authManager.Middleware(protectedV1))

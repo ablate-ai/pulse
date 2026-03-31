@@ -354,6 +354,35 @@ func ShouldResetTraffic(strategy string, createdAt time.Time, lastResetAt *time.
 	return !now.Before(next)
 }
 
+// ─── ApplyNode ────────────────────────────────────────────────────────────────
+
+// ApplyNode 根据节点 ID 从各 Store 汇集数据后调用 ApplyNodeUsers，
+// 适合在 inbound 变更（新增/修改/删除）后立即调用。
+func ApplyNode(ctx context.Context, nodeID string, nodeStore nodes.Store, userStore users.Store, ibStore inbounds.InboundStore, outboundStore outbounds.Store, dial NodeDialer, opts ApplyOptions) error {
+	node, err := nodeStore.Get(nodeID)
+	if err != nil {
+		return err
+	}
+	client, err := dial(nodeID)
+	if err != nil {
+		return err
+	}
+	nodeInbounds, err := ibStore.ListInboundsByNode(nodeID)
+	if err != nil {
+		return err
+	}
+	userAccesses, err := userStore.ListUserInboundsByNode(nodeID)
+	if err != nil {
+		return err
+	}
+	userMap, err := userStore.GetUsersByIDs(collectUserIDs(userAccesses))
+	if err != nil {
+		return err
+	}
+	_, _, err = ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, userMap, ibStore, outboundStore, opts, node)
+	return err
+}
+
 // ─── ApplyNodeUsers ───────────────────────────────────────────────────────────
 
 // ApplyOptions 控制 ApplyNodeUsers 的行为。
