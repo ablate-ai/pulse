@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
 
 // SessionStore 定义 session 持久化接口。
@@ -24,12 +26,27 @@ type SettingsStore interface {
 	SetSetting(key, value string) error
 }
 
+// loginAttempt 记录某 IP 的登录失败情况。
+type loginAttempt struct {
+	count     int
+	windowEnd time.Time
+}
+
+const (
+	maxLoginFailures  = 10              // 窗口内最大失败次数
+	loginWindow       = 10 * time.Minute // 失败计数窗口
+	loginLockDuration = 15 * time.Minute // 超限后锁定时长
+)
+
 type Manager struct {
 	mu       sync.RWMutex
 	username string
 	password string
 	sessions SessionStore
 	settings SettingsStore
+
+	failMu   sync.Mutex
+	failures map[string]*loginAttempt // key: client IP
 }
 
 type loginRequest struct {
@@ -43,6 +60,7 @@ func NewManager(username, password string, sessions SessionStore, settings Setti
 		password: password,
 		sessions: sessions,
 		settings: settings,
+		failures: make(map[string]*loginAttempt),
 	}
 	// 优先使用数据库中持久化的密码（用户通过面板修改后写入）
 	if settings != nil {
@@ -70,16 +88,24 @@ func (m *Manager) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ip := clientIP(r)
+	if m.isLocked(ip) {
+		writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "too many failed attempts, try later"})
+		return
+	}
+
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
 	}
 	if req.Username != m.username || req.Password != m.password {
+		m.recordFailure(ip)
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid credentials"})
 		return
 	}
 
+	m.clearFailures(ip)
 	token := randomToken()
 	if err := m.sessions.Create(token, req.Username); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "create session: " + err.Error()})
@@ -160,7 +186,7 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
-// Login 验证凭据并创建新的 session token。
+// Login 验证凭据并创建新的 session token。ip 用于暴力破解防护（可传空字符串跳过）。
 func (m *Manager) Login(username, password string) (string, error) {
 	m.mu.RLock()
 	match := username == m.username && password == m.password
@@ -168,6 +194,27 @@ func (m *Manager) Login(username, password string) (string, error) {
 	if !match {
 		return "", errors.New("invalid credentials")
 	}
+	token := randomToken()
+	if err := m.sessions.Create(token, username); err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+// LoginFromRequest 供面板 handler 调用，携带 IP 用于暴力破解防护。
+func (m *Manager) LoginFromRequest(r *http.Request, username, password string) (string, error) {
+	ip := clientIP(r)
+	if m.isLocked(ip) {
+		return "", errors.New("too many failed attempts, try later")
+	}
+	m.mu.RLock()
+	match := username == m.username && password == m.password
+	m.mu.RUnlock()
+	if !match {
+		m.recordFailure(ip)
+		return "", errors.New("invalid credentials")
+	}
+	m.clearFailures(ip)
 	token := randomToken()
 	if err := m.sessions.Create(token, username); err != nil {
 		return "", err
@@ -189,4 +236,54 @@ func (m *Manager) DeleteToken(token string) error {
 func (m *Manager) GetUsernameByToken(token string) string {
 	username, _ := m.sessions.GetUsername(token)
 	return username
+}
+
+// ─── 暴力破解防护 ──────────────────────────────────────────────────────────────
+
+func (m *Manager) isLocked(ip string) bool {
+	m.failMu.Lock()
+	defer m.failMu.Unlock()
+	a, ok := m.failures[ip]
+	if !ok {
+		return false
+	}
+	if time.Now().After(a.windowEnd) {
+		delete(m.failures, ip)
+		return false
+	}
+	return a.count >= maxLoginFailures
+}
+
+func (m *Manager) recordFailure(ip string) {
+	m.failMu.Lock()
+	defer m.failMu.Unlock()
+	now := time.Now()
+	a, ok := m.failures[ip]
+	if !ok || now.After(a.windowEnd) {
+		m.failures[ip] = &loginAttempt{count: 1, windowEnd: now.Add(loginWindow)}
+		return
+	}
+	a.count++
+	if a.count >= maxLoginFailures {
+		// 超限后将窗口延长为锁定时长
+		a.windowEnd = now.Add(loginLockDuration)
+	}
+}
+
+func (m *Manager) clearFailures(ip string) {
+	m.failMu.Lock()
+	defer m.failMu.Unlock()
+	delete(m.failures, ip)
+}
+
+// clientIP 从请求中提取客户端真实 IP（优先 X-Real-IP，否则 RemoteAddr）。
+func clientIP(r *http.Request) string {
+	if ip := r.Header.Get("X-Real-IP"); ip != "" {
+		return ip
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }

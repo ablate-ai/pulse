@@ -345,7 +345,7 @@ func (h *Handler) processLogin(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 
-	token, err := h.auth.Login(username, password)
+	token, err := h.auth.LoginFromRequest(r, username, password)
 	if err != nil {
 		if isHTMX(r) {
 			htmxError(w, http.StatusUnauthorized, "invalid username or password")
