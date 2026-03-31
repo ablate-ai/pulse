@@ -1816,6 +1816,16 @@ func templateFuncs() template.FuncMap {
 		"addInt64": func(a, b int64) int64 {
 			return a + b
 		},
+		// domainListDisplay 将逗号分隔的域名字符串转为每行一个的显示格式。
+		"domainListDisplay": func(s string) string {
+			var parts []string
+			for _, d := range strings.Split(s, ",") {
+				if d = strings.TrimSpace(d); d != "" {
+					parts = append(parts, d)
+				}
+			}
+			return strings.Join(parts, "\n")
+		},
 	}
 }
 
@@ -1954,7 +1964,14 @@ func (h *Handler) caddyConfigForm(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) caddySaveConfig(w http.ResponseWriter, r *http.Request) {
 	nodeID := r.PathValue("nodeID")
 	acmeEmail := strings.TrimSpace(r.FormValue("acme_email"))
-	panelDomain := strings.TrimSpace(r.FormValue("panel_domain"))
+	// 多域名：将换行/逗号分隔的输入标准化为逗号分隔存储
+	var domainList []string
+	for _, d := range strings.FieldsFunc(r.FormValue("panel_domain"), func(r rune) bool { return r == ',' || r == '\n' }) {
+		if d = strings.TrimSpace(d); d != "" {
+			domainList = append(domainList, d)
+		}
+	}
+	panelDomain := strings.Join(domainList, ",")
 	if err := h.nodeStore.UpdateCaddyConfig(nodeID, acmeEmail, panelDomain, true); err != nil {
 		htmxError(w, http.StatusInternalServerError, "保存配置失败: "+err.Error())
 		return

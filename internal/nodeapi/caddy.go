@@ -175,12 +175,22 @@ func writeCaddyfileFromConfig(acmeEmail, panelDomain string, panelPort int) erro
 	if acmeEmail != "" {
 		fmt.Fprintf(&buf, "{\n\temail %s\n}\n\n", acmeEmail)
 	}
-	if panelDomain != "" {
+
+	// 支持多域名：逗号或换行分隔，生成一个 Caddy 块
+	var domains []string
+	for _, d := range strings.FieldsFunc(panelDomain, func(r rune) bool { return r == ',' || r == '\n' }) {
+		if d = strings.TrimSpace(d); d != "" {
+			domains = append(domains, d)
+		}
+	}
+	if len(domains) > 0 {
 		if panelPort <= 0 {
 			panelPort = 8080
 		}
-		fmt.Fprintf(&buf, "# 面板 HTTPS\n%s {\n\thandle {\n\t\treverse_proxy 127.0.0.1:%d\n\t}\n}\n\n", panelDomain, panelPort)
+		fmt.Fprintf(&buf, "# 面板 HTTPS\n%s {\n\thandle {\n\t\treverse_proxy 127.0.0.1:%d\n\t}\n}\n\n",
+			strings.Join(domains, ", "), panelPort)
 	}
+
 	buf.WriteString("# 由 Pulse 面板自动管理，请勿手动编辑\n")
 	fmt.Fprintf(&buf, "import %s/pulse.d/*.caddy\n", caddyfileDir)
 

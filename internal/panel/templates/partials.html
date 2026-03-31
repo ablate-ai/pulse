@@ -389,10 +389,10 @@
       <p class="text-xs font-semibold text-gray-300">面板反代</p>
       <div>
         <label class="block text-xs font-medium text-gray-400 mb-1.5">面板域名</label>
-        <input type="text" name="panel_domain" value="{{.Data.CaddyPanelDomain}}"
-               placeholder="panel.example.com（留空则不配置）"
-               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
-        <p class="text-xs text-gray-600 mt-1">Caddy 将把该域名的 HTTPS 流量反代到本机面板端口</p>
+        <textarea name="panel_domain" rows="3"
+                  placeholder="每行或逗号分隔一个域名，留空则不配置&#10;panel1.example.com&#10;panel2.example.com"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors resize-none font-mono">{{.Data.CaddyPanelDomain | domainListDisplay}}</textarea>
+        <p class="text-xs text-gray-600 mt-1">支持多域名，Caddy 将把这些域名的 HTTPS 流量反代到本机面板端口</p>
       </div>
     </div>
   </div>
