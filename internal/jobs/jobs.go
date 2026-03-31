@@ -529,9 +529,11 @@ func usageDelta(current, previous int64) int64 {
 
 // applyRate 将 delta 乘以倍率并防止 int64 溢出。
 func applyRate(delta int64, rate float64) int64 {
-	const maxInt64 = float64(1<<62) * 4 // math.MaxInt64 的近似值，避免直接转换精度问题
+	// float64(1<<63 - 1) 在 float64 中向上取整为 2^63 = 9.223372036854776e+18，
+	// 任何 >= 该值的 float64 转换为 int64 都会溢出，因此用它作为上界。
+	const maxInt64Float = float64(1<<63 - 1)
 	scaled := float64(delta) * rate
-	if scaled >= maxInt64 {
+	if scaled >= maxInt64Float {
 		return 1<<63 - 1 // math.MaxInt64
 	}
 	return int64(scaled)
