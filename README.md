@@ -78,9 +78,13 @@ curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/instal
 # 安装指定版本
 curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | sh -s -- server v0.1.18
 
-# 指定管理员密码和面板域名（启用 HTTPS）
+# 指定管理员密码
 curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
-  PULSE_ADMIN_PASSWORD='strong-password' PULSE_PANEL_DOMAIN='panel.example.com' sh -s -- server
+  PULSE_ADMIN_PASSWORD='strong-password' sh -s -- server
+
+# 重置管理员密码（生成随机新密码并重启服务）
+curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/install.sh | \
+  sh -s -- server --reset-password
 ```
 
 首次安装会随机生成端口和管理员密码，安装结束后打印：
@@ -92,8 +96,6 @@ curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/instal
   密码:     <随机生成>
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
-
-若安装时指定了 `PULSE_PANEL_DOMAIN`，面板地址会显示为 `https://<domain>`。
 
 如需修改端口或其他配置：
 
@@ -110,14 +112,13 @@ systemctl restart pulse-server
 | `PULSE_ADMIN_USERNAME` | `admin` | 管理员用户名 |
 | `PULSE_ADMIN_PASSWORD` | 随机生成 | 管理员密码 |
 | `PULSE_SERVER_ADDR` | 随机端口 | server 监听地址，格式 `:端口` |
-| `PULSE_PANEL_DOMAIN` | 空 | 面板对外域名，设置后自动启用 HTTPS |
 | `PULSE_INSTALL_BIN` | `/usr/local/bin` | 二进制安装目录 |
 | `PULSE_INSTALL_ETC` | `/etc/pulse` | 配置安装目录 |
 | `PULSE_STATE_DIR` | `/var/lib/pulse` | 数据目录 |
 
 ### 2. 获取 node 所需证书
 
-登录控制面 → Overview 页面，复制「安装 Node」区块中的 server 客户端证书（PEM 格式）。
+登录控制面 → Settings 页面，复制「Node 客户端证书」区块中的 PEM 内容。
 
 ### 3. 在 node 机器上安装 node
 
@@ -207,6 +208,6 @@ curl -fsSL https://raw.githubusercontent.com/ablate-ai/pulse/main/scripts/uninst
 - 从 GitHub Release 下载对应平台（linux/amd64 或 linux/arm64）的 tar.gz
 - 安装二进制到 `/usr/local/bin`
 - 首次安装时写入示例配置到 `/etc/pulse/*.env`（已有配置不覆盖）
-- server：随机生成端口和管理员密码（可通过环境变量覆盖），若设置 `PULSE_PANEL_DOMAIN` 则写入面板域名
+- server：随机生成端口和管理员密码（可通过环境变量覆盖）；`--reset-password` 参数可强制重置密码
 - node：交互式提示粘贴 server 客户端证书 PEM，写入 `/etc/pulse/server_client_cert.pem`
 - 注册并启动 systemd 服务（`systemctl enable --now`）
