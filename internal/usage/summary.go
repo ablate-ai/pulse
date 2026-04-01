@@ -3,6 +3,7 @@ package usage
 import (
 	"fmt"
 	"log"
+	"sort"
 	"time"
 
 	"pulse/internal/nodes"
@@ -39,6 +40,33 @@ type NodeCombinedStat struct {
 	PeriodUploadBytes   int64  `json:"period_upload_bytes"`
 	PeriodDownloadBytes int64  `json:"period_download_bytes"`
 	PeriodTotalBytes    int64  `json:"period_total_bytes"`
+}
+
+// QuotaBucket 配额利用率分桶（只统计有限额的用户）。
+type QuotaBucket struct {
+	Label string
+	Count int
+}
+
+// ExpirationDayPoint 某天到期的用户数（未来30天时间线图）。
+type ExpirationDayPoint struct {
+	Date  string
+	Label string
+	Count int
+}
+
+// UserGrowthPoint 某天新增用户数（用户增长趋势图）。
+type UserGrowthPoint struct {
+	Date  string
+	Label string
+	Count int
+}
+
+// TopUserStat 流量排行用户（Top 10）。
+type TopUserStat struct {
+	Username     string
+	UsedBytes    int64
+	TrafficLimit int64
 }
 
 // DailyTrafficPoint 某日所有节点合并后的流量点（用于趋势图）。
@@ -87,6 +115,12 @@ type Summary struct {
 	// 当前选中的时间范围（天数）
 	Days        int   `json:"days"`
 	DaysOptions []int `json:"days_options"`
+
+	// 运营报表扩展数据
+	QuotaBuckets   []QuotaBucket        `json:"quota_buckets"`    // 配额利用率分布
+	ExpirationDays []ExpirationDayPoint `json:"expiration_days"`  // 未来 30 天到期时间线
+	UserGrowth     []UserGrowthPoint    `json:"user_growth"`      // 近 days 天用户增长
+	TopUsers       []TopUserStat        `json:"top_users"`        // 流量 Top 10
 }
 
 func Build(nodeStore nodes.Store, userStore users.Store, days int) (Summary, error) {
@@ -177,6 +211,84 @@ func Build(nodeStore nodes.Store, userStore users.Store, days int) (Summary, err
 		})
 	}
 	s.NodeCombinedStats = combined
+
+	// --- 配额利用率分布（只统计有限额用户）---
+	var bucketCounts [5]int
+	for _, u := range usersList {
+		if u.TrafficLimit <= 0 {
+			continue
+		}
+		ratio := float64(u.UsedBytes) / float64(u.TrafficLimit)
+		switch {
+		case ratio >= 1.0:
+			bucketCounts[4]++
+		case ratio >= 0.75:
+			bucketCounts[3]++
+		case ratio >= 0.50:
+			bucketCounts[2]++
+		case ratio >= 0.25:
+			bucketCounts[1]++
+		default:
+			bucketCounts[0]++
+		}
+	}
+	for i, label := range [5]string{"0–25%", "25–50%", "50–75%", "75–100%", "超限"} {
+		s.QuotaBuckets = append(s.QuotaBuckets, QuotaBucket{Label: label, Count: bucketCounts[i]})
+	}
+
+	// --- 未来 30 天到期时间线 ---
+	expMap := make(map[string]int, 30)
+	for _, u := range usersList {
+		if u.ExpireAt == nil {
+			continue
+		}
+		exp := u.ExpireAt.UTC()
+		if exp.Before(now.UTC()) || exp.After(now.UTC().AddDate(0, 0, 30)) {
+			continue
+		}
+		expMap[exp.Format("2006-01-02")]++
+	}
+	for i := 0; i < 30; i++ {
+		d := now.UTC().AddDate(0, 0, i)
+		date := d.Format("2006-01-02")
+		s.ExpirationDays = append(s.ExpirationDays, ExpirationDayPoint{
+			Date:  date,
+			Label: fmt.Sprintf("%d/%d", int(d.Month()), d.Day()),
+			Count: expMap[date],
+		})
+	}
+
+	// --- 近 days 天用户增长趋势 ---
+	growthMap := make(map[string]int, days)
+	for _, u := range usersList {
+		growthMap[u.CreatedAt.UTC().Format("2006-01-02")]++
+	}
+	for i := 0; i < days; i++ {
+		d := now.UTC().AddDate(0, 0, -(days - 1 - i))
+		date := d.Format("2006-01-02")
+		s.UserGrowth = append(s.UserGrowth, UserGrowthPoint{
+			Date:  date,
+			Label: fmt.Sprintf("%d/%d", int(d.Month()), d.Day()),
+			Count: growthMap[date],
+		})
+	}
+
+	// --- 流量 Top 10 用户 ---
+	sorted := make([]users.User, len(usersList))
+	copy(sorted, usersList)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].UsedBytes > sorted[j].UsedBytes
+	})
+	for _, u := range sorted {
+		if len(s.TopUsers) >= 10 || u.UsedBytes == 0 {
+			break
+		}
+		s.TopUsers = append(s.TopUsers, TopUserStat{
+			Username:     u.Username,
+			UsedBytes:    u.UsedBytes,
+			TrafficLimit: u.TrafficLimit,
+		})
+	}
 
 	return s, nil
 }
