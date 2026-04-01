@@ -261,6 +261,11 @@ func (db *DB) migrateNodesTable() error {
 			return fmt.Errorf("migrate nodes add caddy_panel_domain: %w", err)
 		}
 	}
+	if _, ok := columns["caddy_extra_proxies"]; !ok {
+		if _, err := db.conn.Exec(`ALTER TABLE nodes ADD COLUMN caddy_extra_proxies TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("migrate nodes add caddy_extra_proxies: %w", err)
+		}
+	}
 	if _, ok := columns["caddy_enabled"]; !ok {
 		if _, err := db.conn.Exec(`ALTER TABLE nodes ADD COLUMN caddy_enabled INTEGER NOT NULL DEFAULT 0`); err != nil {
 			return fmt.Errorf("migrate nodes add caddy_enabled: %w", err)

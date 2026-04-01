@@ -11,9 +11,10 @@ type Node struct {
 	TrafficRate      float64 `json:"traffic_rate"` // 流量倍率，默认 1.0，影响用户计费流量
 	UploadBytes      int64   `json:"upload_bytes"`
 	DownloadBytes    int64   `json:"download_bytes"`
-	CaddyACMEEmail   string  `json:"caddy_acme_email"`
-	CaddyPanelDomain string  `json:"caddy_panel_domain"`
-	CaddyEnabled     bool    `json:"caddy_enabled"`
+	CaddyACMEEmail    string  `json:"caddy_acme_email"`
+	CaddyPanelDomain  string  `json:"caddy_panel_domain"`
+	CaddyExtraProxies string  `json:"caddy_extra_proxies"` // 额外反代规则，每行一条 "domain:port"
+	CaddyEnabled      bool    `json:"caddy_enabled"`
 }
 
 // NodeDailyUsage 某节点某日的流量快照。
@@ -31,7 +32,7 @@ type Store interface {
 	List() ([]Node, error)
 	// AddTraffic 原子性地将 upload/download 字节数累加到节点流量计数器。
 	AddTraffic(nodeID string, upload, download int64) error
-	UpdateCaddyConfig(nodeID, acmeEmail, panelDomain string, caddyEnabled bool) error
+	UpdateCaddyConfig(nodeID, acmeEmail, panelDomain, extraProxies string, caddyEnabled bool) error
 	// AddNodeDailyUsage 将 delta 流量累加到当日统计桶（幂等 upsert）。
 	AddNodeDailyUsage(nodeID, date string, upload, download int64) error
 	// ListNodeDailyUsage 返回最近 days 天内所有节点的日流量记录。

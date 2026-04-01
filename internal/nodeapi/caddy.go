@@ -146,15 +146,16 @@ func (a *API) handleCaddyConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		ACMEEmail   string `json:"acme_email"`
-		PanelDomain string `json:"panel_domain"`
-		PanelPort   int    `json:"panel_port"`
+		ACMEEmail    string `json:"acme_email"`
+		PanelDomain  string `json:"panel_domain"`
+		PanelPort    int    `json:"panel_port"`
+		ExtraProxies string `json:"extra_proxies"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
 	}
-	if err := writeCaddyfileFromConfig(req.ACMEEmail, req.PanelDomain, req.PanelPort); err != nil {
+	if err := writeCaddyfileFromConfig(req.ACMEEmail, req.PanelDomain, req.PanelPort, req.ExtraProxies); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 		return
 	}
@@ -165,7 +166,7 @@ func (a *API) handleCaddyConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-func writeCaddyfileFromConfig(acmeEmail, panelDomain string, panelPort int) error {
+func writeCaddyfileFromConfig(acmeEmail, panelDomain string, panelPort int, extraProxies string) error {
 	caddyfileDir := filepath.Dir(caddyfilePath)
 	if err := os.MkdirAll(filepath.Join(caddyfileDir, "pulse.d"), 0755); err != nil {
 		return fmt.Errorf("create pulse.d dir: %w", err)
@@ -176,7 +177,7 @@ func writeCaddyfileFromConfig(acmeEmail, panelDomain string, panelPort int) erro
 		fmt.Fprintf(&buf, "{\n\temail %s\n}\n\n", acmeEmail)
 	}
 
-	// 支持多域名：逗号或换行分隔，生成一个 Caddy 块
+	// 面板反代：支持多域名（逗号或换行分隔），生成一个 Caddy 块
 	var domains []string
 	for _, d := range strings.FieldsFunc(panelDomain, func(r rune) bool { return r == ',' || r == '\n' }) {
 		if d = strings.TrimSpace(d); d != "" {
@@ -189,6 +190,24 @@ func writeCaddyfileFromConfig(acmeEmail, panelDomain string, panelPort int) erro
 		}
 		fmt.Fprintf(&buf, "# 面板 HTTPS\n%s {\n\thandle {\n\t\treverse_proxy 127.0.0.1:%d {\n\t\t\tflush_interval -1\n\t\t}\n\t}\n}\n\n",
 			strings.Join(domains, ", "), panelPort)
+	}
+
+	// 额外反代：每行一条 "domain:port"
+	for _, line := range strings.Split(extraProxies, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		colonIdx := strings.LastIndex(line, ":")
+		if colonIdx <= 0 {
+			continue
+		}
+		domain := strings.TrimSpace(line[:colonIdx])
+		port := strings.TrimSpace(line[colonIdx+1:])
+		if domain == "" || port == "" {
+			continue
+		}
+		fmt.Fprintf(&buf, "%s {\n\treverse_proxy 127.0.0.1:%s {\n\t\tflush_interval -1\n\t}\n}\n\n", domain, port)
 	}
 
 	buf.WriteString("# 由 Pulse 面板自动管理，请勿手动编辑\n")

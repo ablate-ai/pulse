@@ -2592,7 +2592,7 @@ func (h *Handler) caddyConfigForm(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) caddySaveConfig(w http.ResponseWriter, r *http.Request) {
 	nodeID := r.PathValue("nodeID")
 	acmeEmail := strings.TrimSpace(r.FormValue("acme_email"))
-	// 多域名：将换行/逗号分隔的输入标准化为逗号分隔存储
+	// 面板域名：将换行/逗号分隔的输入标准化为逗号分隔存储
 	var domainList []string
 	for _, d := range strings.FieldsFunc(r.FormValue("panel_domain"), func(r rune) bool { return r == ',' || r == '\n' }) {
 		if d = strings.TrimSpace(d); d != "" {
@@ -2600,7 +2600,9 @@ func (h *Handler) caddySaveConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	panelDomain := strings.Join(domainList, ",")
-	if err := h.nodeStore.UpdateCaddyConfig(nodeID, acmeEmail, panelDomain, true); err != nil {
+	// 额外反代：规范化换行，去除首尾空白行
+	extraProxies := normalizeExtraProxies(r.FormValue("extra_proxies"))
+	if err := h.nodeStore.UpdateCaddyConfig(nodeID, acmeEmail, panelDomain, extraProxies, true); err != nil {
 		htmxError(w, http.StatusInternalServerError, "保存配置失败: "+err.Error())
 		return
 	}
@@ -2612,9 +2614,10 @@ func (h *Handler) caddySaveConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := client.UpdateCaddyConfig(r.Context(), nodes.CaddyConfig{
-		ACMEEmail:   acmeEmail,
-		PanelDomain: panelDomain,
-		PanelPort:   h.panelPort(),
+		ACMEEmail:    acmeEmail,
+		PanelDomain:  panelDomain,
+		PanelPort:    h.panelPort(),
+		ExtraProxies: extraProxies,
 	}); err != nil {
 		htmxError(w, http.StatusInternalServerError, "推送配置失败: "+err.Error())
 		return
@@ -2649,6 +2652,17 @@ func (h *Handler) caddySaveConfig(w http.ResponseWriter, r *http.Request) {
 
 	setHXTriggerToast(w, "Caddy 配置已保存")
 	h.caddyListPartial(w, r)
+}
+
+// normalizeExtraProxies 规范化额外反代输入：去除空行和首尾空白，返回换行分隔的字符串。
+func normalizeExtraProxies(raw string) string {
+	var lines []string
+	for _, line := range strings.Split(raw, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			lines = append(lines, line)
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func panelRandomToken(size int) string {

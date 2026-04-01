@@ -296,9 +296,10 @@ func (c *Client) SyncCaddyRoutes(ctx context.Context, routes []TrojanRoute) erro
 }
 
 type CaddyConfig struct {
-	ACMEEmail   string `json:"acme_email"`
-	PanelDomain string `json:"panel_domain"`
-	PanelPort   int    `json:"panel_port"`
+	ACMEEmail    string `json:"acme_email"`
+	PanelDomain  string `json:"panel_domain"`
+	PanelPort    int    `json:"panel_port"`
+	ExtraProxies string `json:"extra_proxies"` // 每行一条 "domain:port"
 }
 
 func (c *Client) UpdateCaddyConfig(ctx context.Context, cfg CaddyConfig) error {
