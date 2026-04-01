@@ -285,6 +285,46 @@ func (s *UserStore) ListSubAccessLogs(userID string, limit int) ([]users.SubAcce
 	return out, rows.Err()
 }
 
+// ─── 用户节点流量统计 ──────────────────────────────────────────────────────────
+
+func (s *UserStore) AddUserNodeTraffic(userID, nodeID, date string, upload, download int64) error {
+	_, err := s.db.Exec(`
+		INSERT INTO user_node_daily_usage (user_id, node_id, date, upload_bytes, download_bytes)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(user_id, node_id, date) DO UPDATE SET
+			upload_bytes   = upload_bytes   + excluded.upload_bytes,
+			download_bytes = download_bytes + excluded.download_bytes
+	`, userID, nodeID, date, upload, download)
+	if err != nil {
+		return fmt.Errorf("add user node traffic: %w", err)
+	}
+	return nil
+}
+
+func (s *UserStore) ListUserNodeUsage(userID string) ([]users.UserNodeUsage, error) {
+	rows, err := s.db.Query(`
+		SELECT node_id, SUM(upload_bytes), SUM(download_bytes)
+		FROM user_node_daily_usage
+		WHERE user_id = ?
+		GROUP BY node_id
+		ORDER BY SUM(upload_bytes) + SUM(download_bytes) DESC
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list user node usage: %w", err)
+	}
+	defer rows.Close()
+
+	var out []users.UserNodeUsage
+	for rows.Next() {
+		var u users.UserNodeUsage
+		if err := rows.Scan(&u.NodeID, &u.UploadBytes, &u.DownloadBytes); err != nil {
+			return nil, fmt.Errorf("scan user node usage: %w", err)
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
 // ─── 扫描辅助 ─────────────────────────────────────────────────────────────────
 
 type scanner interface {

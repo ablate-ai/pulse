@@ -175,6 +175,10 @@
               hx-get="/panel/users/{{.ID}}/sub-logs"
               hx-target="#modal-body"
               hx-on::after-request="document.getElementById('app-modal').showModal()">日志</button>
+      <button class="text-xs text-gray-400 hover:text-violet-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+              hx-get="/panel/users/{{.ID}}/node-usage"
+              hx-target="#modal-body"
+              hx-on::after-request="document.getElementById('app-modal').showModal()">节点</button>
       <a href="/user/{{.SubToken}}" target="_blank"
          class="text-xs text-gray-400 hover:text-sky-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors">主页</a>
       <button class="text-xs text-gray-400 hover:text-sky-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
@@ -1700,6 +1704,41 @@
   {{end}}
 </div>
 {{end}}
+{{end}}
+
+{{define "partial-node-usage-modal"}}
+<div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+  <div>
+    <h3 class="text-sm font-semibold text-gray-100">节点用量分布</h3>
+    <p class="text-xs text-gray-500 mt-0.5">{{.Data.Username}} · 累计 {{formatBytes .Data.Total}}</p>
+  </div>
+  <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+  </button>
+</div>
+<div class="px-5 py-4">
+  {{if .Data.Rows}}
+  <div class="space-y-3">
+    {{range .Data.Rows}}
+    <div>
+      <div class="flex items-center justify-between text-xs mb-1">
+        <span class="text-gray-300 font-medium truncate max-w-[180px]">{{.NodeName}}</span>
+        <div class="flex items-center gap-3 text-gray-500 shrink-0">
+          <span>↑ {{formatBytes .UploadBytes}}</span>
+          <span>↓ {{formatBytes .DownloadBytes}}</span>
+          <span class="text-gray-400 font-medium w-10 text-right">{{.Pct}}%</span>
+        </div>
+      </div>
+      <div class="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+        <div class="h-full bg-violet-500 rounded-full" style="width: {{.Pct}}%"></div>
+      </div>
+    </div>
+    {{end}}
+  </div>
+  {{else}}
+  <p class="text-sm text-gray-500 text-center py-8">暂无节点流量数据<br><span class="text-xs text-gray-600 mt-1 block">数据在下次流量同步后开始累积</span></p>
+  {{end}}
+</div>
 {{end}}
 
 {{define "partial-sub-logs-modal"}}

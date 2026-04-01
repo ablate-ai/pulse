@@ -176,6 +176,14 @@ func (s *MemoryStore) ListSubAccessLogs(userID string, limit int) ([]SubAccessLo
 	return nil, nil
 }
 
+func (s *MemoryStore) AddUserNodeTraffic(userID, nodeID, date string, upload, download int64) error {
+	return nil
+}
+
+func (s *MemoryStore) ListUserNodeUsage(userID string) ([]UserNodeUsage, error) {
+	return nil, nil
+}
+
 // ─── 辅助函数 ─────────────────────────────────────────────────────────────────
 
 func usersMapToSlice(items map[string]User) []User {

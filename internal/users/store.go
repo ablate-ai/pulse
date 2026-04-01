@@ -91,6 +91,17 @@ type Store interface {
 	// 订阅访问日志
 	LogSubAccess(userID, ip, userAgent string) error
 	ListSubAccessLogs(userID string, limit int) ([]SubAccessLog, error)
+
+	// 用户节点流量统计
+	AddUserNodeTraffic(userID, nodeID, date string, upload, download int64) error
+	ListUserNodeUsage(userID string) ([]UserNodeUsage, error)
+}
+
+// UserNodeUsage 某用户在某节点的累计流量（所有日期汇总）。
+type UserNodeUsage struct {
+	NodeID        string
+	UploadBytes   int64
+	DownloadBytes int64
 }
 
 // EffectiveStatusAt 使用给定时间计算用户的实际运行时状态（不写库，仅计算）。

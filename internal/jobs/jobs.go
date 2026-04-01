@@ -181,14 +181,27 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 		}
 
 		// 累积节点维度流量（使用从全部上报用户汇总的真实值）
+		date := now.Format("2006-01-02")
 		if nodeUploadDelta > 0 || nodeDownloadDelta > 0 {
 			if err := nodeStore.AddTraffic(node.ID, nodeUploadDelta, nodeDownloadDelta); err != nil {
 				result.Errors = append(result.Errors, node.ID+": add traffic: "+err.Error())
 			}
-			// 写入日统计桶（用于历史趋势图）
-			date := now.Format("2006-01-02")
+			// 写入节点日统计桶（用于历史趋势图）
 			if err := nodeStore.AddNodeDailyUsage(node.ID, date, nodeUploadDelta, nodeDownloadDelta); err != nil {
 				result.Errors = append(result.Errors, node.ID+": daily usage: "+err.Error())
+			}
+		}
+
+		// 写入用户-节点日流量（用于节点用量分析）
+		for userID, user := range userMap {
+			stats, ok := usageByUser[user.Username]
+			if !ok || (stats.UploadTotal == 0 && stats.DownloadTotal == 0) {
+				continue
+			}
+			upload := applyRate(stats.UploadTotal, trafficRate)
+			download := applyRate(stats.DownloadTotal, trafficRate)
+			if err := store.AddUserNodeTraffic(userID, node.ID, date, upload, download); err != nil {
+				result.Errors = append(result.Errors, node.ID+": user node traffic: "+err.Error())
 			}
 		}
 

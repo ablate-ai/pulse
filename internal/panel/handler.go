@@ -295,6 +295,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /panel/tools/reality-keypair", h.requireAuth(h.realityKeypair))
 
 	mux.HandleFunc("GET /panel/users/{id}/sub-logs", h.requireAuth(h.subLogsModal))
+	mux.HandleFunc("GET /panel/users/{id}/node-usage", h.requireAuth(h.nodeUsageModal))
 	mux.HandleFunc("GET /panel/inbounds/{id}/hosts", h.requireAuth(h.hostsModal))
 	mux.HandleFunc("POST /panel/inbounds/{id}/hosts", h.requireAuth(h.createHost))
 	mux.HandleFunc("GET /panel/hosts/{id}/edit", h.requireAuth(h.hostEditForm))
@@ -982,6 +983,68 @@ func (h *Handler) overlayLiveConns(us []users.User) []users.User {
 		}
 	}
 	return us
+}
+
+// userNodeUsageRow 用于模板展示的用户节点用量行。
+type userNodeUsageRow struct {
+	NodeName      string
+	UploadBytes   int64
+	DownloadBytes int64
+	TotalBytes    int64
+	Pct           int // 占该用户总用量的百分比
+}
+
+// nodeUsageModal 返回用户各节点流量分布的 modal 内容。
+func (h *Handler) nodeUsageModal(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	user, err := h.userStore.GetUser(id)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	raw, err := h.userStore.ListUserNodeUsage(id)
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to get node usage: "+err.Error())
+		return
+	}
+
+	// 构建 nodeID → name 映射
+	nodeList, _ := h.nodeStore.List()
+	nodeNames := make(map[string]string, len(nodeList))
+	for _, n := range nodeList {
+		nodeNames[n.ID] = n.Name
+	}
+
+	var total int64
+	for _, u := range raw {
+		total += u.UploadBytes + u.DownloadBytes
+	}
+
+	rows := make([]userNodeUsageRow, 0, len(raw))
+	for _, u := range raw {
+		t := u.UploadBytes + u.DownloadBytes
+		pct := 0
+		if total > 0 {
+			pct = int(float64(t) / float64(total) * 100)
+		}
+		name := nodeNames[u.NodeID]
+		if name == "" {
+			name = u.NodeID
+		}
+		rows = append(rows, userNodeUsageRow{
+			NodeName:      name,
+			UploadBytes:   u.UploadBytes,
+			DownloadBytes: u.DownloadBytes,
+			TotalBytes:    t,
+			Pct:           pct,
+		})
+	}
+
+	h.renderPartial(w, "partial-node-usage-modal", struct {
+		Username string
+		Rows     []userNodeUsageRow
+		Total    int64
+	}{Username: user.Username, Rows: rows, Total: total})
 }
 
 // subLogsModal 返回用户订阅访问日志的 modal 内容。

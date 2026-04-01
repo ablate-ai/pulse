@@ -161,6 +161,15 @@ func (db *DB) init() error {
 			accessed_at TEXT NOT NULL
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_sub_access_logs_user_id ON sub_access_logs(user_id);`,
+		// user_node_daily_usage：用户在各节点的按天流量，用于节点用量分析
+		`CREATE TABLE IF NOT EXISTS user_node_daily_usage (
+			user_id        TEXT NOT NULL,
+			node_id        TEXT NOT NULL,
+			date           TEXT NOT NULL,
+			upload_bytes   INTEGER NOT NULL DEFAULT 0,
+			download_bytes INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (user_id, node_id, date)
+		);`,
 	}
 
 	for _, stmt := range stmts {
