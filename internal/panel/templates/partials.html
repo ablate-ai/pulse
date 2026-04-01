@@ -1383,69 +1383,75 @@
     <span class="text-xs font-medium text-gray-400 uppercase tracking-wider">节点</span>
     <span class="text-xs text-gray-600">近7天 / 累计</span>
   </div>
+  <!-- 列头 -->
+  <div class="px-5 py-1.5 grid items-center gap-x-4 text-[10px] text-gray-600 uppercase tracking-wider border-b border-gray-800/50" style="grid-template-columns: 1fr 88px 172px 152px 56px">
+    <span>名称</span>
+    <span class="text-right">状态</span>
+    <span>连接 / 速率</span>
+    <span>近7天 / 累计</span>
+    <span class="text-right">同步</span>
+  </div>
   <div class="divide-y divide-gray-800">
     {{range .Data}}
-    <div class="px-5 py-3 flex items-center gap-4 flex-wrap">
-      <!-- 状态点 + 名称 -->
-      <div class="flex items-center gap-2 min-w-0 flex-1">
+    <div class="px-5 py-2.5 grid items-center gap-x-4" style="grid-template-columns: 1fr 88px 172px 152px 56px">
+      <!-- 名称 -->
+      <div class="flex items-center gap-2 min-w-0">
         {{if eq .Status "online"}}
-        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0"></span>
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0"></span>
         {{else if eq .Status "idle"}}
-        <span class="w-2 h-2 rounded-full bg-yellow-400 flex-shrink-0"></span>
+        <span class="w-1.5 h-1.5 rounded-full bg-yellow-400 flex-shrink-0"></span>
         {{else}}
-        <span class="w-2 h-2 rounded-full bg-red-500/70 flex-shrink-0"></span>
+        <span class="w-1.5 h-1.5 rounded-full bg-red-500/70 flex-shrink-0"></span>
         {{end}}
-        <span class="text-sm text-gray-200 truncate font-medium">{{.Node.Name}}</span>
+        <span class="text-sm text-gray-200 truncate">{{.Node.Name}}</span>
         {{if ne .Node.TrafficRate 1.0}}
-        <span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 flex-shrink-0">×{{printf "%.2g" .Node.TrafficRate}}</span>
+        <span class="text-[10px] px-1 py-0.5 rounded bg-amber-500/15 text-amber-400 flex-shrink-0">×{{printf "%.2g" .Node.TrafficRate}}</span>
         {{end}}
       </div>
-      <!-- ping + 状态徽章 -->
-      <div class="flex items-center gap-2 flex-shrink-0">
+      <!-- 状态 + ping -->
+      <div class="flex items-center justify-end gap-1.5">
         {{if ge .PingMs 0}}
-        <span class="text-xs font-mono {{if lt .PingMs 100}}text-emerald-500{{else if lt .PingMs 300}}text-yellow-500{{else}}text-red-500{{end}}">{{.PingMs}}ms</span>
+        <span class="text-[10px] font-mono {{if lt .PingMs 100}}text-emerald-500{{else if lt .PingMs 300}}text-yellow-500{{else}}text-red-500{{end}}">{{.PingMs}}ms</span>
         {{end}}
         {{if eq .Status "online"}}
-        <span class="text-xs px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400">Online</span>
+        <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400">Online</span>
         {{else if eq .Status "idle"}}
-        <span class="text-xs px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-400">Idle</span>
+        <span class="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-400">Idle</span>
         {{else}}
-        <span class="text-xs px-1.5 py-0.5 rounded bg-red-500/15 text-red-400">Offline</span>
+        <span class="text-[10px] px-1.5 py-0.5 rounded bg-red-500/15 text-red-400">Offline</span>
         {{end}}
       </div>
-      <!-- 实时指标（仅 online） -->
-      {{if eq .Status "online"}}
-      <div class="flex items-center gap-2.5 text-xs flex-shrink-0">
-        <span class="{{if gt .OnlineUsers 0}}text-teal-400{{else}}text-gray-600{{end}}">{{.OnlineUsers}} 用户</span>
+      <!-- 连接 / 速率 -->
+      <div class="flex items-center gap-2 text-xs">
+        {{if eq .Status "online"}}
+        <span class="{{if gt .OnlineUsers 0}}text-teal-400{{else}}text-gray-600{{end}}">{{.OnlineUsers}}用户</span>
         <span class="text-gray-700">·</span>
-        <span class="{{if gt .Connections 0}}text-sky-400{{else}}text-gray-600{{end}}">{{.Connections}} 连接</span>
+        <span class="{{if gt .Connections 0}}text-sky-400{{else}}text-gray-600{{end}}">{{.Connections}}连接</span>
         {{if or (gt .UploadSpeed 0) (gt .DownloadSpeed 0)}}
         <span class="text-gray-700">·</span>
         <span class="text-sky-400/80">↑{{formatSpeed .UploadSpeed}}</span>
         <span class="text-violet-400/80">↓{{formatSpeed .DownloadSpeed}}</span>
         {{end}}
-      </div>
-      {{end}}
-      <!-- 流量：近7天 | 累计 -->
-      <div class="flex items-center gap-2 text-xs flex-shrink-0">
-        {{if or (gt .PeriodUploadBytes 0) (gt .PeriodDownloadBytes 0)}}
-        <span class="text-sky-400/70">↑ {{formatBytes .PeriodUploadBytes}}</span>
-        <span class="text-violet-400/70">↓ {{formatBytes .PeriodDownloadBytes}}</span>
-        <span class="text-gray-700">|</span>
+        {{else}}
+        <span class="text-gray-700">—</span>
         {{end}}
-        <span class="text-gray-500">{{formatBytes (addInt64 .Node.UploadBytes .Node.DownloadBytes)}}</span>
+      </div>
+      <!-- 近7天 / 累计 -->
+      <div class="flex items-center gap-1.5 text-xs">
+        {{if or (gt .PeriodUploadBytes 0) (gt .PeriodDownloadBytes 0)}}
+        <span class="text-gray-400">{{formatBytes (addInt64 .PeriodUploadBytes .PeriodDownloadBytes)}}</span>
+        <span class="text-gray-700">·</span>
+        {{end}}
+        <span class="text-gray-600">{{formatBytes (addInt64 .Node.UploadBytes .Node.DownloadBytes)}}</span>
       </div>
       <!-- 同步时间 -->
-      <div class="text-[10px] flex-shrink-0">
+      <div class="text-[10px] text-right">
         {{if syncStale .LastSyncAt}}
-        <span class="text-red-400 flex items-center gap-1">
-          同步 {{formatSyncAge .LastSyncAt}} 前
-          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01"/></svg>
-        </span>
+        <span class="text-red-400">{{formatSyncAge .LastSyncAt}} 前 ⚠</span>
         {{else if not .LastSyncAt.IsZero}}
         <span class="text-gray-700">{{formatSyncAge .LastSyncAt}} 前</span>
         {{else}}
-        <span class="text-gray-700">尚未同步</span>
+        <span class="text-gray-700">—</span>
         {{end}}
       </div>
     </div>
