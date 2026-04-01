@@ -271,7 +271,6 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /panel/users/{id}", h.requireAuth(h.updateUser))
 	mux.HandleFunc("DELETE /panel/users/{id}", h.requireAuth(h.deleteUser))
 	mux.HandleFunc("POST /panel/users/{id}/reset-traffic", h.requireAuth(h.resetUserTraffic))
-	mux.HandleFunc("POST /panel/users/batch", h.requireAuth(h.batchUsers))
 	mux.HandleFunc("POST /panel/settings/announcement", h.requireAuth(h.saveAnnouncement))
 	mux.HandleFunc("POST /panel/settings/alert", h.requireAuth(h.saveAlertSettings))
 	mux.HandleFunc("POST /panel/settings/alert/test", h.requireAuth(h.testAlertSettings))
@@ -815,56 +814,6 @@ func (h *Handler) resetUserTraffic(w http.ResponseWriter, r *http.Request) {
 	h.renderUsersListFromStore(w)
 }
 
-// batchUsers 批量操作用户（enable/disable/delete）。
-func (h *Handler) batchUsers(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		htmxError(w, http.StatusBadRequest, "failed to parse form")
-		return
-	}
-	action := r.FormValue("action")
-	ids := r.Form["ids"]
-	if len(ids) == 0 {
-		htmxError(w, http.StatusBadRequest, "no users selected")
-		return
-	}
-	var errs []string
-	for _, id := range ids {
-		switch action {
-		case "delete":
-			if err := h.userStore.DeleteUser(id); err != nil {
-				errs = append(errs, id+": "+err.Error())
-			}
-		case "enable":
-			u, err := h.userStore.GetUser(id)
-			if err != nil {
-				errs = append(errs, id+": "+err.Error())
-				continue
-			}
-			u.Status = users.StatusActive
-			if _, err := h.userStore.UpsertUser(u); err != nil {
-				errs = append(errs, id+": "+err.Error())
-			}
-		case "disable":
-			u, err := h.userStore.GetUser(id)
-			if err != nil {
-				errs = append(errs, id+": "+err.Error())
-				continue
-			}
-			u.Status = users.StatusDisabled
-			if _, err := h.userStore.UpsertUser(u); err != nil {
-				errs = append(errs, id+": "+err.Error())
-			}
-		default:
-			htmxError(w, http.StatusBadRequest, "unknown action: "+action)
-			return
-		}
-	}
-	if len(errs) > 0 {
-		htmxError(w, http.StatusInternalServerError, "部分操作失败: "+strings.Join(errs, "; "))
-		return
-	}
-	h.renderUsersListFromStore(w)
-}
 
 type settingsData struct {
 	ClientCert           string // 面板客户端证书 PEM，用于 node 安装时粘贴

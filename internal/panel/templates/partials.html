@@ -135,9 +135,6 @@
 {{define "partial-user-rows"}}
 {{range .Data}}
 <tr class="border-b border-gray-800 hover:bg-gray-800/40 transition-colors">
-  <td class="px-4 py-3 w-8">
-    <input type="checkbox" name="ids" value="{{.ID}}" class="user-cb rounded border-gray-600 bg-gray-800 text-indigo-500 focus:ring-indigo-500" onchange="updateBatchBar()">
-  </td>
   <td class="px-4 py-3">
     <div class="font-medium text-gray-100">{{.Username}}</div>
     {{if .Note}}<div class="text-xs text-gray-500 mt-0.5 truncate max-w-[14rem]" title="{{.Note}}">{{.Note}}</div>{{end}}
