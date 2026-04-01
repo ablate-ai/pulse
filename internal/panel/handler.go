@@ -23,6 +23,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"pulse/internal/alert"
 	"pulse/internal/auth"
 	"pulse/internal/buildinfo"
 	"pulse/internal/idgen"
@@ -272,6 +273,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /panel/users/{id}/reset-traffic", h.requireAuth(h.resetUserTraffic))
 	mux.HandleFunc("POST /panel/users/batch", h.requireAuth(h.batchUsers))
 	mux.HandleFunc("POST /panel/settings/announcement", h.requireAuth(h.saveAnnouncement))
+	mux.HandleFunc("POST /panel/settings/alert", h.requireAuth(h.saveAlertSettings))
+	mux.HandleFunc("POST /panel/settings/alert/test", h.requireAuth(h.testAlertSettings))
 
 	mux.HandleFunc("GET /inbounds", h.requireAuth(h.inboundsPage))
 	mux.HandleFunc("GET /outbounds", h.requireAuth(h.outboundsPage))
@@ -866,6 +869,7 @@ type settingsData struct {
 	AnnouncementTitle   string
 	AnnouncementContent string
 	AnnouncementEnabled bool
+	BarkURL             string // Bark 推送 URL
 }
 
 // settingsPage 渲染设置页面。
@@ -882,6 +886,7 @@ func (h *Handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 		d.AnnouncementContent, _ = h.settingsStore.GetSetting("announcement_content")
 		enabled, _ := h.settingsStore.GetSetting("announcement_enabled")
 		d.AnnouncementEnabled = enabled == "true"
+		d.BarkURL, _ = h.settingsStore.GetSetting("alert_bark_url")
 	}
 	h.renderPage(w, "settings", pageData{
 		Page:     "settings",
@@ -916,6 +921,44 @@ func (h *Handler) saveAnnouncement(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("HX-Reswap", "none")
 	w.Header().Set("HX-Trigger", `{"showToast":{"msg":"公告已保存","type":"success"}}`)
+	w.WriteHeader(http.StatusOK)
+}
+
+// saveAlertSettings 保存告警配置。
+func (h *Handler) saveAlertSettings(w http.ResponseWriter, r *http.Request) {
+	if h.settingsStore == nil {
+		htmxError(w, http.StatusInternalServerError, "settings store unavailable")
+		return
+	}
+	barkURL := strings.TrimSpace(r.FormValue("bark_url"))
+	if err := h.settingsStore.SetSetting("alert_bark_url", barkURL); err != nil {
+		htmxError(w, http.StatusInternalServerError, "保存失败")
+		return
+	}
+	w.Header().Set("HX-Reswap", "none")
+	w.Header().Set("HX-Trigger", `{"pulseToast":"告警设置已保存"}`)
+	w.WriteHeader(http.StatusOK)
+}
+
+// testAlertSettings 发送一条测试推送，验证 Bark URL 是否正确。
+func (h *Handler) testAlertSettings(w http.ResponseWriter, r *http.Request) {
+	if h.settingsStore == nil {
+		htmxError(w, http.StatusInternalServerError, "settings store unavailable")
+		return
+	}
+	barkURL, ok := h.settingsStore.GetSetting("alert_bark_url")
+	if !ok || strings.TrimSpace(barkURL) == "" {
+		htmxError(w, http.StatusBadRequest, "请先保存 Bark URL")
+		return
+	}
+	// 每次测试创建新实例，跳过去重缓存
+	sender := alert.NewBarkSender(h.settingsStore)
+	if err := sender.Send(r.Context(), "Pulse", "测试推送，若收到则配置正常"); err != nil {
+		htmxError(w, http.StatusBadRequest, "推送失败: "+err.Error())
+		return
+	}
+	w.Header().Set("HX-Reswap", "none")
+	w.Header().Set("HX-Trigger", `{"pulseToast":"测试推送已发送"}`)
 	w.WriteHeader(http.StatusOK)
 }
 

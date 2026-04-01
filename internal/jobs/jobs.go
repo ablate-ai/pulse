@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -50,12 +51,14 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 		usage, err := client.Usage(ctx, true)
 		if err != nil {
 			result.Errors = append(result.Errors, node.ID+": "+err.Error())
+			sendAlert(ctx, applyOpts.Alerter, "节点离线", fmt.Sprintf("无法连接节点 %s", node.Name))
 			continue
 		}
 		if !usage.Available {
 			result.Errors = append(result.Errors, node.ID+": V2Ray Stats not available")
 			// sing-box 进程未运行（非 idle 配置）时，主动下发配置恢复
 			if !usage.Running {
+				sendAlert(ctx, applyOpts.Alerter, "节点异常", fmt.Sprintf("节点 %s sing-box 停止运行", node.Name))
 				nodeInbounds, err := ibStore.ListInboundsByNode(node.ID)
 				if err != nil {
 					result.Errors = append(result.Errors, node.ID+": recovery load inbounds: "+err.Error())
@@ -165,6 +168,13 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			// 仅在用户状态持久化成功后才触发节点重下发，避免基于未保存状态重载
 			if statusChanged {
 				reloadNeeded = true
+				// 状态变为 limited/expired 时发送一次性告警（状态已持久化，不会重复触发）
+				switch user.EffectiveStatusAt(now) {
+				case users.StatusLimited:
+					sendAlert(ctx, applyOpts.Alerter, "流量超限", fmt.Sprintf("用户 %s 已超出流量限额", user.Username))
+				case users.StatusExpired:
+					sendAlert(ctx, applyOpts.Alerter, "用户到期", fmt.Sprintf("用户 %s 已到期", user.Username))
+				}
 			}
 			result.UsersUpdated++
 			userMap[user.ID] = user
@@ -428,8 +438,14 @@ func ApplyNode(ctx context.Context, nodeID string, nodeStore nodes.Store, userSt
 
 // ─── ApplyNodeUsers ───────────────────────────────────────────────────────────
 
+// Alerter 告警发送接口，nil 表示不发送。
+type Alerter interface {
+	Send(ctx context.Context, title, body string) error
+}
+
 // ApplyOptions 控制 ApplyNodeUsers 的行为。
 type ApplyOptions struct {
+	Alerter Alerter // nil 时不发送告警
 }
 
 // ApplyNodeUsers 根据节点 inbound 配置和用户凭据生成配置并下发到节点。
@@ -527,6 +543,20 @@ func collectUserIDs(accesses []users.UserInbound) []string {
 		}
 	}
 	return out
+}
+
+// sendAlert 在后台 goroutine 中发送告警，不阻塞主流程。a 为 nil 时静默跳过。
+func sendAlert(ctx context.Context, a Alerter, title, body string) {
+	if a == nil {
+		return
+	}
+	go func() {
+		alertCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := a.Send(alertCtx, title, body); err != nil {
+			log.Printf("alert send error: %v", err)
+		}
+	}()
 }
 
 // applyRate 将 delta 乘以倍率并防止 int64 溢出。

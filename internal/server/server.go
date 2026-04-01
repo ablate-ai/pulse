@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"pulse/internal/alert"
 	"pulse/internal/auth"
 	"pulse/internal/buildinfo"
 	"pulse/internal/cert"
@@ -45,7 +46,9 @@ func Run() error {
 	}
 
 	// 启动调度器
-	applyOpts := jobs.ApplyOptions{}
+	applyOpts := jobs.ApplyOptions{
+		Alerter: alert.NewBarkSender(db.SettingsStore()),
+	}
 	nodeAPI := serverapi.NewWithUsers(store, userStore, inboundStore, outboundStore, clientOptions, applyOpts)
 	scheduler := jobs.NewScheduler(nil)
 	scheduler.Add(jobs.Job{
