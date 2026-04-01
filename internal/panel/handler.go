@@ -71,8 +71,9 @@ type nodeMetrics struct {
 
 // metricsSubscriber SSE 订阅者。
 type metricsSubscriber struct {
-	ch      chan string
-	nodeIDs map[string]struct{} // nil = 管理端（全部节点）
+	ch          chan string
+	nodeIDs     map[string]struct{} // nil = 管理端（全部节点）
+	monitorMode bool                // true = 使用更丰富的 partial-monitor-nodes 模板
 }
 
 // metricsHub SSE fan-out 广播中心。
@@ -81,8 +82,11 @@ type metricsHub struct {
 	subs map[*metricsSubscriber]struct{}
 }
 
-func (hub *metricsHub) subscribe(nodeIDs map[string]struct{}) *metricsSubscriber {
+func (hub *metricsHub) subscribe(nodeIDs map[string]struct{}, monitorMode ...bool) *metricsSubscriber {
 	sub := &metricsSubscriber{ch: make(chan string, 4), nodeIDs: nodeIDs}
+	if len(monitorMode) > 0 {
+		sub.monitorMode = monitorMode[0]
+	}
 	hub.mu.Lock()
 	hub.subs[sub] = struct{}{}
 	hub.mu.Unlock()
@@ -111,9 +115,12 @@ func (hub *metricsHub) broadcast(h *Handler, allMetrics []nodeMetrics) {
 			}
 		}
 		var html string
-		if sub.nodeIDs == nil {
+		switch {
+		case sub.nodeIDs == nil && sub.monitorMode:
+			html = h.renderToString("partial-monitor-nodes", filtered)
+		case sub.nodeIDs == nil:
 			html = h.renderToString("partial-node-metrics", filtered)
-		} else {
+		default:
 			html = h.renderToString("partial-user-node-status", metricsToUserNodeInfos(filtered))
 		}
 		if html == "" {
@@ -248,6 +255,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	// 页面路由（需要认证）
 	mux.HandleFunc("/", h.requireAuth(h.redirectDashboard))
 	mux.HandleFunc("GET /dashboard", h.requireAuth(h.dashboardPage))
+	mux.HandleFunc("GET /monitor", h.requireAuth(h.monitorPage))
 	mux.HandleFunc("GET /users", h.requireAuth(h.usersPage))
 	mux.HandleFunc("GET /nodes", h.requireAuth(h.nodesPage))
 	mux.HandleFunc("GET /settings", h.requireAuth(h.settingsPage))
@@ -292,6 +300,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /panel/nodes/list", h.requireAuth(h.nodesListPartial))
 	mux.HandleFunc("GET /panel/node-metrics", h.requireAuth(h.nodeMetricsPartial))
 	mux.HandleFunc("GET /panel/node-metrics/stream", h.requireAuth(h.nodeMetricsStreamHandler))
+	mux.HandleFunc("GET /panel/monitor-nodes/stream", h.requireAuth(h.monitorNodesStreamHandler))
 	// 用户主页节点状态（以 sub_token 鉴权，无需 cookie）
 	mux.HandleFunc("GET /panel/user-node-status/{sub_token}", h.userNodeStatusPartial)
 	mux.HandleFunc("GET /panel/user-node-status/{sub_token}/stream", h.userNodeStatusStreamHandler)
@@ -511,6 +520,13 @@ func (h *Handler) redirectDashboard(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) dashboardPage(w http.ResponseWriter, r *http.Request) {
 	h.renderPage(w, "dashboard", pageData{
 		Page:     "dashboard",
+		Username: h.currentUsername(r),
+	})
+}
+
+func (h *Handler) monitorPage(w http.ResponseWriter, r *http.Request) {
+	h.renderPage(w, "monitor", pageData{
+		Page:     "monitor",
 		Username: h.currentUsername(r),
 	})
 }
@@ -1194,6 +1210,38 @@ func (h *Handler) nodeMetricsStreamHandler(w http.ResponseWriter, r *http.Reques
 	h.metricsCache.mu.RUnlock()
 	if cur != nil {
 		html := h.renderToString("partial-node-metrics", cur)
+		fmt.Fprintf(w, "event: update\ndata: %s\n\n", htmlToSSEData(html))
+		w.(http.Flusher).Flush()
+	}
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case html := <-sub.ch:
+			h.lastAccessAt.Store(time.Now().UnixNano())
+			fmt.Fprintf(w, "event: update\ndata: %s\n\n", htmlToSSEData(html))
+			w.(http.Flusher).Flush()
+		}
+	}
+}
+
+// monitorNodesStreamHandler SSE 端点：以丰富视图推送节点监控指标给 Monitor 页面。
+func (h *Handler) monitorNodesStreamHandler(w http.ResponseWriter, r *http.Request) {
+	h.lastAccessAt.Store(time.Now().UnixNano())
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	sub := h.hub.subscribe(nil, true) // nil = 全部节点，true = monitorMode
+	defer h.hub.unsubscribe(sub)
+
+	// 首次立即推送当前缓存
+	h.metricsCache.mu.RLock()
+	cur := h.metricsCache.data
+	h.metricsCache.mu.RUnlock()
+	if cur != nil {
+		html := h.renderToString("partial-monitor-nodes", cur)
 		fmt.Fprintf(w, "event: update\ndata: %s\n\n", htmlToSSEData(html))
 		w.(http.Flusher).Flush()
 	}
