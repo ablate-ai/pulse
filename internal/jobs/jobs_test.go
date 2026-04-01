@@ -423,6 +423,52 @@ func TestSyncUsage_DialError_SkipsNode(t *testing.T) {
 	}
 }
 
+func TestSyncUsage_SingboxNotRunning_TriggersRestart(t *testing.T) {
+	// 复现 bug：sing-box 停止后（Available=false, Running=false），
+	// SyncUsage 应主动触发 ApplyNodeUsers 恢复 sing-box，而不是跳过节点。
+	nodeStore := nodes.NewMemoryStore()
+	userStore := users.NewMemoryStore()
+	ibStore := inbounds.NewMemoryStore()
+	_, _ = nodeStore.Upsert(nodes.Node{ID: "n1", Name: "n1", BaseURL: "http://node.test"})
+	_, _ = userStore.UpsertUser(users.User{
+		ID: "u1", Username: "alice", Status: users.StatusActive,
+		TrafficLimit: 999999,
+	})
+	_, _ = userStore.UpsertUserInbound(users.UserInbound{
+		ID: "u1-ib0", UserID: "u1", InboundID: "ib-vless", NodeID: "n1",
+		UUID: "11111111-1111-1111-1111-111111111111", Secret: "s1",
+	})
+	_, _ = ibStore.UpsertInbound(inbounds.Inbound{
+		ID:       "ib-vless",
+		NodeID:   "n1",
+		Protocol: "vless",
+		Tag:      "pulse-vless-n1",
+		Port:     443,
+	})
+
+	var restarted bool
+	dial := testDial(t, func(path string, w http.ResponseWriter, r *http.Request) {
+		switch path {
+		case "/v1/node/runtime/usage":
+			// sing-box 未运行：Available=false, Running=false
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"available": false, "running": false,
+			})
+		case "/v1/node/runtime/restart":
+			restarted = true
+			_ = json.NewEncoder(w).Encode(map[string]any{"running": true})
+		}
+	})
+
+	_, err := SyncUsage(context.Background(), userStore, nodeStore, ibStore, dial, ApplyOptions{}, nil)
+	if err != nil {
+		t.Fatalf("SyncUsage() error = %v", err)
+	}
+	if !restarted {
+		t.Error("sing-box 未运行时，SyncUsage 应触发 restart 恢复，但未触发")
+	}
+}
+
 func TestSyncUsage_UsageEndpointError_SkipsNode(t *testing.T) {
 	// usage 端点返回错误时应跳过该节点
 	nodeStore := nodes.NewMemoryStore()

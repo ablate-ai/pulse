@@ -54,6 +54,32 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 		}
 		if !usage.Available {
 			result.Errors = append(result.Errors, node.ID+": V2Ray Stats not available")
+			// sing-box 进程未运行（非 idle 配置）时，主动下发配置恢复
+			if !usage.Running {
+				nodeInbounds, err := ibStore.ListInboundsByNode(node.ID)
+				if err != nil {
+					result.Errors = append(result.Errors, node.ID+": recovery load inbounds: "+err.Error())
+					continue
+				}
+				recoveryAccesses, err := store.ListUserInboundsByNode(node.ID)
+				if err != nil {
+					result.Errors = append(result.Errors, node.ID+": recovery load users: "+err.Error())
+					continue
+				}
+				recoveryMap, err := store.GetUsersByIDs(collectUserIDs(recoveryAccesses))
+				if err != nil {
+					result.Errors = append(result.Errors, node.ID+": recovery load usermap: "+err.Error())
+					continue
+				}
+				status, _, err := ApplyNodeUsers(ctx, client, nodeInbounds, recoveryAccesses, recoveryMap, ibStore, outboundStore, applyOpts, node)
+				if err != nil {
+					result.Errors = append(result.Errors, node.ID+": recovery restart: "+err.Error())
+				} else if status.Running {
+					result.NodesReloaded++
+				} else {
+					result.NodesStopped++
+				}
+			}
 			continue
 		}
 		result.NodesSynced++
