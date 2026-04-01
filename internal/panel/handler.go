@@ -68,13 +68,13 @@ type nodeMetrics struct {
 	DailyTraffic  []usage.DailyTrafficPoint // 近 7 天趋势
 	Protocols     []string // 该节点支持的协议列表
 	UserConns     []nodes.UserUsage // per-user 连接数据，仅用于内部缓存聚合，不送入 SSE 模板
+	LastSyncAt    time.Time // 最后一次成功与节点通信的时间
 }
 
 // metricsSubscriber SSE 订阅者。
 type metricsSubscriber struct {
-	ch          chan string
-	nodeIDs     map[string]struct{} // nil = 管理端（全部节点）
-	monitorMode bool                // true = 使用更丰富的 partial-monitor-nodes 模板
+	ch      chan string
+	nodeIDs map[string]struct{} // nil = 管理端（全部节点）
 }
 
 // metricsHub SSE fan-out 广播中心。
@@ -83,11 +83,8 @@ type metricsHub struct {
 	subs map[*metricsSubscriber]struct{}
 }
 
-func (hub *metricsHub) subscribe(nodeIDs map[string]struct{}, monitorMode ...bool) *metricsSubscriber {
+func (hub *metricsHub) subscribe(nodeIDs map[string]struct{}) *metricsSubscriber {
 	sub := &metricsSubscriber{ch: make(chan string, 4), nodeIDs: nodeIDs}
-	if len(monitorMode) > 0 {
-		sub.monitorMode = monitorMode[0]
-	}
 	hub.mu.Lock()
 	hub.subs[sub] = struct{}{}
 	hub.mu.Unlock()
@@ -116,12 +113,9 @@ func (hub *metricsHub) broadcast(h *Handler, allMetrics []nodeMetrics) {
 			}
 		}
 		var html string
-		switch {
-		case sub.nodeIDs == nil && sub.monitorMode:
-			html = h.renderToString("partial-monitor-nodes", filtered)
-		case sub.nodeIDs == nil:
+		if sub.nodeIDs == nil {
 			html = h.renderToString("partial-node-metrics", filtered)
-		default:
+		} else {
 			html = h.renderToString("partial-user-node-status", metricsToUserNodeInfos(filtered))
 		}
 		if html == "" {
@@ -256,7 +250,6 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	// 页面路由（需要认证）
 	mux.HandleFunc("/", h.requireAuth(h.redirectDashboard))
 	mux.HandleFunc("GET /dashboard", h.requireAuth(h.dashboardPage))
-	mux.HandleFunc("GET /monitor", h.requireAuth(h.monitorPage))
 	mux.HandleFunc("GET /users", h.requireAuth(h.usersPage))
 	mux.HandleFunc("GET /nodes", h.requireAuth(h.nodesPage))
 	mux.HandleFunc("GET /settings", h.requireAuth(h.settingsPage))
@@ -304,7 +297,6 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /panel/nodes/list", h.requireAuth(h.nodesListPartial))
 	mux.HandleFunc("GET /panel/node-metrics", h.requireAuth(h.nodeMetricsPartial))
 	mux.HandleFunc("GET /panel/node-metrics/stream", h.requireAuth(h.nodeMetricsStreamHandler))
-	mux.HandleFunc("GET /panel/monitor-nodes/stream", h.requireAuth(h.monitorNodesStreamHandler))
 	// 用户主页节点状态（以 sub_token 鉴权，无需 cookie）
 	mux.HandleFunc("GET /panel/user-node-status/{sub_token}", h.userNodeStatusPartial)
 	mux.HandleFunc("GET /panel/user-node-status/{sub_token}/stream", h.userNodeStatusStreamHandler)
@@ -524,13 +516,6 @@ func (h *Handler) redirectDashboard(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) dashboardPage(w http.ResponseWriter, r *http.Request) {
 	h.renderPage(w, "dashboard", pageData{
 		Page:     "dashboard",
-		Username: h.currentUsername(r),
-	})
-}
-
-func (h *Handler) monitorPage(w http.ResponseWriter, r *http.Request) {
-	h.renderPage(w, "monitor", pageData{
-		Page:     "monitor",
 		Username: h.currentUsername(r),
 	})
 }
@@ -1073,6 +1058,7 @@ func (h *Handler) fetchNodeMetrics(ctx context.Context, node nodes.Node, dailyRa
 	m.PingMs = time.Since(t0).Milliseconds()
 	m.SingboxVer = rt.Version
 	m.NodeVer = rt.NodeVersion
+	m.LastSyncAt = time.Now()
 
 	// 获取 sing-box 运行状态及用量
 	uCtx, uCancel := context.WithTimeout(ctx, 3*time.Second)
@@ -1285,38 +1271,6 @@ func (h *Handler) nodeMetricsStreamHandler(w http.ResponseWriter, r *http.Reques
 	h.metricsCache.mu.RUnlock()
 	if cur != nil {
 		html := h.renderToString("partial-node-metrics", cur)
-		fmt.Fprintf(w, "event: update\ndata: %s\n\n", htmlToSSEData(html))
-		w.(http.Flusher).Flush()
-	}
-
-	for {
-		select {
-		case <-r.Context().Done():
-			return
-		case html := <-sub.ch:
-			h.lastAccessAt.Store(time.Now().UnixNano())
-			fmt.Fprintf(w, "event: update\ndata: %s\n\n", htmlToSSEData(html))
-			w.(http.Flusher).Flush()
-		}
-	}
-}
-
-// monitorNodesStreamHandler SSE 端点：以丰富视图推送节点监控指标给 Monitor 页面。
-func (h *Handler) monitorNodesStreamHandler(w http.ResponseWriter, r *http.Request) {
-	h.lastAccessAt.Store(time.Now().UnixNano())
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-
-	sub := h.hub.subscribe(nil, true) // nil = 全部节点，true = monitorMode
-	defer h.hub.unsubscribe(sub)
-
-	// 首次立即推送当前缓存
-	h.metricsCache.mu.RLock()
-	cur := h.metricsCache.data
-	h.metricsCache.mu.RUnlock()
-	if cur != nil {
-		html := h.renderToString("partial-monitor-nodes", cur)
 		fmt.Fprintf(w, "event: update\ndata: %s\n\n", htmlToSSEData(html))
 		w.(http.Flusher).Flush()
 	}
@@ -2442,6 +2396,21 @@ func templateFuncs() template.FuncMap {
 			default:
 				return s
 			}
+		},
+		// syncStale 判断最后同步时间是否超过 2 分钟（节点可能离线）。
+		"syncStale": func(t time.Time) bool {
+			return !t.IsZero() && time.Since(t) > 2*time.Minute
+		},
+		// formatSyncAge 格式化最后同步时间为相对描述。
+		"formatSyncAge": func(t time.Time) string {
+			if t.IsZero() {
+				return "从未"
+			}
+			d := time.Since(t)
+			if d < time.Minute {
+				return fmt.Sprintf("%ds 前", int(d.Seconds()))
+			}
+			return fmt.Sprintf("%dm 前", int(d.Minutes()))
 		},
 		// formatDateTime 格式化时间为 "2006-01-02 15:04:05"。
 		"formatDateTime": func(t time.Time) string {

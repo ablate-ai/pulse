@@ -1420,92 +1420,88 @@
 {{if not .Data}}
 <div class="text-center text-sm text-gray-500 py-6">暂无节点</div>
 {{else}}
-<div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-  <div class="px-5 py-2.5 border-b border-gray-800 flex items-center justify-between">
-    <span class="text-xs font-medium text-gray-400 uppercase tracking-wider">节点状态</span>
-    <span class="text-xs text-gray-600">每 30 秒刷新</span>
-  </div>
-  <div class="divide-y divide-gray-800/60">
-    {{range .Data}}
-    <div class="px-5 py-4">
-      <!-- 第一行：名称 + 徽章区 -->
-      <div class="flex items-center justify-between mb-3">
-        <div class="flex items-center gap-2 min-w-0">
-          <span class="font-medium text-gray-100 text-sm truncate">{{.Node.Name}}</span>
-          {{if ne .Node.TrafficRate 1.0}}
-          <span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 flex-shrink-0">×{{printf "%.2g" .Node.TrafficRate}}</span>
-          {{end}}
-        </div>
-        <div class="flex items-center gap-2 flex-shrink-0 ml-3">
-          {{if eq .Status "online"}}
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-500/15 text-emerald-400">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>Online
-          </span>
-          {{else if eq .Status "idle"}}
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-yellow-500/15 text-yellow-400">
-            <span class="w-1.5 h-1.5 rounded-full bg-yellow-400"></span>Idle
-          </span>
-          {{else}}
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-red-500/15 text-red-400">
-            <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span>Offline
-          </span>
-          {{end}}
-          {{if ge .PingMs 0}}
-          <span class="text-xs text-gray-500">{{.PingMs}} ms</span>
-          {{end}}
-        </div>
+<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+  {{range .Data}}
+  <div class="bg-gray-900 rounded-xl border {{if eq .Status "online"}}border-gray-800{{else if eq .Status "idle"}}border-yellow-900/40{{else}}border-red-900/30{{end}} overflow-hidden flex flex-col">
+    <!-- 卡片头：状态点 + 名称 + 徽章 -->
+    <div class="px-4 py-3 flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2 min-w-0">
+        {{if eq .Status "online"}}
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0"></span>
+        {{else if eq .Status "idle"}}
+        <span class="w-2 h-2 rounded-full bg-yellow-400 flex-shrink-0"></span>
+        {{else}}
+        <span class="w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></span>
+        {{end}}
+        <span class="font-medium text-gray-100 text-sm truncate">{{.Node.Name}}</span>
+        {{if ne .Node.TrafficRate 1.0}}
+        <span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 flex-shrink-0">×{{printf "%.2g" .Node.TrafficRate}}</span>
+        {{end}}
       </div>
-      <!-- 第二行：实时指标 -->
-      {{if eq .Status "online"}}
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
-        <div class="bg-gray-800/50 rounded-lg px-3 py-2">
-          <div class="text-xs text-gray-500 mb-0.5">在线用户</div>
-          <div class="text-sm font-semibold {{if gt .OnlineUsers 0}}text-teal-400{{else}}text-gray-500{{end}}">{{.OnlineUsers}}</div>
-        </div>
-        <div class="bg-gray-800/50 rounded-lg px-3 py-2">
-          <div class="text-xs text-gray-500 mb-0.5">在线设备</div>
-          <div class="text-sm font-semibold {{if gt .OnlineDevices 0}}text-violet-400{{else}}text-gray-500{{end}}">{{.OnlineDevices}}</div>
-        </div>
-        <div class="bg-gray-800/50 rounded-lg px-3 py-2">
-          <div class="text-xs text-gray-500 mb-0.5">连接数</div>
-          <div class="text-sm font-semibold {{if gt .Connections 0}}text-sky-400{{else}}text-gray-500{{end}}">{{.Connections}}</div>
-        </div>
-        <div class="bg-gray-800/50 rounded-lg px-3 py-2">
-          <div class="text-xs text-gray-500 mb-0.5">实时速率</div>
-          <div class="text-xs font-medium">
-            {{if or (gt .UploadSpeed 0) (gt .DownloadSpeed 0)}}
-            <span class="text-sky-400">↑{{formatSpeed .UploadSpeed}}</span>
-            <span class="text-violet-400 ml-1">↓{{formatSpeed .DownloadSpeed}}</span>
-            {{else}}
-            <span class="text-gray-600">—</span>
-            {{end}}
-          </div>
-        </div>
+      <div class="flex items-center gap-2 flex-shrink-0">
+        {{if ge .PingMs 0}}
+        <span class="text-xs font-mono {{if lt .PingMs 100}}text-emerald-500{{else if lt .PingMs 300}}text-yellow-500{{else}}text-red-500{{end}}">{{.PingMs}}ms</span>
+        {{end}}
+        {{if eq .Status "online"}}
+        <span class="text-xs px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400 font-medium">Online</span>
+        {{else if eq .Status "idle"}}
+        <span class="text-xs px-2 py-0.5 rounded-md bg-yellow-500/15 text-yellow-400 font-medium">Idle</span>
+        {{else}}
+        <span class="text-xs px-2 py-0.5 rounded-md bg-red-500/15 text-red-400 font-medium">Offline</span>
+        {{end}}
       </div>
-      {{end}}
-      <!-- 第三行：7 天迷你柱状图 -->
-      {{if .DailyTraffic}}
-      <div>
-        <div class="text-xs text-gray-600 mb-1">近 7 天流量</div>
-        <div class="flex items-end gap-px h-8">
-          {{range .DailyTraffic}}
-          <div class="flex-1 flex flex-col justify-end" title="{{.Date}}&#10;{{formatBytes .TotalBytes}}">
-            <div class="w-full rounded-sm bg-indigo-500/60 hover:bg-indigo-400 transition-colors"
-                 style="height: {{printf "%.1f" .HeightPct}}%; min-height: {{if gt .TotalBytes 0}}2px{{else}}0{{end}}">
-            </div>
-          </div>
-          {{end}}
-        </div>
-        <div class="flex items-center gap-px mt-1">
-          {{range .DailyTraffic}}
-          <div class="flex-1 text-center text-[8px] text-gray-700 truncate">{{.Label}}</div>
-          {{end}}
-        </div>
+    </div>
+    <!-- 实时指标（仅 online） -->
+    {{if eq .Status "online"}}
+    <div class="px-4 pb-3 grid grid-cols-3 gap-2">
+      <div class="bg-gray-800/50 rounded-lg px-2.5 py-2 text-center">
+        <div class="text-[10px] text-gray-500">用户</div>
+        <div class="text-sm font-semibold {{if gt .OnlineUsers 0}}text-teal-400{{else}}text-gray-600{{end}}">{{.OnlineUsers}}</div>
       </div>
-      {{end}}
+      <div class="bg-gray-800/50 rounded-lg px-2.5 py-2 text-center">
+        <div class="text-[10px] text-gray-500">连接</div>
+        <div class="text-sm font-semibold {{if gt .Connections 0}}text-sky-400{{else}}text-gray-600{{end}}">{{.Connections}}</div>
+      </div>
+      <div class="bg-gray-800/50 rounded-lg px-2.5 py-2 text-center">
+        <div class="text-[10px] text-gray-500">速率</div>
+        {{if or (gt .UploadSpeed 0) (gt .DownloadSpeed 0)}}
+        <div class="text-[10px] leading-tight">
+          <div class="text-sky-400">↑{{formatSpeed .UploadSpeed}}</div>
+          <div class="text-violet-400">↓{{formatSpeed .DownloadSpeed}}</div>
+        </div>
+        {{else}}
+        <div class="text-sm font-semibold text-gray-600">—</div>
+        {{end}}
+      </div>
     </div>
     {{end}}
+    <!-- 7 天迷你柱状图 -->
+    {{if .DailyTraffic}}
+    <div class="px-4 pb-3 mt-auto">
+      <div class="flex items-end gap-px h-6">
+        {{range .DailyTraffic}}
+        <div class="flex-1 flex flex-col justify-end" title="{{.Date}}&#10;{{formatBytes .TotalBytes}}">
+          <div class="w-full rounded-sm bg-indigo-500/50 hover:bg-indigo-400 transition-colors"
+               style="height: {{printf "%.1f" .HeightPct}}%; min-height: {{if gt .TotalBytes 0}}2px{{else}}0{{end}}">
+          </div>
+        </div>
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+    <!-- 底部：最后同步时间 -->
+    <div class="px-4 py-2 border-t border-gray-800/60 flex items-center justify-between">
+      {{if syncStale .LastSyncAt}}
+      <span class="text-[10px] text-red-400">同步 {{formatSyncAge .LastSyncAt}} 前</span>
+      <svg class="w-3 h-3 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01"/></svg>
+      {{else if not .LastSyncAt.IsZero}}
+      <span class="text-[10px] text-gray-600">同步 {{formatSyncAge .LastSyncAt}} 前</span>
+      {{else}}
+      <span class="text-[10px] text-gray-700">尚未同步</span>
+      {{end}}
+    </div>
   </div>
+  {{end}}
 </div>
 {{end}}
 {{end}}
@@ -1550,158 +1546,6 @@
 {{end}}
 
 
-{{define "partial-monitor-nodes"}}
-{{if not .Data}}
-<div class="text-center text-sm text-gray-500 py-8">暂无节点</div>
-{{else}}
-<div class="space-y-4">
-  {{range .Data}}
-  <div class="bg-gray-900 rounded-xl border {{if eq .Status "online"}}border-gray-800{{else if eq .Status "idle"}}border-yellow-900/40{{else}}border-red-900/30{{end}} overflow-hidden">
-
-    <!-- 标题行：名称 + 状态 + Ping -->
-    <div class="px-5 py-3.5 flex items-center justify-between border-b border-gray-800/60">
-      <div class="flex items-center gap-2.5 min-w-0">
-        {{if eq .Status "online"}}
-        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0"></span>
-        {{else if eq .Status "idle"}}
-        <span class="w-2 h-2 rounded-full bg-yellow-400 flex-shrink-0"></span>
-        {{else}}
-        <span class="w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></span>
-        {{end}}
-        <span class="font-semibold text-gray-100 truncate">{{.Node.Name}}</span>
-        {{if ne .Node.TrafficRate 1.0}}
-        <span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 flex-shrink-0">×{{printf "%.2g" .Node.TrafficRate}}</span>
-        {{end}}
-      </div>
-      <div class="flex items-center gap-3 flex-shrink-0 ml-3">
-        {{if ge .PingMs 0}}
-        <span class="text-xs font-mono {{if lt .PingMs 100}}text-emerald-500{{else if lt .PingMs 300}}text-yellow-500{{else}}text-red-500{{end}}">{{.PingMs}} ms</span>
-        {{end}}
-        {{if eq .Status "online"}}
-        <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/15 text-emerald-400">Online</span>
-        {{else if eq .Status "idle"}}
-        <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-yellow-500/15 text-yellow-400">Idle</span>
-        {{else}}
-        <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-red-500/15 text-red-400">Offline</span>
-        {{end}}
-      </div>
-    </div>
-
-    <div class="px-5 py-4 space-y-4">
-
-      <!-- 版本信息 -->
-      {{if or .SingboxVer .NodeVer}}
-      <div class="flex items-center gap-3 text-xs">
-        {{if .SingboxVer}}
-        <span class="text-gray-600">sing-box <span class="text-gray-500 font-mono">{{.SingboxVer}}</span></span>
-        {{end}}
-        {{if and .SingboxVer .NodeVer}}<span class="text-gray-800">·</span>{{end}}
-        {{if .NodeVer}}
-        <span class="text-gray-600">node <span class="text-gray-500 font-mono">{{.NodeVer}}</span></span>
-        {{end}}
-      </div>
-      {{end}}
-
-      {{if eq .Status "online"}}
-
-      <!-- 实时指标 -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div class="bg-gray-800/50 rounded-lg px-3 py-2.5">
-          <div class="text-xs text-gray-500 mb-1">连接数</div>
-          <div class="text-lg font-bold {{if gt .Connections 0}}text-sky-400{{else}}text-gray-600{{end}}">{{.Connections}}</div>
-        </div>
-        <div class="bg-gray-800/50 rounded-lg px-3 py-2.5">
-          <div class="text-xs text-gray-500 mb-1">在线用户</div>
-          <div class="text-lg font-bold {{if gt .OnlineUsers 0}}text-teal-400{{else}}text-gray-600{{end}}">{{.OnlineUsers}}</div>
-        </div>
-        <div class="bg-gray-800/50 rounded-lg px-3 py-2.5">
-          <div class="text-xs text-gray-500 mb-1">在线设备</div>
-          <div class="text-lg font-bold {{if gt .OnlineDevices 0}}text-violet-400{{else}}text-gray-600{{end}}">{{.OnlineDevices}}</div>
-        </div>
-        <div class="bg-gray-800/50 rounded-lg px-3 py-2.5">
-          <div class="text-xs text-gray-500 mb-1">实时速率</div>
-          {{if or (gt .UploadSpeed 0) (gt .DownloadSpeed 0)}}
-          <div class="text-xs font-medium space-y-0.5 mt-0.5">
-            <div class="text-sky-400">↑ {{formatSpeed .UploadSpeed}}</div>
-            <div class="text-violet-400">↓ {{formatSpeed .DownloadSpeed}}</div>
-          </div>
-          {{else}}
-          <div class="text-lg font-bold text-gray-700">—</div>
-          {{end}}
-        </div>
-      </div>
-
-      <!-- 协议标签 + 节点累计流量 -->
-      <div class="flex items-center justify-between gap-4">
-        <div class="flex items-center gap-1.5 flex-wrap min-w-0">
-          {{range .Protocols}}
-          <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-500/15 text-indigo-400">{{.}}</span>
-          {{end}}
-        </div>
-        {{if or (gt .Node.UploadBytes 0) (gt .Node.DownloadBytes 0)}}
-        <div class="text-xs text-gray-600 flex-shrink-0">
-          累计 <span class="text-gray-500">↑{{formatBytes .Node.UploadBytes}}</span>
-          <span class="text-gray-700 mx-1">·</span>
-          <span class="text-gray-500">↓{{formatBytes .Node.DownloadBytes}}</span>
-        </div>
-        {{end}}
-      </div>
-
-      <!-- 近 7 天流量趋势 -->
-      {{if .DailyTraffic}}
-      <div>
-        <div class="text-xs text-gray-600 mb-1.5">近 7 天流量</div>
-        <div class="flex items-end gap-px h-10">
-          {{range .DailyTraffic}}
-          <div class="flex-1 flex flex-col justify-end" title="{{.Date}}&#10;{{formatBytes .TotalBytes}}">
-            <div class="w-full rounded-sm bg-indigo-500/60 hover:bg-indigo-400 transition-colors"
-                 style="height: {{printf "%.1f" .HeightPct}}%; min-height: {{if gt .TotalBytes 0}}2px{{else}}0{{end}}">
-            </div>
-          </div>
-          {{end}}
-        </div>
-        <div class="flex items-center gap-px mt-0.5">
-          {{range .DailyTraffic}}
-          <div class="flex-1 text-center text-[8px] text-gray-700 truncate">{{.Label}}</div>
-          {{end}}
-        </div>
-      </div>
-      {{end}}
-
-      {{else if eq .Status "idle"}}
-
-      <!-- Idle 状态提示 -->
-      <div class="flex items-start gap-2 text-sm text-yellow-600/80">
-        <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-        </svg>
-        <span>sing-box 未运行，可前往<a href="/nodes" class="underline text-yellow-500 hover:text-yellow-400 mx-0.5">节点管理</a>手动启动</span>
-      </div>
-      {{if .Protocols}}
-      <div class="flex items-center gap-1.5 flex-wrap">
-        {{range .Protocols}}
-        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-800 text-gray-500">{{.}}</span>
-        {{end}}
-      </div>
-      {{end}}
-
-      {{else}}
-
-      <!-- Offline 状态提示 -->
-      <div class="flex items-start gap-2 text-sm text-red-600/80">
-        <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-        </svg>
-        <span>节点离线，请检查 pulse-node 进程是否运行</span>
-      </div>
-
-      {{end}}
-    </div>
-  </div>
-  {{end}}
-</div>
-{{end}}
-{{end}}
 
 {{define "partial-node-usage-modal"}}
 <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
