@@ -171,6 +171,10 @@
               hx-on::after-request="document.getElementById('app-modal').showModal()">编辑</button>
       <button class="text-xs text-gray-400 hover:text-emerald-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
               onclick="copySubLink('{{.SubToken}}')">订阅</button>
+      <button class="text-xs text-gray-400 hover:text-sky-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+              hx-get="/panel/users/{{.ID}}/sub-logs"
+              hx-target="#modal-body"
+              hx-on::after-request="document.getElementById('app-modal').showModal()">日志</button>
       <a href="/user/{{.SubToken}}" target="_blank"
          class="text-xs text-gray-400 hover:text-sky-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors">主页</a>
       <button class="text-xs text-gray-400 hover:text-sky-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
@@ -1696,4 +1700,40 @@
   {{end}}
 </div>
 {{end}}
+{{end}}
+
+{{define "partial-sub-logs-modal"}}
+<div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+  <div>
+    <h3 class="text-sm font-semibold text-gray-100">订阅访问日志</h3>
+    <p class="text-xs text-gray-500 mt-0.5">{{.Data.Username}} · 最近 50 条</p>
+  </div>
+  <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+  </button>
+</div>
+<div class="px-5 py-4 max-h-[60vh] overflow-y-auto">
+  {{if .Data.Logs}}
+  <table class="w-full text-xs">
+    <thead>
+      <tr class="text-gray-500 border-b border-gray-800">
+        <th class="text-left pb-2 font-medium">时间</th>
+        <th class="text-left pb-2 font-medium">IP</th>
+        <th class="text-left pb-2 font-medium">客户端</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-800/60">
+      {{range .Data.Logs}}
+      <tr class="text-gray-400">
+        <td class="py-2 pr-4 whitespace-nowrap text-gray-500">{{formatDateTime .AccessedAt}}</td>
+        <td class="py-2 pr-4 font-mono text-gray-300">{{.IP}}</td>
+        <td class="py-2 text-gray-500 truncate max-w-[260px]" title="{{.UserAgent}}">{{truncateUA .UserAgent 60}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p class="text-sm text-gray-500 text-center py-8">暂无访问记录</p>
+  {{end}}
+</div>
 {{end}}

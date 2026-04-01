@@ -3,8 +3,11 @@ package serverapi
 import (
 	"encoding/base64"
 	"fmt"
+	"log"
+	"net"
 	"net/http"
 	"strings"
+
 	"pulse/internal/inbounds"
 	"pulse/internal/subscription"
 	"pulse/internal/users"
@@ -40,6 +43,15 @@ func (a *subAPI) handleSub(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+
+	// 异步记录订阅访问日志
+	go func() {
+		ip := realIP(r)
+		ua := r.Header.Get("User-Agent")
+		if err := a.users.LogSubAccess(user.ID, ip, ua); err != nil {
+			log.Printf("sub access log: %v", err)
+		}
+	}()
 
 	// 收集该用户所有节点的全部订阅链接
 	accesses, err := a.users.ListUserInboundsByUser(user.ID)
@@ -95,6 +107,24 @@ func (a *subAPI) handleSub(w http.ResponseWriter, r *http.Request) {
 	body := base64.StdEncoding.EncodeToString([]byte(strings.Join(links, "\n")))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(body))
+}
+
+// realIP 从请求中提取客户端真实 IP（优先读 X-Real-IP / X-Forwarded-For）。
+func realIP(r *http.Request) string {
+	if ip := r.Header.Get("X-Real-IP"); ip != "" {
+		return ip
+	}
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		if idx := strings.IndexByte(fwd, ','); idx >= 0 {
+			fwd = fwd[:idx]
+		}
+		return strings.TrimSpace(fwd)
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 // buildUserinfo 生成 Subscription-Userinfo header 值。

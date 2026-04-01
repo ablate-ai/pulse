@@ -294,6 +294,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /panel/tools/reality-keypair", h.requireAuth(h.realityKeypair))
 
+	mux.HandleFunc("GET /panel/users/{id}/sub-logs", h.requireAuth(h.subLogsModal))
 	mux.HandleFunc("GET /panel/inbounds/{id}/hosts", h.requireAuth(h.hostsModal))
 	mux.HandleFunc("POST /panel/inbounds/{id}/hosts", h.requireAuth(h.createHost))
 	mux.HandleFunc("GET /panel/hosts/{id}/edit", h.requireAuth(h.hostEditForm))
@@ -981,6 +982,25 @@ func (h *Handler) overlayLiveConns(us []users.User) []users.User {
 		}
 	}
 	return us
+}
+
+// subLogsModal 返回用户订阅访问日志的 modal 内容。
+func (h *Handler) subLogsModal(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	logs, err := h.userStore.ListSubAccessLogs(id, 50)
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to get access logs: "+err.Error())
+		return
+	}
+	user, err := h.userStore.GetUser(id)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	h.renderPartial(w, "partial-sub-logs-modal", struct {
+		Username string
+		Logs     []users.SubAccessLog
+	}{Username: user.Username, Logs: logs})
 }
 
 // renderUsersListFromStore 从 store 拉取最新用户列表并渲染 partial。
@@ -2410,6 +2430,20 @@ func templateFuncs() template.FuncMap {
 			default:
 				return s
 			}
+		},
+		// formatDateTime 格式化时间为 "2006-01-02 15:04:05"。
+		"formatDateTime": func(t time.Time) string {
+			if t.IsZero() {
+				return ""
+			}
+			return t.Format("2006-01-02 15:04:05")
+		},
+		// truncateUA 将 User-Agent 截断到指定长度，超出部分用 "…" 替换。
+		"truncateUA": func(ua string, n int) string {
+			if len(ua) <= n {
+				return ua
+			}
+			return ua[:n] + "…"
 		},
 		// sub 整数减法。
 		"sub": func(a, b int) int {

@@ -152,6 +152,15 @@ func (db *DB) init() error {
 			download_bytes INTEGER NOT NULL DEFAULT 0,
 			PRIMARY KEY (node_id, date)
 		);`,
+		// sub_access_logs：记录 /sub/:token 的访问记录
+		`CREATE TABLE IF NOT EXISTS sub_access_logs (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id     TEXT NOT NULL,
+			ip          TEXT NOT NULL DEFAULT '',
+			user_agent  TEXT NOT NULL DEFAULT '',
+			accessed_at TEXT NOT NULL
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_sub_access_logs_user_id ON sub_access_logs(user_id);`,
 	}
 
 	for _, stmt := range stmts {

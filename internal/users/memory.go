@@ -166,6 +166,16 @@ func (s *MemoryStore) DeleteUserInboundsByUser(userID string) error {
 	return nil
 }
 
+// ─── 订阅访问日志（内存 stub，仅测试用） ──────────────────────────────────────
+
+func (s *MemoryStore) LogSubAccess(userID, ip, userAgent string) error {
+	return nil
+}
+
+func (s *MemoryStore) ListSubAccessLogs(userID string, limit int) ([]SubAccessLog, error) {
+	return nil, nil
+}
+
 // ─── 辅助函数 ─────────────────────────────────────────────────────────────────
 
 func usersMapToSlice(items map[string]User) []User {

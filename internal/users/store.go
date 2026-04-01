@@ -58,6 +58,15 @@ type UserInbound struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// SubAccessLog 记录一次订阅拉取行为。
+type SubAccessLog struct {
+	ID         int64     `json:"id"`
+	UserID     string    `json:"user_id"`
+	IP         string    `json:"ip"`
+	UserAgent  string    `json:"user_agent"`
+	AccessedAt time.Time `json:"accessed_at"`
+}
+
 // Store 用户和入站数据的持久化接口。
 type Store interface {
 	// User CRUD
@@ -78,6 +87,10 @@ type Store interface {
 
 	// GetUsersByIDs 批量获取 User，返回 map[userID]User。
 	GetUsersByIDs(ids []string) (map[string]User, error)
+
+	// 订阅访问日志
+	LogSubAccess(userID, ip, userAgent string) error
+	ListSubAccessLogs(userID string, limit int) ([]SubAccessLog, error)
 }
 
 // EffectiveStatusAt 使用给定时间计算用户的实际运行时状态（不写库，仅计算）。

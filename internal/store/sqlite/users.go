@@ -240,6 +240,51 @@ func (s *UserStore) DeleteUserInboundsByUser(userID string) error {
 	return nil
 }
 
+// ─── 订阅访问日志 ─────────────────────────────────────────────────────────────
+
+func (s *UserStore) LogSubAccess(userID, ip, userAgent string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO sub_access_logs (user_id, ip, user_agent, accessed_at) VALUES (?, ?, ?, ?)`,
+		userID, ip, userAgent, time.Now().UTC().Format(time.RFC3339),
+	)
+	if err != nil {
+		return fmt.Errorf("log sub access: %w", err)
+	}
+	return nil
+}
+
+func (s *UserStore) ListSubAccessLogs(userID string, limit int) ([]users.SubAccessLog, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.Query(
+		`SELECT id, user_id, ip, user_agent, accessed_at FROM sub_access_logs
+		 WHERE user_id = ? ORDER BY id DESC LIMIT ?`,
+		userID, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list sub access logs: %w", err)
+	}
+	defer rows.Close()
+
+	var out []users.SubAccessLog
+	for rows.Next() {
+		var log users.SubAccessLog
+		var accessedAt string
+		if err := rows.Scan(&log.ID, &log.UserID, &log.IP, &log.UserAgent, &accessedAt); err != nil {
+			return nil, fmt.Errorf("scan sub access log: %w", err)
+		}
+		if accessedAt != "" {
+			t, err := time.Parse(time.RFC3339, accessedAt)
+			if err == nil {
+				log.AccessedAt = t
+			}
+		}
+		out = append(out, log)
+	}
+	return out, rows.Err()
+}
+
 // ─── 扫描辅助 ─────────────────────────────────────────────────────────────────
 
 type scanner interface {
