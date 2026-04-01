@@ -30,6 +30,17 @@ type NodePeriodStat struct {
 	TotalBytes    int64  `json:"total_bytes"`
 }
 
+// NodeCombinedStat 节点流量合并统计：累计值（来自 nodes 表）+ 时段增量（来自 daily_usage）。
+type NodeCombinedStat struct {
+	ID                  string `json:"id"`
+	Name                string `json:"name"`
+	TotalUploadBytes    int64  `json:"total_upload_bytes"`
+	TotalDownloadBytes  int64  `json:"total_download_bytes"`
+	PeriodUploadBytes   int64  `json:"period_upload_bytes"`
+	PeriodDownloadBytes int64  `json:"period_download_bytes"`
+	PeriodTotalBytes    int64  `json:"period_total_bytes"`
+}
+
 // DailyTrafficPoint 某日所有节点合并后的流量点（用于趋势图）。
 type DailyTrafficPoint struct {
 	Date          string  // YYYY-MM-DD
@@ -69,6 +80,9 @@ type Summary struct {
 
 	// 选定时段内各节点流量对比
 	NodePeriodStats []NodePeriodStat `json:"node_period_stats"`
+
+	// 累计 + 时段增量合并（面板节点流量区块使用）
+	NodeCombinedStats []NodeCombinedStat `json:"node_combined_stats"`
 
 	// 当前选中的时间范围（天数）
 	Days        int   `json:"days"`
@@ -144,6 +158,25 @@ func Build(nodeStore nodes.Store, userStore users.Store, days int) (Summary, err
 	}
 	s.DailyTraffic = aggregateDailyTraffic(dailyRaw, days)
 	s.NodePeriodStats = aggregateNodePeriodStats(dailyRaw, nodesList)
+
+	periodByID := make(map[string]NodePeriodStat, len(s.NodePeriodStats))
+	for _, p := range s.NodePeriodStats {
+		periodByID[p.ID] = p
+	}
+	combined := make([]NodeCombinedStat, 0, len(nodeStats))
+	for _, ns := range nodeStats {
+		p := periodByID[ns.ID]
+		combined = append(combined, NodeCombinedStat{
+			ID:                  ns.ID,
+			Name:                ns.Name,
+			TotalUploadBytes:    ns.UploadBytes,
+			TotalDownloadBytes:  ns.DownloadBytes,
+			PeriodUploadBytes:   p.UploadBytes,
+			PeriodDownloadBytes: p.DownloadBytes,
+			PeriodTotalBytes:    p.TotalBytes,
+		})
+	}
+	s.NodeCombinedStats = combined
 
 	return s, nil
 }

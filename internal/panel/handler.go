@@ -65,10 +65,12 @@ type nodeMetrics struct {
 	OnlineDevices int      // 在线设备数
 	UploadSpeed   int64    // bytes/s（前后采样估算）
 	DownloadSpeed int64    // bytes/s
-	DailyTraffic  []usage.DailyTrafficPoint // 近 7 天趋势
-	Protocols     []string // 该节点支持的协议列表
-	UserConns     []nodes.UserUsage // per-user 连接数据，仅用于内部缓存聚合，不送入 SSE 模板
-	LastSyncAt    time.Time // 最后一次成功与节点通信的时间
+	DailyTraffic        []usage.DailyTrafficPoint // 近 7 天趋势
+	PeriodUploadBytes   int64    // 近 7 天上传字节（DailyTraffic 汇总）
+	PeriodDownloadBytes int64    // 近 7 天下载字节（DailyTraffic 汇总）
+	Protocols           []string // 该节点支持的协议列表
+	UserConns           []nodes.UserUsage // per-user 连接数据，仅用于内部缓存聚合，不送入 SSE 模板
+	LastSyncAt          time.Time // 最后一次成功与节点通信的时间
 }
 
 // metricsSubscriber SSE 订阅者。
@@ -1122,6 +1124,10 @@ func (h *Handler) fetchNodeMetrics(ctx context.Context, node nodes.Node, dailyRa
 		}
 	}
 	m.DailyTraffic = usage.AggregateDailyTraffic(filtered, 7)
+	for _, d := range m.DailyTraffic {
+		m.PeriodUploadBytes += d.UploadBytes
+		m.PeriodDownloadBytes += d.DownloadBytes
+	}
 
 	return m
 }
