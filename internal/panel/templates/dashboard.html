@@ -15,6 +15,11 @@
         <p class="text-sm text-gray-500 mt-0.5">系统概览</p>
       </div>
 
+      <!-- 节点实时状态（SSE 推送） -->
+      <div id="node-metrics-container" class="mb-4">
+        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 text-sm text-gray-600 animate-pulse">正在获取节点状态...</div>
+      </div>
+
       <div id="stats-container" hx-get="/panel/stats" hx-trigger="load, every 30s" hx-swap="innerHTML">
         <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
@@ -22,11 +27,6 @@
             <div class="text-xs text-gray-500 mt-1">加载中...</div>
           </div>
         </div>
-      </div>
-
-      <!-- 节点实时状态（SSE 推送） -->
-      <div id="node-metrics-container">
-        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 text-sm text-gray-600 animate-pulse">正在获取节点状态...</div>
       </div>
     </div>
   </div>

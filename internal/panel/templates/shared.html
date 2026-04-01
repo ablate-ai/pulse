@@ -5,6 +5,183 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234f46e5'/%3E%3Cpolyline points='3,16 9,16 12,8 16,24 20,11 23,16 29,16' fill='none' stroke='%23fff' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/htmx.org@2.0.3/dist/htmx.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+// 格式化字节数（供 Chart.js tooltip 使用）
+function fmtBytes(b) {
+  if (!b || b < 1) return '0 B';
+  const u = ['B','KB','MB','GB','TB'];
+  const i = Math.min(Math.floor(Math.log(b) / Math.log(1024)), u.length - 1);
+  return (b / Math.pow(1024, i)).toFixed(1) + ' ' + u[i];
+}
+// 扫描并初始化所有带 data-chart-type 的 canvas
+function initCharts(root) {
+  (root || document).querySelectorAll('canvas[data-chart-type]').forEach(canvas => {
+    const existing = Chart.getChart(canvas);
+    if (existing) existing.destroy();
+    const type = canvas.dataset.chartType;
+    if      (type === 'traffic')   initTrafficChart(canvas);
+    else if (type === 'node-dist') initNodeDistChart(canvas);
+    else if (type === 'quota')     initQuotaChart(canvas);
+    else if (type === 'expiration') initExpirationChart(canvas);
+    else if (type === 'growth')    initGrowthChart(canvas);
+    else if (type === 'top-users') initTopUsersChart(canvas);
+  });
+}
+function initTrafficChart(canvas) {
+  let labels   = JSON.parse(canvas.dataset.labels   || '[]');
+  let upload   = JSON.parse(canvas.dataset.upload   || '[]');
+  let download = JSON.parse(canvas.dataset.download || '[]');
+  // 裁掉开头连续的零值天（保留至少最后一天）
+  let start = 0;
+  while (start < labels.length - 1 && upload[start] === 0 && download[start] === 0) start++;
+  labels   = labels.slice(start);
+  upload   = upload.slice(start);
+  download = download.slice(start);
+  new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: '↑ 上传',  data: upload,   backgroundColor: 'rgba(99,102,241,0.75)', stack: 'traffic', borderRadius: 2 },
+        { label: '↓ 下载',  data: download, backgroundColor: 'rgba(139,92,246,0.75)', stack: 'traffic', borderRadius: 2 },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          labels: { color: '#6b7280', boxWidth: 10, font: { size: 11 } }
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: ${fmtBytes(ctx.raw)}`,
+            footer: items => '合计: ' + fmtBytes(items.reduce((s, i) => s + i.raw, 0)),
+          }
+        }
+      },
+      scales: {
+        x: {
+          stacked: true,
+          grid: { display: false },
+          border: { display: false },
+          ticks: { color: '#4b5563', font: { size: 10 } },
+        },
+        y: {
+          stacked: true,
+          grid: { color: 'rgba(55,65,81,0.4)' },
+          border: { display: false },
+          ticks: { color: '#4b5563', font: { size: 10 }, callback: v => fmtBytes(v) },
+        },
+      },
+    },
+  });
+}
+function initNodeDistChart(canvas) {
+  let labels = JSON.parse(canvas.dataset.labels || '[]');
+  let values = JSON.parse(canvas.dataset.values || '[]');
+  const fl = { labels: [], values: [] };
+  labels.forEach((l, i) => { if (values[i] > 0) { fl.labels.push(l); fl.values.push(values[i]); } });
+  if (!fl.labels.length) return;
+  const colors = ['#6366f1','#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899','#f97316'];
+  new Chart(canvas, {
+    type: 'doughnut',
+    data: { labels: fl.labels, datasets: [{ data: fl.values, backgroundColor: colors, borderWidth: 0, hoverOffset: 6 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '65%',
+      plugins: {
+        legend: { position: 'right', labels: { color: '#6b7280', boxWidth: 10, padding: 8, font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => `${ctx.label}: ${fmtBytes(ctx.raw)}` } },
+      },
+    },
+  });
+}
+function initQuotaChart(canvas) {
+  const labels = JSON.parse(canvas.dataset.labels || '[]');
+  const values = JSON.parse(canvas.dataset.values || '[]');
+  const colors = ['rgba(16,185,129,.7)','rgba(234,179,8,.7)','rgba(245,158,11,.7)','rgba(239,68,68,.7)','rgba(239,68,68,.9)'];
+  new Chart(canvas, {
+    type: 'bar',
+    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 3 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => `${ctx.raw} 人` } },
+      },
+      scales: {
+        x: { grid: { display: false }, border: { display: false }, ticks: { color: '#4b5563', font: { size: 10 } } },
+        y: { grid: { color: 'rgba(55,65,81,.4)' }, border: { display: false }, ticks: { color: '#4b5563', font: { size: 10 }, precision: 0 } },
+      },
+    },
+  });
+}
+function initExpirationChart(canvas) {
+  const labels = JSON.parse(canvas.dataset.labels || '[]');
+  const values = JSON.parse(canvas.dataset.values || '[]');
+  new Chart(canvas, {
+    type: 'bar',
+    data: { labels, datasets: [{ data: values, backgroundColor: 'rgba(245,158,11,.65)', borderRadius: 2 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => `${ctx.raw} 人到期` } },
+      },
+      scales: {
+        x: { grid: { display: false }, border: { display: false }, ticks: { color: '#4b5563', font: { size: 9 }, maxRotation: 0 } },
+        y: { grid: { color: 'rgba(55,65,81,.4)' }, border: { display: false }, ticks: { color: '#4b5563', font: { size: 10 }, precision: 0 } },
+      },
+    },
+  });
+}
+function initGrowthChart(canvas) {
+  let labels = JSON.parse(canvas.dataset.labels || '[]');
+  let values = JSON.parse(canvas.dataset.values || '[]');
+  let start = 0;
+  while (start < labels.length - 1 && values[start] === 0) start++;
+  labels = labels.slice(start); values = values.slice(start);
+  new Chart(canvas, {
+    type: 'bar',
+    data: { labels, datasets: [{ data: values, backgroundColor: 'rgba(99,102,241,.7)', borderRadius: 2 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => `新增 ${ctx.raw} 人` } },
+      },
+      scales: {
+        x: { grid: { display: false }, border: { display: false }, ticks: { color: '#4b5563', font: { size: 10 } } },
+        y: { grid: { color: 'rgba(55,65,81,.4)' }, border: { display: false }, ticks: { color: '#4b5563', font: { size: 10 }, precision: 0 } },
+      },
+    },
+  });
+}
+function initTopUsersChart(canvas) {
+  const labels = JSON.parse(canvas.dataset.labels || '[]');
+  const values = JSON.parse(canvas.dataset.values || '[]');
+  new Chart(canvas, {
+    type: 'bar',
+    data: { labels, datasets: [{ data: values, backgroundColor: 'rgba(99,102,241,.65)', borderRadius: 2 }] },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => fmtBytes(ctx.raw) } },
+      },
+      scales: {
+        x: { grid: { color: 'rgba(55,65,81,.4)' }, border: { display: false }, ticks: { color: '#4b5563', font: { size: 10 }, callback: v => fmtBytes(v) } },
+        y: { grid: { display: false }, border: { display: false }, ticks: { color: '#9ca3af', font: { size: 11 } } },
+      },
+    },
+  });
+}
+document.addEventListener('DOMContentLoaded', () => initCharts());
+document.addEventListener('htmx:afterSettle', e => initCharts(e.detail.elt));
+</script>
 <script>
 function showToast(msg, type) {
   const toast = document.getElementById('toast');

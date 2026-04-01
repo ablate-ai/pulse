@@ -69,19 +69,78 @@
         {{end}}
       </div>
     </div>
-    <div class="flex items-end gap-px h-16">
-      {{range .Data.DailyTraffic}}
-      <div class="flex-1 flex flex-col justify-end" title="{{.Date}}&#10;{{formatBytes .TotalBytes}}">
-        <div class="w-full rounded-sm bg-indigo-500/70 hover:bg-indigo-400 transition-colors"
-             style="height: {{printf "%.1f" .HeightPct}}%; min-height: {{if gt .TotalBytes 0}}2px{{else}}0{{end}}">
-        </div>
-      </div>
-      {{end}}
+    <div class="h-40">
+      <canvas data-chart-type="traffic"
+        data-labels='[{{range $i,$p := .Data.DailyTraffic}}{{if $i}},{{end}}"{{$p.Label}}"{{end}}]'
+        data-upload='[{{range $i,$p := .Data.DailyTraffic}}{{if $i}},{{end}}{{$p.UploadBytes}}{{end}}]'
+        data-download='[{{range $i,$p := .Data.DailyTraffic}}{{if $i}},{{end}}{{$p.DownloadBytes}}{{end}}]'>
+      </canvas>
     </div>
-    <div class="flex items-center gap-px mt-1.5">
-      {{range .Data.DailyTraffic}}
-      <div class="flex-1 text-center text-[9px] text-gray-600 truncate">{{.Label}}</div>
-      {{end}}
+  </div>
+  {{end}}
+
+  <!-- 用户增长 + 到期时间线 -->
+  {{if gt .Data.UsersCount 0}}
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <div class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">用户增长趋势</div>
+      <div class="h-36">
+        <canvas data-chart-type="growth"
+          data-labels='[{{range $i,$g := .Data.UserGrowth}}{{if $i}},{{end}}"{{$g.Label}}"{{end}}]'
+          data-values='[{{range $i,$g := .Data.UserGrowth}}{{if $i}},{{end}}{{$g.Count}}{{end}}]'>
+        </canvas>
+      </div>
+    </div>
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-xs font-medium text-gray-500 uppercase tracking-wide">到期时间线</div>
+        <div class="text-xs text-gray-600">未来 30 天</div>
+      </div>
+      <div class="h-36">
+        <canvas data-chart-type="expiration"
+          data-labels='[{{range $i,$d := .Data.ExpirationDays}}{{if $i}},{{end}}"{{$d.Label}}"{{end}}]'
+          data-values='[{{range $i,$d := .Data.ExpirationDays}}{{if $i}},{{end}}{{$d.Count}}{{end}}]'>
+        </canvas>
+      </div>
+    </div>
+  </div>
+  {{end}}
+
+  <!-- 节点流量占比 + Top 用户 -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    {{if gt (len .Data.NodeCombinedStats) 1}}
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <div class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">节点流量占比</div>
+      <div class="h-36">
+        <canvas data-chart-type="node-dist"
+          data-labels='[{{range $i,$n := .Data.NodeCombinedStats}}{{if $i}},{{end}}"{{$n.Name}}"{{end}}]'
+          data-values='[{{range $i,$n := .Data.NodeCombinedStats}}{{if $i}},{{end}}{{addInt64 $n.TotalUploadBytes $n.TotalDownloadBytes}}{{end}}]'>
+        </canvas>
+      </div>
+    </div>
+    {{end}}
+    {{if .Data.TopUsers}}
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <div class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">流量 Top {{len .Data.TopUsers}}</div>
+      <div class="h-36">
+        <canvas data-chart-type="top-users"
+          data-labels='[{{range $i,$u := .Data.TopUsers}}{{if $i}},{{end}}"{{$u.Username}}"{{end}}]'
+          data-values='[{{range $i,$u := .Data.TopUsers}}{{if $i}},{{end}}{{$u.UsedBytes}}{{end}}]'>
+        </canvas>
+      </div>
+    </div>
+    {{end}}
+  </div>
+
+  <!-- 配额利用率 -->
+  {{if gt .Data.UsersCount 0}}
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+    <div class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">配额利用率分布</div>
+    <div class="h-36">
+      <canvas data-chart-type="quota"
+        data-labels='[{{range $i,$b := .Data.QuotaBuckets}}{{if $i}},{{end}}"{{$b.Label}}"{{end}}]'
+        data-values='[{{range $i,$b := .Data.QuotaBuckets}}{{if $i}},{{end}}{{$b.Count}}{{end}}]'>
+      </canvas>
     </div>
   </div>
   {{end}}
@@ -1395,16 +1454,15 @@
     <span class="text-xs text-gray-600">近7天 / 累计</span>
   </div>
   <!-- 列头 -->
-  <div class="px-5 py-1.5 grid items-center gap-x-4 text-[10px] text-gray-600 uppercase tracking-wider border-b border-gray-800/50" style="grid-template-columns: 1fr 56px 216px 152px 56px">
+  <div class="px-5 py-1.5 grid items-center gap-x-4 text-[10px] text-gray-600 uppercase tracking-wider border-b border-gray-800/50" style="grid-template-columns: 1fr 56px 216px 152px">
     <span>名称</span>
     <span class="text-right">Ping</span>
     <span>连接 / 速率</span>
     <span>近7天 / 累计</span>
-    <span class="text-right">同步</span>
   </div>
   <div class="divide-y divide-gray-800">
     {{range .Data}}
-    <div class="px-5 py-2.5 grid items-center gap-x-4" style="grid-template-columns: 1fr 56px 216px 152px 56px">
+    <div class="px-5 py-2.5 grid items-center gap-x-4" style="grid-template-columns: 1fr 56px 216px 152px">
       <!-- 名称 -->
       <div class="flex items-center gap-2 min-w-0">
         {{if eq .Status "online"}}
@@ -1451,16 +1509,6 @@
         <span class="text-gray-700">·</span>
         {{end}}
         <span class="text-gray-600">{{formatBytes (addInt64 .Node.UploadBytes .Node.DownloadBytes)}}</span>
-      </div>
-      <!-- 同步时间 -->
-      <div class="text-[10px] text-right">
-        {{if syncStale .LastSyncAt}}
-        <span class="text-red-400">{{formatSyncAge .LastSyncAt}} 前 ⚠</span>
-        {{else if not .LastSyncAt.IsZero}}
-        <span class="text-gray-700">{{formatSyncAge .LastSyncAt}} 前</span>
-        {{else}}
-        <span class="text-gray-700">—</span>
-        {{end}}
       </div>
     </div>
     {{end}}
