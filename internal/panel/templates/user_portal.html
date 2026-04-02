@@ -84,41 +84,7 @@
     </div>
   </div>
 
-  <!-- 2. 近7天流量趋势 -->
-  {{if .Data.DailyTraffic}}
-  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-    <div class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">近7天流量</div>
-    <div class="h-28">
-      <canvas data-chart-type="portal-daily"
-        data-labels='[{{range $i,$d := .Data.DailyTraffic}}{{if $i}},{{end}}"{{$d.Date}}"{{end}}]'
-        data-upload='[{{range $i,$d := .Data.DailyTraffic}}{{if $i}},{{end}}{{$d.UploadBytes}}{{end}}]'
-        data-download='[{{range $i,$d := .Data.DailyTraffic}}{{if $i}},{{end}}{{$d.DownloadBytes}}{{end}}]'>
-      </canvas>
-    </div>
-  </div>
-  {{end}}
-
-  <!-- 3. 节点流量分布 -->
-  {{if gt (len .Data.NodeUsage) 1}}
-  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-    <div class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">节点用量</div>
-    <div class="space-y-2.5">
-      {{range .Data.NodeUsage}}
-      <div>
-        <div class="flex items-center justify-between text-xs mb-1">
-          <span class="text-gray-300 truncate max-w-[160px]">{{.NodeName}}</span>
-          <span class="text-gray-500 shrink-0 ml-2">{{formatBytes .TotalBytes}} · {{.Pct}}%</span>
-        </div>
-        <div class="h-1 bg-gray-800 rounded-full overflow-hidden">
-          <div class="h-full bg-indigo-500 rounded-full" style="width: {{.Pct}}%"></div>
-        </div>
-      </div>
-      {{end}}
-    </div>
-  </div>
-  {{end}}
-
-  <!-- 4. 订阅链接 -->
+  <!-- 2. 订阅链接 -->
   <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 space-y-3">
     <div class="text-xs font-medium text-gray-400 uppercase tracking-wider">订阅链接</div>
     <div class="flex items-center gap-2">
@@ -138,7 +104,44 @@
     <p class="text-xs text-gray-600">在订阅客户端中导入此链接以获取代理配置。</p>
   </div>
 
-  <!-- 3. 可用节点（HTMX 懒加载，避免阻塞首屏渲染） -->
+  <!-- 3. 流量分析（日趋势 + 节点分布合并） -->
+  {{if or .Data.DailyTraffic (gt (len .Data.NodeUsage) 1)}}
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 space-y-5">
+    <div class="text-xs font-medium text-gray-500 uppercase tracking-wide">流量分析</div>
+    {{if .Data.DailyTraffic}}
+    <div>
+      <div class="text-xs text-gray-600 mb-2">近7天</div>
+      <div class="h-28">
+        <canvas data-chart-type="portal-daily"
+          data-labels='[{{range $i,$d := .Data.DailyTraffic}}{{if $i}},{{end}}"{{$d.Date}}"{{end}}]'
+          data-upload='[{{range $i,$d := .Data.DailyTraffic}}{{if $i}},{{end}}{{$d.UploadBytes}}{{end}}]'
+          data-download='[{{range $i,$d := .Data.DailyTraffic}}{{if $i}},{{end}}{{$d.DownloadBytes}}{{end}}]'>
+        </canvas>
+      </div>
+    </div>
+    {{end}}
+    {{if gt (len .Data.NodeUsage) 1}}
+    <div>
+      <div class="text-xs text-gray-600 mb-2">节点用量</div>
+      <div class="space-y-2.5">
+        {{range .Data.NodeUsage}}
+        <div>
+          <div class="flex items-center justify-between text-xs mb-1">
+            <span class="text-gray-300 truncate max-w-[160px]">{{.NodeName}}</span>
+            <span class="text-gray-500 shrink-0 ml-2">{{formatBytes .TotalBytes}} · {{.Pct}}%</span>
+          </div>
+          <div class="h-1 bg-gray-800 rounded-full overflow-hidden">
+            <div class="h-full bg-indigo-500 rounded-full" style="width: {{.Pct}}%"></div>
+          </div>
+        </div>
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+
+  <!-- 5. 可用节点（HTMX 懒加载，避免阻塞首屏渲染） -->
   <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
     <div class="px-5 py-3 border-b border-gray-800">
       <span class="text-xs font-medium text-gray-400 uppercase tracking-wider">可用节点</span>
@@ -148,7 +151,7 @@
     </div>
   </div>
 
-  <!-- 4. 重置订阅 Token（危险操作，置底） -->
+  <!-- 6. 重置订阅 Token（危险操作，置底） -->
   <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 space-y-3">
     <div class="text-xs font-medium text-gray-400 uppercase tracking-wider">重置订阅链接</div>
     <p class="text-xs text-gray-500">重置后当前链接将立即失效，页面会自动跳转到新链接。</p>
