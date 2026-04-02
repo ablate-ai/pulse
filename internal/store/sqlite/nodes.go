@@ -166,6 +166,42 @@ func (s *NodeStore) CleanupOldDailyUsage(retainDays int) error {
 	return nil
 }
 
+func (s *NodeStore) UpsertNodeSpeedTest(nodeID string, result nodes.SpeedTestResult) error {
+	_, err := s.db.Exec(`
+		INSERT INTO node_speedtest (node_id, down_bps, up_bps, tested_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(node_id) DO UPDATE SET
+			down_bps  = excluded.down_bps,
+			up_bps    = excluded.up_bps,
+			tested_at = excluded.tested_at
+	`, nodeID, result.DownBps, result.UpBps, result.TestedAt.UTC().Format(time.RFC3339))
+	if err != nil {
+		return fmt.Errorf("upsert node speedtest: %w", err)
+	}
+	return nil
+}
+
+func (s *NodeStore) ListAllNodeSpeedTests() (map[string]nodes.SpeedTestResult, error) {
+	rows, err := s.db.Query(`SELECT node_id, down_bps, up_bps, tested_at FROM node_speedtest`)
+	if err != nil {
+		return nil, fmt.Errorf("list node speedtests: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]nodes.SpeedTestResult)
+	for rows.Next() {
+		var nodeID string
+		var r nodes.SpeedTestResult
+		var testedAt string
+		if err := rows.Scan(&nodeID, &r.DownBps, &r.UpBps, &testedAt); err != nil {
+			return nil, fmt.Errorf("scan speedtest: %w", err)
+		}
+		r.TestedAt, _ = time.Parse(time.RFC3339, testedAt)
+		result[nodeID] = r
+	}
+	return result, rows.Err()
+}
+
 func (s *NodeStore) UpsertNodeCheckResults(nodeID string, results []nodes.CheckResult) error {
 	for _, r := range results {
 		unlocked := 0

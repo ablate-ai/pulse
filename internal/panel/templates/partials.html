@@ -574,6 +574,11 @@
               hx-target="#check-results-{{.Node.ID}}"
               hx-swap="outerHTML"
               hx-disabled-elt="this">检测</button>
+      <button class="text-xs text-gray-400 hover:text-cyan-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-wait"
+              hx-post="/panel/nodes/{{.Node.ID}}/speedtest"
+              hx-target="#speedtest-{{.Node.ID}}"
+              hx-swap="outerHTML"
+              hx-disabled-elt="this">测速</button>
       <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
               hx-get="/panel/nodes/{{.Node.ID}}/edit"
               hx-target="#modal-body"
@@ -612,6 +617,15 @@
   {{else}}
   <div id="check-results-{{.Node.ID}}"></div>
   {{end}}
+  {{if .SpeedTest}}
+  <div id="speedtest-{{.Node.ID}}" class="flex items-center gap-3 mt-1.5">
+    <span class="text-xs text-sky-400">↓ {{formatSpeed .SpeedTest.DownBps}}</span>
+    <span class="text-xs text-teal-400">↑ {{formatSpeed .SpeedTest.UpBps}}</span>
+    <span class="text-xs text-gray-700">{{formatCheckTime .SpeedTest.TestedAt}}</span>
+  </div>
+  {{else}}
+  <div id="speedtest-{{.Node.ID}}"></div>
+  {{end}}
 </div>
 {{else}}
 <div class="text-center text-sm text-gray-500 py-10">暂无节点</div>
@@ -629,6 +643,15 @@
   {{end}}
   {{end}}
   {{with index .Data.Results 0}}<span class="text-xs text-gray-700 ml-1">{{formatCheckTime .CheckedAt}}</span>{{end}}
+</div>
+{{end}}
+
+
+{{define "partial-node-speedtest"}}
+<div id="speedtest-{{.Data.NodeID}}" class="flex items-center gap-3 mt-1.5">
+  <span class="text-xs text-sky-400">↓ {{formatSpeed .Data.Result.DownBps}}</span>
+  <span class="text-xs text-teal-400">↑ {{formatSpeed .Data.Result.UpBps}}</span>
+  <span class="text-xs text-gray-700">{{formatCheckTime .Data.Result.TestedAt}}</span>
 </div>
 {{end}}
 

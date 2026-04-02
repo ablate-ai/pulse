@@ -293,6 +293,19 @@ type CheckUnlockResponse struct {
 	Results []CheckUnlockResult `json:"results"`
 }
 
+// SpeedTestResponse 节点测速接口响应。
+type SpeedTestResponse struct {
+	DownBps int64 `json:"down_bps"`
+	UpBps   int64 `json:"up_bps"`
+}
+
+// SpeedTest 向节点发起测速请求（下载 + 上传各 10MB，总超时约 60s）。
+func (c *Client) SpeedTest(ctx context.Context) (SpeedTestResponse, error) {
+	var out SpeedTestResponse
+	err := c.do(ctx, http.MethodGet, "/v1/node/speedtest", nil, &out)
+	return out, err
+}
+
 // CheckUnlock 向节点发起解锁检测请求，节点并发检测各服务并返回结果。
 func (c *Client) CheckUnlock(ctx context.Context) (CheckUnlockResponse, error) {
 	var out CheckUnlockResponse

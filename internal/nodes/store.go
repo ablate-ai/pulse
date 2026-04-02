@@ -28,6 +28,13 @@ type CheckResult struct {
 	CheckedAt time.Time `json:"checked_at"`
 }
 
+// SpeedTestResult 节点测速结果，按 node_id 唯一存储。
+type SpeedTestResult struct {
+	DownBps  int64     `json:"down_bps"`
+	UpBps    int64     `json:"up_bps"`
+	TestedAt time.Time `json:"tested_at"`
+}
+
 // NodeDailyUsage 某节点某日的流量快照。
 type NodeDailyUsage struct {
 	NodeID        string
@@ -54,4 +61,8 @@ type Store interface {
 	UpsertNodeCheckResults(nodeID string, results []CheckResult) error
 	// ListAllNodeCheckResults 返回所有节点的解锁检测结果，按 nodeID 分组。
 	ListAllNodeCheckResults() (map[string][]CheckResult, error)
+	// UpsertNodeSpeedTest 写入节点测速结果（按 node_id 唯一）。
+	UpsertNodeSpeedTest(nodeID string, result SpeedTestResult) error
+	// ListAllNodeSpeedTests 返回所有节点的最新测速结果。
+	ListAllNodeSpeedTests() (map[string]SpeedTestResult, error)
 }

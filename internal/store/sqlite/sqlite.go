@@ -163,6 +163,13 @@ func (db *DB) init() error {
 			accessed_at TEXT NOT NULL
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_sub_access_logs_user_id ON sub_access_logs(user_id);`,
+		// node_speedtest：节点测速结果，按 node_id 唯一
+		`CREATE TABLE IF NOT EXISTS node_speedtest (
+			node_id   TEXT PRIMARY KEY,
+			down_bps  INTEGER NOT NULL DEFAULT 0,
+			up_bps    INTEGER NOT NULL DEFAULT 0,
+			tested_at TEXT NOT NULL DEFAULT ''
+		);`,
 		// node_check_results：节点解锁检测结果，按 (node_id, service) 唯一存储
 		`CREATE TABLE IF NOT EXISTS node_check_results (
 			node_id    TEXT NOT NULL,

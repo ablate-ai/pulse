@@ -185,12 +185,19 @@ type nodeWithStatus struct {
 	SingboxVer   string // sing-box 版本
 	NodeVer      string // pulse-node 编译版本
 	CheckResults []nodes.CheckResult
+	SpeedTest    *nodes.SpeedTestResult
 }
 
 // checkResultsPartialData 传给解锁检测结果局部模板的数据。
 type checkResultsPartialData struct {
 	NodeID  string
 	Results []nodes.CheckResult
+}
+
+// speedTestPartialData 传给测速结果局部模板的数据。
+type speedTestPartialData struct {
+	NodeID string
+	Result nodes.SpeedTestResult
 }
 
 // inboundHostsData 传给 Host 相关模板的数据结构。
@@ -323,6 +330,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /panel/nodes/{id}/logs/stream", h.requireAuth(h.nodeLogsStream))
 
 	mux.HandleFunc("POST /panel/nodes/{id}/check", h.requireAuth(h.nodeCheckUnlock))
+	mux.HandleFunc("POST /panel/nodes/{id}/speedtest", h.requireAuth(h.nodeSpeedTest))
 
 	mux.HandleFunc("GET /caddy", h.requireAuth(h.caddyPage))
 	mux.HandleFunc("GET /panel/caddy/list", h.requireAuth(h.caddyListPartial))
@@ -1379,10 +1387,14 @@ func (h *Handler) nodesListPartial(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	checkMap, _ := h.nodeStore.ListAllNodeCheckResults()
+	speedMap, _ := h.nodeStore.ListAllNodeSpeedTests()
 	result := make([]nodeWithStatus, 0, len(nodeList))
 	for _, n := range nodeList {
 		ns := h.fetchNodeStatus(r.Context(), n)
 		ns.CheckResults = checkMap[n.ID]
+		if st, ok := speedMap[n.ID]; ok {
+			ns.SpeedTest = &st
+		}
 		result = append(result, ns)
 	}
 	h.renderPartial(w, "partial-node-rows", result)
@@ -1714,13 +1726,50 @@ func (h *Handler) renderNodesListFromStore(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	checkMap, _ := h.nodeStore.ListAllNodeCheckResults()
+	speedMap, _ := h.nodeStore.ListAllNodeSpeedTests()
 	result := make([]nodeWithStatus, 0, len(nodeList))
 	for _, n := range nodeList {
 		ns := h.fetchNodeStatus(r.Context(), n)
 		ns.CheckResults = checkMap[n.ID]
+		if st, ok := speedMap[n.ID]; ok {
+			ns.SpeedTest = &st
+		}
 		result = append(result, ns)
 	}
 	h.renderPartial(w, "partial-node-rows", result)
+}
+
+// nodeSpeedTest 触发节点测速（下载 + 上传各 10MB），结果写入 store 并返回局部 HTML。
+func (h *Handler) nodeSpeedTest(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	client, err := h.dial(id)
+	if err != nil {
+		htmxError(w, http.StatusBadGateway, "无法连接节点: "+err.Error())
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 70*time.Second)
+	defer cancel()
+
+	resp, err := client.SpeedTest(ctx)
+	if err != nil {
+		htmxError(w, http.StatusBadGateway, "测速失败: "+err.Error())
+		return
+	}
+
+	result := nodes.SpeedTestResult{
+		DownBps:  resp.DownBps,
+		UpBps:    resp.UpBps,
+		TestedAt: time.Now().UTC(),
+	}
+
+	_ = h.nodeStore.UpsertNodeSpeedTest(id, result)
+
+	h.renderPartial(w, "partial-node-speedtest", speedTestPartialData{
+		NodeID: id,
+		Result: result,
+	})
 }
 
 // nodeCheckUnlock 触发节点解锁检测，结果写入 store 并返回局部 HTML。

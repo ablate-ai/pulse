@@ -91,6 +91,14 @@ func (s *MemoryStore) ListAllNodeCheckResults() (map[string][]CheckResult, error
 	return nil, nil
 }
 
+func (s *MemoryStore) UpsertNodeSpeedTest(nodeID string, result SpeedTestResult) error {
+	return nil
+}
+
+func (s *MemoryStore) ListAllNodeSpeedTests() (map[string]SpeedTestResult, error) {
+	return nil, nil
+}
+
 func (s *MemoryStore) List() ([]Node, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
