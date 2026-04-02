@@ -184,6 +184,10 @@ func (s *MemoryStore) ListUserNodeUsage(userID string) ([]UserNodeUsage, error) 
 	return nil, nil
 }
 
+func (s *MemoryStore) ListUserDailyUsage(userID string, days int) ([]UserDailyUsage, error) {
+	return nil, nil
+}
+
 // ─── 辅助函数 ─────────────────────────────────────────────────────────────────
 
 func usersMapToSlice(items map[string]User) []User {

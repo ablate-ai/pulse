@@ -2689,12 +2689,14 @@ type userNodeInfo struct {
 
 // userPortalData 传入用户主页模板的数据。
 type userPortalData struct {
-	User                 users.User
-	SubURL               string
-	Nodes                []userNodeInfo
+	User                users.User
+	SubURL              string
+	Nodes               []userNodeInfo
 	AnnouncementTitle   string
 	AnnouncementContent string
 	HasAnnouncement     bool
+	DailyTraffic        []users.UserDailyUsage // 近7天每日流量
+	NodeUsage           []userNodeUsageRow      // 各节点流量分布
 }
 
 // subURL 根据请求构造完整的订阅链接。
@@ -2744,6 +2746,46 @@ func (h *Handler) userPortalPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	portalData := userPortalData{User: user, SubURL: subURL(r, user.SubToken), Nodes: nodeInfos}
+
+	// 近7天每日流量
+	if daily, err := h.userStore.ListUserDailyUsage(user.ID, 7); err == nil {
+		portalData.DailyTraffic = daily
+	}
+
+	// 各节点流量分布
+	if rawUsage, err := h.userStore.ListUserNodeUsage(user.ID); err == nil {
+		nodeList, _ := h.nodeStore.List()
+		nodeNames := make(map[string]string, len(nodeList))
+		for _, n := range nodeList {
+			nodeNames[n.ID] = n.Name
+		}
+		var totalBytes int64
+		for _, u := range rawUsage {
+			totalBytes += u.UploadBytes + u.DownloadBytes
+		}
+		for _, u := range rawUsage {
+			t := u.UploadBytes + u.DownloadBytes
+			if t == 0 {
+				continue
+			}
+			pct := 0
+			if totalBytes > 0 {
+				pct = int(float64(t) / float64(totalBytes) * 100)
+			}
+			name := nodeNames[u.NodeID]
+			if name == "" {
+				name = u.NodeID
+			}
+			portalData.NodeUsage = append(portalData.NodeUsage, userNodeUsageRow{
+				NodeName:      name,
+				UploadBytes:   u.UploadBytes,
+				DownloadBytes: u.DownloadBytes,
+				TotalBytes:    t,
+				Pct:           pct,
+			})
+		}
+	}
+
 	if h.settingsStore != nil {
 		enabled, _ := h.settingsStore.GetSetting("announcement_enabled")
 		if enabled == "true" {

@@ -20,12 +20,14 @@ function initCharts(root) {
     const existing = Chart.getChart(canvas);
     if (existing) existing.destroy();
     const type = canvas.dataset.chartType;
-    if      (type === 'traffic')   initTrafficChart(canvas);
-    else if (type === 'node-dist') initNodeDistChart(canvas);
-    else if (type === 'quota')     initQuotaChart(canvas);
-    else if (type === 'expiration') initExpirationChart(canvas);
-    else if (type === 'growth')    initGrowthChart(canvas);
-    else if (type === 'top-users') initTopUsersChart(canvas);
+    if      (type === 'traffic')        initTrafficChart(canvas);
+    else if (type === 'node-dist')      initNodeDistChart(canvas);
+    else if (type === 'quota')          initQuotaChart(canvas);
+    else if (type === 'expiration')     initExpirationChart(canvas);
+    else if (type === 'growth')         initGrowthChart(canvas);
+    else if (type === 'top-users')      initTopUsersChart(canvas);
+    else if (type === 'portal-doughnut') initPortalDoughnut(canvas);
+    else if (type === 'portal-daily')   initPortalDailyChart(canvas);
   });
 }
 function initTrafficChart(canvas) {
@@ -162,19 +164,83 @@ function initGrowthChart(canvas) {
 function initTopUsersChart(canvas) {
   const labels = JSON.parse(canvas.dataset.labels || '[]');
   const values = JSON.parse(canvas.dataset.values || '[]');
+  const rawValues = JSON.parse(canvas.dataset.rawValues || '[]');
+  // 仅当计费流量与实际流量存在差异时才展示双系列
+  const hasDiff = rawValues.length > 0 && rawValues.some((v, i) => v !== values[i]);
+  const datasets = hasDiff
+    ? [
+        { label: '计费', data: values, backgroundColor: 'rgba(99,102,241,.65)', borderRadius: 2 },
+        { label: '实际', data: rawValues, backgroundColor: 'rgba(20,184,166,.45)', borderRadius: 2 },
+      ]
+    : [{ data: values, backgroundColor: 'rgba(99,102,241,.65)', borderRadius: 2 }];
   new Chart(canvas, {
     type: 'bar',
-    data: { labels, datasets: [{ data: values, backgroundColor: 'rgba(99,102,241,.65)', borderRadius: 2 }] },
+    data: { labels, datasets },
     options: {
       indexAxis: 'y',
       responsive: true, maintainAspectRatio: false,
       plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: ctx => fmtBytes(ctx.raw) } },
+        legend: { display: hasDiff, labels: { color: '#9ca3af', font: { size: 10 }, boxWidth: 10, padding: 8 } },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label ?? ''} ${fmtBytes(ctx.raw)}`.trim() } },
       },
       scales: {
         x: { grid: { color: 'rgba(55,65,81,.4)' }, border: { display: false }, ticks: { color: '#4b5563', font: { size: 10 }, callback: v => fmtBytes(v) } },
         y: { grid: { display: false }, border: { display: false }, ticks: { color: '#9ca3af', font: { size: 11 } } },
+      },
+    },
+  });
+}
+// 用户主页：流量剩余环形图
+function initPortalDoughnut(canvas) {
+  const used  = parseInt(canvas.dataset.used  || '0', 10);
+  const limit = parseInt(canvas.dataset.limit || '0', 10);
+  const remaining = Math.max(0, limit - used);
+  const pct = limit > 0 ? used / limit : 0;
+  const usedColor = pct >= 1 ? '#ef4444' : pct >= 0.75 ? '#f59e0b' : '#6366f1';
+  new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [used, remaining],
+        backgroundColor: [usedColor, 'rgba(55,65,81,0.5)'],
+        borderWidth: 0,
+        hoverOffset: 0,
+      }],
+    },
+    options: {
+      cutout: '72%',
+      responsive: true, maintainAspectRatio: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => fmtBytes(ctx.raw) } },
+      },
+      animation: { duration: 600 },
+    },
+  });
+}
+// 用户主页：近7天每日流量柱图
+function initPortalDailyChart(canvas) {
+  const labels   = JSON.parse(canvas.dataset.labels   || '[]').map(d => { const p = d.split('-'); return `${parseInt(p[1])}/${parseInt(p[2])}`; });
+  const upload   = JSON.parse(canvas.dataset.upload   || '[]');
+  const download = JSON.parse(canvas.dataset.download || '[]');
+  new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: '上行', data: upload,   backgroundColor: 'rgba(99,102,241,.5)',  borderRadius: 2, stack: 's' },
+        { label: '下行', data: download, backgroundColor: 'rgba(20,184,166,.45)', borderRadius: 2, stack: 's' },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, labels: { color: '#6b7280', font: { size: 10 }, boxWidth: 8, padding: 8 } },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label} ${fmtBytes(ctx.raw)}` } },
+      },
+      scales: {
+        x: { stacked: true, grid: { display: false }, border: { display: false }, ticks: { color: '#4b5563', font: { size: 10 } } },
+        y: { stacked: true, grid: { color: 'rgba(55,65,81,.4)' }, border: { display: false }, ticks: { color: '#4b5563', font: { size: 10 }, callback: v => fmtBytes(v) } },
       },
     },
   });

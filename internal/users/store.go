@@ -97,11 +97,21 @@ type Store interface {
 	// 用户节点流量统计
 	AddUserNodeTraffic(userID, nodeID, date string, upload, download int64) error
 	ListUserNodeUsage(userID string) ([]UserNodeUsage, error)
+
+	// ListUserDailyUsage 返回用户近 days 天的每日流量（跨节点合并）。
+	ListUserDailyUsage(userID string, days int) ([]UserDailyUsage, error)
 }
 
 // UserNodeUsage 某用户在某节点的累计流量（所有日期汇总）。
 type UserNodeUsage struct {
 	NodeID        string
+	UploadBytes   int64
+	DownloadBytes int64
+}
+
+// UserDailyUsage 某用户某天的合并流量（跨节点求和）。
+type UserDailyUsage struct {
+	Date          string // YYYY-MM-DD
 	UploadBytes   int64
 	DownloadBytes int64
 }

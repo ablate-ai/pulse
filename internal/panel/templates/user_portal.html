@@ -47,17 +47,33 @@
     </div>
 
     <!-- 流量使用 -->
-    <div>
-      <div class="flex items-center justify-between text-xs text-gray-400 mb-1.5">
-        <span>流量使用</span>
-        <span>{{formatBytes .Data.User.UsedBytes}} / {{if gt0 .Data.User.TrafficLimit}}{{formatBytes .Data.User.TrafficLimit}}{{else}}不限{{end}}</span>
+    <div class="flex items-center gap-4">
+      {{if gt0 .Data.User.TrafficLimit}}
+      <!-- 有限额：环形图 -->
+      <div class="relative flex-shrink-0 w-20 h-20">
+        <canvas data-chart-type="portal-doughnut"
+          data-used="{{.Data.User.UsedBytes}}"
+          data-limit="{{.Data.User.TrafficLimit}}">
+        </canvas>
+        <div class="absolute inset-0 flex flex-col items-center justify-center">
+          <span class="text-xs font-semibold text-gray-200">{{trafficPct .Data.User.UsedBytes .Data.User.TrafficLimit}}%</span>
+        </div>
       </div>
-      <div class="w-full bg-gray-700 rounded-full h-2">
-        <div class="bg-indigo-500 h-2 rounded-full progress-bar" style="width: {{trafficPct .Data.User.UsedBytes .Data.User.TrafficLimit}}%"></div>
-      </div>
-      <div class="flex justify-between text-xs text-gray-600 mt-1">
-        <span>↑ {{formatBytes .Data.User.UploadBytes}}</span>
-        <span>↓ {{formatBytes .Data.User.DownloadBytes}}</span>
+      {{end}}
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center justify-between text-xs text-gray-400 mb-1.5">
+          <span>流量使用</span>
+          <span>{{formatBytes .Data.User.UsedBytes}} / {{if gt0 .Data.User.TrafficLimit}}{{formatBytes .Data.User.TrafficLimit}}{{else}}不限{{end}}</span>
+        </div>
+        {{if gt0 .Data.User.TrafficLimit}}
+        <div class="w-full bg-gray-700 rounded-full h-1.5">
+          <div class="bg-indigo-500 h-1.5 rounded-full progress-bar" style="width: {{trafficPct .Data.User.UsedBytes .Data.User.TrafficLimit}}%"></div>
+        </div>
+        {{end}}
+        <div class="flex justify-between text-xs text-gray-600 mt-1">
+          <span>↑ {{formatBytes .Data.User.UploadBytes}}</span>
+          <span>↓ {{formatBytes .Data.User.DownloadBytes}}</span>
+        </div>
       </div>
     </div>
 
@@ -68,7 +84,41 @@
     </div>
   </div>
 
-  <!-- 2. 订阅链接 -->
+  <!-- 2. 近7天流量趋势 -->
+  {{if .Data.DailyTraffic}}
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+    <div class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">近7天流量</div>
+    <div class="h-28">
+      <canvas data-chart-type="portal-daily"
+        data-labels='[{{range $i,$d := .Data.DailyTraffic}}{{if $i}},{{end}}"{{$d.Date}}"{{end}}]'
+        data-upload='[{{range $i,$d := .Data.DailyTraffic}}{{if $i}},{{end}}{{$d.UploadBytes}}{{end}}]'
+        data-download='[{{range $i,$d := .Data.DailyTraffic}}{{if $i}},{{end}}{{$d.DownloadBytes}}{{end}}]'>
+      </canvas>
+    </div>
+  </div>
+  {{end}}
+
+  <!-- 3. 节点流量分布 -->
+  {{if gt (len .Data.NodeUsage) 1}}
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+    <div class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">节点用量</div>
+    <div class="space-y-2.5">
+      {{range .Data.NodeUsage}}
+      <div>
+        <div class="flex items-center justify-between text-xs mb-1">
+          <span class="text-gray-300 truncate max-w-[160px]">{{.NodeName}}</span>
+          <span class="text-gray-500 shrink-0 ml-2">{{formatBytes .TotalBytes}} · {{.Pct}}%</span>
+        </div>
+        <div class="h-1 bg-gray-800 rounded-full overflow-hidden">
+          <div class="h-full bg-indigo-500 rounded-full" style="width: {{.Pct}}%"></div>
+        </div>
+      </div>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+
+  <!-- 4. 订阅链接 -->
   <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 space-y-3">
     <div class="text-xs font-medium text-gray-400 uppercase tracking-wider">订阅链接</div>
     <div class="flex items-center gap-2">

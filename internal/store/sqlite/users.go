@@ -309,6 +309,34 @@ func (s *UserStore) AddUserNodeTraffic(userID, nodeID, date string, upload, down
 	return nil
 }
 
+func (s *UserStore) ListUserDailyUsage(userID string, days int) ([]users.UserDailyUsage, error) {
+	if days <= 0 {
+		days = 7
+	}
+	since := time.Now().UTC().AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	rows, err := s.db.Query(`
+		SELECT date, SUM(upload_bytes), SUM(download_bytes)
+		FROM user_node_daily_usage
+		WHERE user_id = ? AND date >= ?
+		GROUP BY date
+		ORDER BY date
+	`, userID, since)
+	if err != nil {
+		return nil, fmt.Errorf("list user daily usage: %w", err)
+	}
+	defer rows.Close()
+
+	var out []users.UserDailyUsage
+	for rows.Next() {
+		var u users.UserDailyUsage
+		if err := rows.Scan(&u.Date, &u.UploadBytes, &u.DownloadBytes); err != nil {
+			return nil, fmt.Errorf("scan user daily usage: %w", err)
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
 func (s *UserStore) ListUserNodeUsage(userID string) ([]users.UserNodeUsage, error) {
 	rows, err := s.db.Query(`
 		SELECT node_id, SUM(upload_bytes), SUM(download_bytes)
