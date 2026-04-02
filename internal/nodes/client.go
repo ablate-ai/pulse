@@ -82,6 +82,9 @@ func NewClientWithHTTPClient(baseURL string, httpClient *http.Client) *Client {
 	}
 }
 
+// InitErr 返回客户端初始化时的错误（如 TLS 握手失败）。nil 表示可正常使用。
+func (c *Client) InitErr() error { return c.initErr }
+
 func buildHTTPClient(node Node, options ClientOptions) (*http.Client, error) {
 	httpClient := &http.Client{
 		Timeout: 5 * time.Second,

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"pulse/internal/idgen"
@@ -24,6 +25,9 @@ type API struct {
 	clientOptions nodes.ClientOptions
 	clientFactory func(node nodes.Node) *nodes.Client
 	applyOpts     jobs.ApplyOptions
+	// clientCache 缓存每个节点的 HTTP 客户端，避免每次调用都重新握手。
+	// 仅缓存初始化成功（InitErr==nil）的客户端；节点更新/删除时自动失效。
+	clientCache sync.Map // nodeID → *nodes.Client
 }
 
 type upsertNodeRequest struct {
@@ -170,12 +174,15 @@ func (a *API) handleNode(w http.ResponseWriter, r *http.Request, nodeID string) 
 			writeNodeError(w, err)
 			return
 		}
+		// BaseURL 可能已变更，旧的缓存客户端不再有效
+		a.evictClient(nodeID)
 		writeJSON(w, http.StatusOK, node)
 	case http.MethodDelete:
 		if err := a.store.Delete(nodeID); err != nil {
 			writeNodeError(w, err)
 			return
 		}
+		a.evictClient(nodeID)
 		writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
 	default:
 		writeMethodNotAllowed(w, http.MethodGet+", "+http.MethodPut+", "+http.MethodDelete)
@@ -409,11 +416,25 @@ func collectNodeUserIDs(accesses []users.UserInbound) []string {
 }
 
 func (a *API) clientFor(nodeID string) (*nodes.Client, error) {
+	// 命中缓存直接返回（复用连接池，避免重复 TLS 握手）
+	if v, ok := a.clientCache.Load(nodeID); ok {
+		return v.(*nodes.Client), nil
+	}
 	node, err := a.store.Get(nodeID)
 	if err != nil {
 		return nil, err
 	}
-	return a.clientFactory(node), nil
+	client := a.clientFactory(node)
+	// 仅缓存初始化成功的客户端；节点离线时不缓存，下次调用仍会重试
+	if client.InitErr() == nil {
+		a.clientCache.Store(nodeID, client)
+	}
+	return client, nil
+}
+
+// evictClient 使指定节点的缓存客户端失效（节点信息变更或删除时调用）。
+func (a *API) evictClient(nodeID string) {
+	a.clientCache.Delete(nodeID)
 }
 
 // Dial 根据节点 ID 返回 RPC 客户端，可用于 jobs.NodeDialer。
