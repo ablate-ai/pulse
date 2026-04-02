@@ -179,7 +179,7 @@
   <td class="px-4 py-3 text-xs text-gray-400">
     {{if gt .Devices 0}}<span class="text-violet-400 font-medium">{{.Devices}}</span>{{else}}<span class="text-gray-600">0</span>{{end}}
   </td>
-  <td class="px-4 py-3">
+  <td class="px-4 py-3 whitespace-nowrap">
     <div class="flex items-center gap-1">
       <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
               hx-get="/panel/users/{{.ID}}/edit"
@@ -251,7 +251,14 @@
     </div>
     <div>
       <label class="block text-xs font-medium text-gray-400 mb-1.5">过期时间（可选）</label>
-      <input type="datetime-local" name="expire_at"
+      <div class="flex gap-1 mb-1.5 flex-wrap">
+        <button type="button" onclick="setExpireIn(this,'expire_at',30)"  class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">30天</button>
+        <button type="button" onclick="setExpireIn(this,'expire_at',90)"  class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">90天</button>
+        <button type="button" onclick="setExpireIn(this,'expire_at',180)" class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">180天</button>
+        <button type="button" onclick="setExpireIn(this,'expire_at',365)" class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">1年</button>
+        <button type="button" onclick="clearExpire(this,'expire_at')"     class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-500 hover:bg-gray-600 hover:text-white transition-colors">×清除</button>
+      </div>
+      <input type="date" name="expire_at"
              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
     </div>
     <div>
@@ -312,7 +319,14 @@
     </div>
     <div id="on-hold-expire-section" {{if ne .Data.User.Status "on_hold"}}style="display:none"{{end}}>
       <label class="block text-xs font-medium text-gray-400 mb-1.5">On Hold 到期自动激活（留空 = 永久暂停）</label>
-      <input type="datetime-local" name="on_hold_expire_at" value="{{formatExpire .Data.User.OnHoldExpireAt}}"
+      <div class="flex gap-1 mb-1.5 flex-wrap">
+        <button type="button" onclick="setExpireIn(this,'on_hold_expire_at',30)"  class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">30天</button>
+        <button type="button" onclick="setExpireIn(this,'on_hold_expire_at',90)"  class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">90天</button>
+        <button type="button" onclick="setExpireIn(this,'on_hold_expire_at',180)" class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">180天</button>
+        <button type="button" onclick="setExpireIn(this,'on_hold_expire_at',365)" class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">1年</button>
+        <button type="button" onclick="clearExpire(this,'on_hold_expire_at')"     class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-500 hover:bg-gray-600 hover:text-white transition-colors">×清除</button>
+      </div>
+      <input type="date" name="on_hold_expire_at" value="{{formatExpire .Data.User.OnHoldExpireAt}}"
              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
     </div>
     <script>
@@ -340,7 +354,14 @@
     </div>
     <div>
       <label class="block text-xs font-medium text-gray-400 mb-1.5">过期时间（留空 = 永不）</label>
-      <input type="datetime-local" name="expire_at" value="{{formatExpire .Data.User.ExpireAt}}"
+      <div class="flex gap-1 mb-1.5 flex-wrap">
+        <button type="button" onclick="setExpireIn(this,'expire_at',30)"  class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">30天</button>
+        <button type="button" onclick="setExpireIn(this,'expire_at',90)"  class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">90天</button>
+        <button type="button" onclick="setExpireIn(this,'expire_at',180)" class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">180天</button>
+        <button type="button" onclick="setExpireIn(this,'expire_at',365)" class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">1年</button>
+        <button type="button" onclick="clearExpire(this,'expire_at')"     class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-500 hover:bg-gray-600 hover:text-white transition-colors">×清除</button>
+      </div>
+      <input type="date" name="expire_at" value="{{formatExpire .Data.User.ExpireAt}}"
              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
     </div>
     <div>

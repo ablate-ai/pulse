@@ -249,6 +249,30 @@ document.addEventListener('DOMContentLoaded', () => initCharts());
 document.addEventListener('htmx:afterSettle', e => initCharts(e.detail.elt));
 </script>
 <script>
+function setExpireIn(btn, fieldName, days) {
+  var d = new Date();
+  d.setDate(d.getDate() + days);
+  var iso = d.toISOString().slice(0, 10);
+  var form = btn.closest('form');
+  var input = form ? form.querySelector('[name="' + fieldName + '"]') : null;
+  if (input) { input.value = iso; }
+  // 高亮选中按钮
+  btn.closest('div').querySelectorAll('button[type="button"]').forEach(function(b) {
+    b.classList.remove('bg-indigo-600','text-white');
+    b.classList.add('bg-gray-700','text-gray-300');
+  });
+  btn.classList.remove('bg-gray-700','text-gray-300');
+  btn.classList.add('bg-indigo-600','text-white');
+}
+function clearExpire(btn, fieldName) {
+  var form = btn.closest('form');
+  var input = form ? form.querySelector('[name="' + fieldName + '"]') : null;
+  if (input) { input.value = ''; }
+  btn.closest('div').querySelectorAll('button[type="button"]').forEach(function(b) {
+    b.classList.remove('bg-indigo-600','text-white');
+    b.classList.add('bg-gray-700','text-gray-300');
+  });
+}
 function showToast(msg, type) {
   const toast = document.getElementById('toast');
   if (!toast) return;

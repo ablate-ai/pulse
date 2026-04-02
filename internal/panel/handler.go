@@ -627,7 +627,7 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 
 	var expireAt *time.Time
 	if expireAtStr != "" {
-		t, err := time.ParseInLocation("2006-01-02T15:04", expireAtStr, time.Local)
+		t, err := time.ParseInLocation("2006-01-02", expireAtStr, time.Local)
 		if err != nil {
 			htmxError(w, http.StatusBadRequest, "invalid expiry format")
 			return
@@ -723,7 +723,7 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if expireAtStr := r.FormValue("expire_at"); expireAtStr != "" {
-		t, err := time.ParseInLocation("2006-01-02T15:04", expireAtStr, time.Local)
+		t, err := time.ParseInLocation("2006-01-02", expireAtStr, time.Local)
 		if err != nil {
 			htmxError(w, http.StatusBadRequest, "invalid expiry format")
 			return
@@ -736,7 +736,7 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if onHoldExpireStr := r.FormValue("on_hold_expire_at"); onHoldExpireStr != "" {
-		t, err := time.ParseInLocation("2006-01-02T15:04", onHoldExpireStr, time.Local)
+		t, err := time.ParseInLocation("2006-01-02", onHoldExpireStr, time.Local)
 		if err != nil {
 			htmxError(w, http.StatusBadRequest, "invalid on-hold expiry format")
 			return
