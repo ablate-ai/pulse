@@ -727,6 +727,10 @@
               hx-get="/panel/inbounds/{{.ID}}/hosts"
               hx-target="#modal-body"
               hx-on::after-request="document.getElementById('app-modal').showModal()">Hosts</button>
+      <button class="text-xs text-gray-400 hover:text-emerald-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+              hx-get="/panel/inbounds/{{.ID}}/users"
+              hx-target="#modal-body"
+              hx-on::after-request="document.getElementById('app-modal').showModal()">分配用户</button>
       <button class="text-xs text-red-500 hover:text-red-400 px-2 py-1 rounded hover:bg-red-500/10 transition-colors"
               hx-delete="/panel/inbounds/{{.ID}}"
               hx-target="#inbounds-tbody"
@@ -738,6 +742,51 @@
 {{else}}
 <tr><td colspan="5" class="px-4 py-10 text-center text-sm text-gray-500">暂无 Inbound</td></tr>
 {{end}}
+{{end}}
+
+
+{{define "partial-inbound-users-modal"}}
+<div class="p-5 w-full max-w-md">
+  <div class="flex items-center justify-between mb-4">
+    <div>
+      <h3 class="text-base font-semibold text-gray-100">分配用户</h3>
+      <p class="text-xs text-gray-500 mt-0.5">{{.Data.Inbound.Tag}} · 勾选后点击保存</p>
+    </div>
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+
+  <form hx-post="/panel/inbounds/{{.Data.Inbound.ID}}/users"
+        hx-on::after-request="if(event.detail.successful){ document.getElementById('app-modal').close() }"
+        class="space-y-2">
+
+    {{if .Data.Users}}
+    <div class="max-h-72 overflow-y-auto space-y-1 pr-1">
+      {{range .Data.Users}}
+      <label class="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-gray-800 transition-colors">
+        <input type="checkbox" name="user_ids" value="{{.ID}}"
+               {{if index $.Data.AssignedUserIDs .ID}}checked{{end}}
+               class="w-4 h-4 rounded border-gray-600 bg-gray-800 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-gray-900">
+        <span class="text-sm text-gray-200">{{.Username}}</span>
+        {{if index $.Data.AssignedUserIDs .ID}}
+        <span class="ml-auto text-xs text-emerald-500">已分配</span>
+        {{end}}
+      </label>
+      {{end}}
+    </div>
+    {{else}}
+    <p class="text-center text-sm text-gray-500 py-6">暂无用户</p>
+    {{end}}
+
+    <div class="flex justify-end gap-2 pt-3 border-t border-gray-800">
+      <button type="button" onclick="document.getElementById('app-modal').close()"
+              class="px-4 py-2 text-sm text-gray-400 hover:text-gray-200 rounded-lg hover:bg-gray-800 transition-colors">取消</button>
+      <button type="submit"
+              class="px-4 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors">保存</button>
+    </div>
+  </form>
+</div>
 {{end}}
 
 

@@ -306,6 +306,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /panel/users/{id}/node-usage", h.requireAuth(h.nodeUsageModal))
 	mux.HandleFunc("GET /panel/inbounds/{id}/hosts", h.requireAuth(h.hostsModal))
 	mux.HandleFunc("POST /panel/inbounds/{id}/hosts", h.requireAuth(h.createHost))
+	mux.HandleFunc("GET /panel/inbounds/{id}/users", h.requireAuth(h.inboundUsersModal))
+	mux.HandleFunc("POST /panel/inbounds/{id}/users", h.requireAuth(h.updateInboundUsers))
 	mux.HandleFunc("GET /panel/hosts/{id}/edit", h.requireAuth(h.hostEditForm))
 	mux.HandleFunc("PUT /panel/hosts/{id}", h.requireAuth(h.updateHost))
 	mux.HandleFunc("DELETE /panel/hosts/{id}", h.requireAuth(h.deleteHost))
@@ -2135,6 +2137,108 @@ func (h *Handler) deleteInbound(w http.ResponseWriter, r *http.Request) {
 	}
 	h.applyInboundNode(ib.NodeID)
 	h.renderInboundsListFromStore(w)
+}
+
+// inboundUsersModalData 传给「分配用户」弹窗模板的数据。
+type inboundUsersModalData struct {
+	Inbound         inbounds.Inbound
+	Users           []users.User
+	AssignedUserIDs map[string]bool // userID → 已分配
+}
+
+// inboundUsersModal 展示某个 inbound 的用户分配弹窗（GET）。
+func (h *Handler) inboundUsersModal(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	ib, err := h.ibStore.GetInbound(id)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "inbound not found")
+		return
+	}
+	allUsers, err := h.userStore.ListUsers()
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to get users: "+err.Error())
+		return
+	}
+	existing, err := h.userStore.ListUserInboundsByInbound(id)
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to get assignments: "+err.Error())
+		return
+	}
+	assigned := make(map[string]bool, len(existing))
+	for _, acc := range existing {
+		assigned[acc.UserID] = true
+	}
+	h.renderPartial(w, "partial-inbound-users-modal", inboundUsersModalData{
+		Inbound:         ib,
+		Users:           allUsers,
+		AssignedUserIDs: assigned,
+	})
+}
+
+// updateInboundUsers 根据提交的用户 ID 列表更新 inbound 的用户分配（POST）。
+func (h *Handler) updateInboundUsers(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	ib, err := h.ibStore.GetInbound(id)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "inbound not found")
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		htmxError(w, http.StatusBadRequest, "invalid form data")
+		return
+	}
+	selectedUserIDs := r.Form["user_ids"]
+
+	wanted := make(map[string]struct{}, len(selectedUserIDs))
+	for _, uid := range selectedUserIDs {
+		wanted[uid] = struct{}{}
+	}
+
+	existing, err := h.userStore.ListUserInboundsByInbound(id)
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to get assignments: "+err.Error())
+		return
+	}
+	existingByUser := make(map[string]users.UserInbound, len(existing))
+	for _, acc := range existing {
+		existingByUser[acc.UserID] = acc
+	}
+
+	// 新增未分配的用户凭据
+	for _, uid := range selectedUserIDs {
+		if _, ok := existingByUser[uid]; !ok {
+			secret := panelRandomToken(12)
+			if ib.Protocol == "shadowsocks" && strings.HasPrefix(ib.Method, "2022-") {
+				secret = generateSSPassword(ib.Method)
+			}
+			acc := users.UserInbound{
+				ID:        idgen.NextString(),
+				UserID:    uid,
+				InboundID: id,
+				NodeID:    ib.NodeID,
+				UUID:      panelRandomUUID(),
+				Secret:    secret,
+			}
+			if _, err := h.userStore.UpsertUserInbound(acc); err != nil {
+				htmxError(w, http.StatusInternalServerError, "failed to add user: "+err.Error())
+				return
+			}
+		}
+	}
+
+	// 移除已取消选中的用户凭据
+	for uid, acc := range existingByUser {
+		if _, ok := wanted[uid]; !ok {
+			if err := h.userStore.DeleteUserInbound(acc.ID); err != nil {
+				htmxError(w, http.StatusInternalServerError, "failed to remove user: "+err.Error())
+				return
+			}
+		}
+	}
+
+	h.applyInboundNode(ib.NodeID)
+	w.Header().Set("HX-Trigger", `{"pulseToast":"用户分配已保存"}`)
+	w.WriteHeader(http.StatusOK)
 }
 
 type inboundListData struct {
