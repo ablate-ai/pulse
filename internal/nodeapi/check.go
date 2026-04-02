@@ -33,6 +33,7 @@ func (a *API) handleCheck(w http.ResponseWriter, r *http.Request) {
 		{checkClaude},
 		{checkOpenAI},
 		{checkDisney},
+		{checkYouTubePremium},
 	}
 
 	results := make([]serviceCheckResult, len(checkers))
@@ -117,6 +118,21 @@ func checkOpenAI(ctx context.Context) serviceCheckResult {
 	defer resp.Body.Close()
 	io.Copy(io.Discard, resp.Body)
 	r.Unlocked = resp.StatusCode < 400
+	return r
+}
+
+func checkYouTubePremium(ctx context.Context) serviceCheckResult {
+	r := serviceCheckResult{Service: "youtube premium"}
+	resp, err := doCheck(ctx, "https://www.youtube.com/premium")
+	if err != nil {
+		return r
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+
+	finalURL := resp.Request.URL.String()
+	// 重定向到 /unavailable 或非 premium 路径说明该地区不支持
+	r.Unlocked = resp.StatusCode == 200 && strings.Contains(finalURL, "premium")
 	return r
 }
 
