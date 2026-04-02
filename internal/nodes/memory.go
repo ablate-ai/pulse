@@ -83,6 +83,14 @@ func (s *MemoryStore) CleanupOldDailyUsage(retainDays int) error {
 	return nil // 内存 store 不持久化日统计，无需清理
 }
 
+func (s *MemoryStore) UpsertNodeCheckResults(nodeID string, results []CheckResult) error {
+	return nil // 内存 store 仅用于测试，不持久化检测结果
+}
+
+func (s *MemoryStore) ListAllNodeCheckResults() (map[string][]CheckResult, error) {
+	return nil, nil
+}
+
 func (s *MemoryStore) List() ([]Node, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

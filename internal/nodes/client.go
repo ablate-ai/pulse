@@ -281,6 +281,25 @@ func (c *Client) CaddyStatus(ctx context.Context) (CaddyStatusResponse, error) {
 	return out, err
 }
 
+// CheckUnlockResult 节点检测单个服务的结果。
+type CheckUnlockResult struct {
+	Service  string `json:"service"`
+	Unlocked bool   `json:"unlocked"`
+	Region   string `json:"region,omitempty"`
+}
+
+// CheckUnlockResponse 节点解锁检测接口响应。
+type CheckUnlockResponse struct {
+	Results []CheckUnlockResult `json:"results"`
+}
+
+// CheckUnlock 向节点发起解锁检测请求，节点并发检测各服务并返回结果。
+func (c *Client) CheckUnlock(ctx context.Context) (CheckUnlockResponse, error) {
+	var out CheckUnlockResponse
+	err := c.do(ctx, http.MethodGet, "/v1/node/check", nil, &out)
+	return out, err
+}
+
 // TrojanRoute 表示一条 Trojan Caddy 路由（域名 + inbound 端口）。
 type TrojanRoute struct {
 	Domain string `json:"domain"`

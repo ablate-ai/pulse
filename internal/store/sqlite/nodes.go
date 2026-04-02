@@ -165,3 +165,51 @@ func (s *NodeStore) CleanupOldDailyUsage(retainDays int) error {
 	}
 	return nil
 }
+
+func (s *NodeStore) UpsertNodeCheckResults(nodeID string, results []nodes.CheckResult) error {
+	for _, r := range results {
+		unlocked := 0
+		if r.Unlocked {
+			unlocked = 1
+		}
+		_, err := s.db.Exec(`
+			INSERT INTO node_check_results (node_id, service, unlocked, region, checked_at)
+			VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT(node_id, service) DO UPDATE SET
+				unlocked   = excluded.unlocked,
+				region     = excluded.region,
+				checked_at = excluded.checked_at
+		`, nodeID, r.Service, unlocked, r.Region, r.CheckedAt.UTC().Format(time.RFC3339))
+		if err != nil {
+			return fmt.Errorf("upsert node check result: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *NodeStore) ListAllNodeCheckResults() (map[string][]nodes.CheckResult, error) {
+	rows, err := s.db.Query(`
+		SELECT node_id, service, unlocked, region, checked_at
+		FROM node_check_results
+		ORDER BY node_id, service
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list node check results: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string][]nodes.CheckResult)
+	for rows.Next() {
+		var r nodes.CheckResult
+		var nodeID string
+		var unlocked int
+		var checkedAt string
+		if err := rows.Scan(&nodeID, &r.Service, &unlocked, &r.Region, &checkedAt); err != nil {
+			return nil, fmt.Errorf("scan node check result: %w", err)
+		}
+		r.Unlocked = unlocked != 0
+		r.CheckedAt, _ = time.Parse(time.RFC3339, checkedAt)
+		result[nodeID] = append(result[nodeID], r)
+	}
+	return result, rows.Err()
+}

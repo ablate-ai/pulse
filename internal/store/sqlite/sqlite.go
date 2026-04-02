@@ -163,6 +163,15 @@ func (db *DB) init() error {
 			accessed_at TEXT NOT NULL
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_sub_access_logs_user_id ON sub_access_logs(user_id);`,
+		// node_check_results：节点解锁检测结果，按 (node_id, service) 唯一存储
+		`CREATE TABLE IF NOT EXISTS node_check_results (
+			node_id    TEXT NOT NULL,
+			service    TEXT NOT NULL,
+			unlocked   INTEGER NOT NULL DEFAULT 0,
+			region     TEXT NOT NULL DEFAULT '',
+			checked_at TEXT NOT NULL,
+			PRIMARY KEY (node_id, service)
+		);`,
 		// user_node_daily_usage：用户在各节点的按天流量，用于节点用量分析
 		`CREATE TABLE IF NOT EXISTS user_node_daily_usage (
 			user_id        TEXT NOT NULL,

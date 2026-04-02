@@ -26,6 +26,7 @@ func New(manager *singbox.Manager, certs *certmgr.Manager) *API {
 }
 
 func (a *API) Register(mux *http.ServeMux) {
+	mux.HandleFunc("GET /v1/node/check", a.handleCheck)
 	mux.HandleFunc("/v1/node/caddy/sync", a.handleCaddySync)
 	mux.HandleFunc("GET /v1/node/caddy/status", a.handleCaddyStatus)
 	mux.HandleFunc("POST /v1/node/caddy/config", a.handleCaddyConfig)

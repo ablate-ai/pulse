@@ -1,6 +1,9 @@
 package nodes
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 var ErrNodeNotFound = errors.New("node not found")
 
@@ -15,6 +18,14 @@ type Node struct {
 	CaddyPanelDomain  string  `json:"caddy_panel_domain"`
 	CaddyExtraProxies string  `json:"caddy_extra_proxies"` // 额外反代规则，每行一条 "domain:port"
 	CaddyEnabled      bool    `json:"caddy_enabled"`
+}
+
+// CheckResult 节点解锁检测结果，按 (node_id, service) 唯一存储。
+type CheckResult struct {
+	Service   string    `json:"service"`
+	Unlocked  bool      `json:"unlocked"`
+	Region    string    `json:"region"`
+	CheckedAt time.Time `json:"checked_at"`
 }
 
 // NodeDailyUsage 某节点某日的流量快照。
@@ -39,4 +50,8 @@ type Store interface {
 	ListNodeDailyUsage(days int) ([]NodeDailyUsage, error)
 	// CleanupOldDailyUsage 删除超过 retainDays 天的历史日流量记录。
 	CleanupOldDailyUsage(retainDays int) error
+	// UpsertNodeCheckResults 批量写入节点解锁检测结果（按 node_id+service 唯一）。
+	UpsertNodeCheckResults(nodeID string, results []CheckResult) error
+	// ListAllNodeCheckResults 返回所有节点的解锁检测结果，按 nodeID 分组。
+	ListAllNodeCheckResults() (map[string][]CheckResult, error)
 }

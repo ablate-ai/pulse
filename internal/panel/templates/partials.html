@@ -540,61 +540,96 @@
 
 {{define "partial-node-rows"}}
 {{range .Data}}
-<div class="bg-gray-900 rounded-xl border border-gray-800 px-5 py-4 flex items-center justify-between" id="node-{{.Node.ID}}">
-  <div class="flex-1 min-w-0 mr-4">
-    <div class="flex items-center gap-2">
-      <span class="font-medium text-gray-100 text-sm">{{.Node.Name}}</span>
-      {{if ne .Node.TrafficRate 1.0}}<span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">×{{printf "%.2g" .Node.TrafficRate}}</span>{{end}}
+<div class="bg-gray-900 rounded-xl border border-gray-800 px-5 py-4" id="node-{{.Node.ID}}">
+  <div class="flex items-center justify-between">
+    <div class="flex-1 min-w-0 mr-4">
+      <div class="flex items-center gap-2">
+        <span class="font-medium text-gray-100 text-sm">{{.Node.Name}}</span>
+        {{if ne .Node.TrafficRate 1.0}}<span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">×{{printf "%.2g" .Node.TrafficRate}}</span>{{end}}
+      </div>
+      <div class="text-xs text-gray-500 mt-0.5 truncate">{{.Node.BaseURL}}</div>
+      {{if or .SingboxVer .NodeVer}}
+      <div class="flex items-center gap-2 mt-1">
+        {{if .NodeVer}}<span class="text-xs text-gray-600">node {{.NodeVer}}</span>{{end}}
+        {{if .SingboxVer}}<span class="text-xs text-gray-600">sing-box {{.SingboxVer}}</span>{{end}}
+      </div>
+      {{end}}
     </div>
-    <div class="text-xs text-gray-500 mt-0.5 truncate">{{.Node.BaseURL}}</div>
-    {{if or .SingboxVer .NodeVer}}
-    <div class="flex items-center gap-2 mt-1">
-      {{if .NodeVer}}<span class="text-xs text-gray-600">node {{.NodeVer}}</span>{{end}}
-      {{if .SingboxVer}}<span class="text-xs text-gray-600">sing-box {{.SingboxVer}}</span>{{end}}
+    <div class="flex items-center gap-3 flex-shrink-0">
+      {{if eq .Status "online"}}
+      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/15 text-emerald-400">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>Online
+      </span>
+      {{else if eq .Status "idle"}}
+      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-yellow-500/15 text-yellow-400">
+        <span class="w-1.5 h-1.5 rounded-full bg-yellow-400"></span>未配置
+      </span>
+      {{else}}
+      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-red-500/15 text-red-400">
+        <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span>Offline
+      </span>
+      {{end}}
+      <button class="text-xs text-gray-400 hover:text-purple-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-wait"
+              hx-post="/panel/nodes/{{.Node.ID}}/check"
+              hx-target="#check-results-{{.Node.ID}}"
+              hx-swap="outerHTML"
+              hx-disabled-elt="this">检测</button>
+      <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+              hx-get="/panel/nodes/{{.Node.ID}}/edit"
+              hx-target="#modal-body"
+              hx-on::after-request="document.getElementById('app-modal').showModal()">编辑</button>
+      <button class="text-xs text-gray-400 hover:text-sky-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+              hx-get="/panel/nodes/{{.Node.ID}}/config"
+              hx-target="#modal-body"
+              hx-on::after-request="var m=document.getElementById('app-modal'); m.style.maxWidth='56rem'; m.showModal(); m.addEventListener('close',function(){m.style.maxWidth='';},{once:true})">查看配置</button>
+      <button class="text-xs text-gray-400 hover:text-emerald-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+              hx-get="/panel/nodes/{{.Node.ID}}/logs"
+              hx-target="#modal-body"
+              hx-on::after-request="var m=document.getElementById('app-modal'); m.style.maxWidth='56rem'; m.showModal(); m.addEventListener('close',function(){m.style.maxWidth='';},{once:true})">日志</button>
+      <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-wait"
+              hx-post="/panel/nodes/{{.Node.ID}}/restart"
+              hx-target="#nodes-list"
+              hx-swap="innerHTML"
+              hx-disabled-elt="this">重启</button>
+      <button class="text-xs text-red-500 hover:text-red-400 px-2 py-1 rounded hover:bg-red-500/10 transition-colors"
+              hx-delete="/panel/nodes/{{.Node.ID}}"
+              hx-target="#nodes-list"
+              hx-swap="innerHTML"
+              hx-confirm="确定删除节点 {{.Node.Name}}？">删除</button>
     </div>
-    {{end}}
   </div>
-  <div class="flex items-center gap-3 flex-shrink-0">
-    {{if eq .Status "online"}}
-    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/15 text-emerald-400">
-      <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>Online
-    </span>
-    {{else if eq .Status "idle"}}
-    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-yellow-500/15 text-yellow-400">
-      <span class="w-1.5 h-1.5 rounded-full bg-yellow-400"></span>未配置
-    </span>
+  {{if .CheckResults}}
+  <div id="check-results-{{.Node.ID}}" class="flex items-center gap-1.5 mt-2.5 pt-2.5 border-t border-gray-800/60 flex-wrap">
+    {{range .CheckResults}}
+    {{if .Unlocked}}
+    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-emerald-500/15 text-emerald-400">✓ {{.Service}}{{if .Region}} ({{.Region}}){{end}}</span>
     {{else}}
-    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-red-500/15 text-red-400">
-      <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span>Offline
-    </span>
+    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-red-500/15 text-red-400">✗ {{.Service}}</span>
     {{end}}
-    <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
-            hx-get="/panel/nodes/{{.Node.ID}}/edit"
-            hx-target="#modal-body"
-            hx-on::after-request="document.getElementById('app-modal').showModal()">编辑</button>
-    <button class="text-xs text-gray-400 hover:text-sky-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
-            hx-get="/panel/nodes/{{.Node.ID}}/config"
-            hx-target="#modal-body"
-            hx-on::after-request="var m=document.getElementById('app-modal'); m.style.maxWidth='56rem'; m.showModal(); m.addEventListener('close',function(){m.style.maxWidth='';},{once:true})">查看配置</button>
-    <button class="text-xs text-gray-400 hover:text-emerald-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
-            hx-get="/panel/nodes/{{.Node.ID}}/logs"
-            hx-target="#modal-body"
-            hx-on::after-request="var m=document.getElementById('app-modal'); m.style.maxWidth='56rem'; m.showModal(); m.addEventListener('close',function(){m.style.maxWidth='';},{once:true})">日志</button>
-    <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-wait"
-            hx-post="/panel/nodes/{{.Node.ID}}/restart"
-            hx-target="#nodes-list"
-            hx-swap="innerHTML"
-            hx-disabled-elt="this">重启</button>
-    <button class="text-xs text-red-500 hover:text-red-400 px-2 py-1 rounded hover:bg-red-500/10 transition-colors"
-            hx-delete="/panel/nodes/{{.Node.ID}}"
-            hx-target="#nodes-list"
-            hx-swap="innerHTML"
-            hx-confirm="确定删除节点 {{.Node.Name}}？">删除</button>
+    {{end}}
+    {{with index .CheckResults 0}}<span class="text-xs text-gray-700 ml-1">{{formatCheckTime .CheckedAt}}</span>{{end}}
   </div>
+  {{else}}
+  <div id="check-results-{{.Node.ID}}"></div>
+  {{end}}
 </div>
 {{else}}
 <div class="text-center text-sm text-gray-500 py-10">暂无节点</div>
 {{end}}
+{{end}}
+
+
+{{define "partial-node-check-results"}}
+<div id="check-results-{{.Data.NodeID}}" class="flex items-center gap-1.5 mt-2.5 pt-2.5 border-t border-gray-800/60 flex-wrap">
+  {{range .Data.Results}}
+  {{if .Unlocked}}
+  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-emerald-500/15 text-emerald-400">✓ {{.Service}}{{if .Region}} ({{.Region}}){{end}}</span>
+  {{else}}
+  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-red-500/15 text-red-400">✗ {{.Service}}</span>
+  {{end}}
+  {{end}}
+  {{with index .Data.Results 0}}<span class="text-xs text-gray-700 ml-1">{{formatCheckTime .CheckedAt}}</span>{{end}}
+</div>
 {{end}}
 
 

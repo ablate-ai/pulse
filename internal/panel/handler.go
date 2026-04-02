@@ -180,10 +180,17 @@ type pageData struct {
 
 // nodeWithStatus 节点及其运行状态。
 type nodeWithStatus struct {
-	Node        nodes.Node
-	Status      string // "online" / "offline" / "idle"
-	SingboxVer  string // sing-box 版本
-	NodeVer     string // pulse-node 编译版本
+	Node         nodes.Node
+	Status       string // "online" / "offline" / "idle"
+	SingboxVer   string // sing-box 版本
+	NodeVer      string // pulse-node 编译版本
+	CheckResults []nodes.CheckResult
+}
+
+// checkResultsPartialData 传给解锁检测结果局部模板的数据。
+type checkResultsPartialData struct {
+	NodeID  string
+	Results []nodes.CheckResult
 }
 
 // inboundHostsData 传给 Host 相关模板的数据结构。
@@ -314,6 +321,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /panel/nodes/{id}/apply-config", h.requireAuth(h.applyNodeConfig))
 	mux.HandleFunc("GET /panel/nodes/{id}/logs", h.requireAuth(h.nodeLogsModal))
 	mux.HandleFunc("GET /panel/nodes/{id}/logs/stream", h.requireAuth(h.nodeLogsStream))
+
+	mux.HandleFunc("POST /panel/nodes/{id}/check", h.requireAuth(h.nodeCheckUnlock))
 
 	mux.HandleFunc("GET /caddy", h.requireAuth(h.caddyPage))
 	mux.HandleFunc("GET /panel/caddy/list", h.requireAuth(h.caddyListPartial))
@@ -1369,9 +1378,12 @@ func (h *Handler) nodesListPartial(w http.ResponseWriter, r *http.Request) {
 		htmxError(w, http.StatusInternalServerError, "failed to get node list: "+err.Error())
 		return
 	}
+	checkMap, _ := h.nodeStore.ListAllNodeCheckResults()
 	result := make([]nodeWithStatus, 0, len(nodeList))
 	for _, n := range nodeList {
-		result = append(result, h.fetchNodeStatus(r.Context(), n))
+		ns := h.fetchNodeStatus(r.Context(), n)
+		ns.CheckResults = checkMap[n.ID]
+		result = append(result, ns)
 	}
 	h.renderPartial(w, "partial-node-rows", result)
 }
@@ -1701,11 +1713,52 @@ func (h *Handler) renderNodesListFromStore(w http.ResponseWriter, r *http.Reques
 		htmxError(w, http.StatusInternalServerError, "failed to get node list: "+err.Error())
 		return
 	}
+	checkMap, _ := h.nodeStore.ListAllNodeCheckResults()
 	result := make([]nodeWithStatus, 0, len(nodeList))
 	for _, n := range nodeList {
-		result = append(result, h.fetchNodeStatus(r.Context(), n))
+		ns := h.fetchNodeStatus(r.Context(), n)
+		ns.CheckResults = checkMap[n.ID]
+		result = append(result, ns)
 	}
 	h.renderPartial(w, "partial-node-rows", result)
+}
+
+// nodeCheckUnlock 触发节点解锁检测，结果写入 store 并返回局部 HTML。
+func (h *Handler) nodeCheckUnlock(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	client, err := h.dial(id)
+	if err != nil {
+		htmxError(w, http.StatusBadGateway, "无法连接节点: "+err.Error())
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	resp, err := client.CheckUnlock(ctx)
+	if err != nil {
+		htmxError(w, http.StatusBadGateway, "检测失败: "+err.Error())
+		return
+	}
+
+	now := time.Now().UTC()
+	results := make([]nodes.CheckResult, 0, len(resp.Results))
+	for _, cr := range resp.Results {
+		results = append(results, nodes.CheckResult{
+			Service:   cr.Service,
+			Unlocked:  cr.Unlocked,
+			Region:    cr.Region,
+			CheckedAt: now,
+		})
+	}
+
+	_ = h.nodeStore.UpsertNodeCheckResults(id, results)
+
+	h.renderPartial(w, "partial-node-check-results", checkResultsPartialData{
+		NodeID:  id,
+		Results: results,
+	})
 }
 
 // userFormData 用户表单页面数据，包含 inbound 列表。
@@ -2345,6 +2398,23 @@ func templateFuncs() template.FuncMap {
 			}
 			return pct
 		},
+		// dict 构造 map[string]any，供模板中传参给子模板使用（如 {{template "foo" (dict "Data" .)}}）。
+		"dict": func(args ...any) map[string]any {
+			m := make(map[string]any, len(args)/2)
+			for i := 0; i+1 < len(args); i += 2 {
+				if key, ok := args[i].(string); ok {
+					m[key] = args[i+1]
+				}
+			}
+			return m
+		},
+		// formatCheckTime 格式化检测时间，零值返回空字符串。
+		"formatCheckTime": func(t time.Time) string {
+			if t.IsZero() {
+				return ""
+			}
+			return t.Local().Format("01-02 15:04")
+		},
 		// formatExpire 格式化过期时间，nil 或零值返回 "永不"。
 		"formatExpire": func(t *time.Time) string {
 			if t == nil || t.IsZero() {
@@ -2721,28 +2791,46 @@ func (h *Handler) userPortalPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 收集该用户有权访问的节点及协议列表
-	accesses, _ := h.userStore.ListUserInboundsByUser(user.ID)
+	// 从指标缓存直接读取节点运行状态，避免用户主页首次渲染时出现占位符闪动。
+	nodeIDs := h.getUserNodeIDs(user.ID)
+	h.metricsCache.mu.RLock()
+	allMetrics := h.metricsCache.data
+	h.metricsCache.mu.RUnlock()
+
+	var filteredMetrics []nodeMetrics
+	for _, m := range allMetrics {
+		if _, ok := nodeIDs[m.Node.ID]; ok {
+			filteredMetrics = append(filteredMetrics, m)
+		}
+	}
+
 	var nodeInfos []userNodeInfo
-	for _, acc := range accesses {
-		node, err := h.nodeStore.Get(acc.NodeID)
-		if err != nil {
-			continue
-		}
-		nodeInbounds, err := h.ibStore.ListInboundsByNode(acc.NodeID)
-		if err != nil {
-			continue
-		}
-		var protocols []string
-		seen := make(map[string]bool)
-		for _, ib := range nodeInbounds {
-			label := protocolLabel(ib.Protocol)
-			if !seen[label] {
-				seen[label] = true
-				protocols = append(protocols, label)
+	if len(filteredMetrics) > 0 {
+		// 缓存有数据：携带完整运行状态
+		nodeInfos = metricsToUserNodeInfos(filteredMetrics)
+	} else {
+		// 缓存为空（服务器刚启动）：回退到节点基本信息，状态设为 offline
+		accesses, _ := h.userStore.ListUserInboundsByUser(user.ID)
+		for _, acc := range accesses {
+			node, err := h.nodeStore.Get(acc.NodeID)
+			if err != nil {
+				continue
 			}
+			nodeInbounds, err := h.ibStore.ListInboundsByNode(acc.NodeID)
+			if err != nil {
+				continue
+			}
+			var protocols []string
+			seen := make(map[string]bool)
+			for _, ib := range nodeInbounds {
+				label := protocolLabel(ib.Protocol)
+				if !seen[label] {
+					seen[label] = true
+					protocols = append(protocols, label)
+				}
+			}
+			nodeInfos = append(nodeInfos, userNodeInfo{Name: node.Name, Protocols: protocols, Status: "offline"})
 		}
-		nodeInfos = append(nodeInfos, userNodeInfo{Name: node.Name, Protocols: protocols})
 	}
 
 	portalData := userPortalData{User: user, SubURL: subURL(r, user.SubToken), Nodes: nodeInfos}
