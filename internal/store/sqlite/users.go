@@ -32,8 +32,9 @@ func (s *UserStore) UpsertUser(user users.User) (users.User, error) {
 		INSERT INTO users (
 			id, username, status, note, expire_at, data_limit_reset_strategy,
 			traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
+			raw_upload_bytes, raw_download_bytes,
 			on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices, created_at, sub_token
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			username = excluded.username,
 			status = excluded.status,
@@ -44,6 +45,8 @@ func (s *UserStore) UpsertUser(user users.User) (users.User, error) {
 			upload_bytes = excluded.upload_bytes,
 			download_bytes = excluded.download_bytes,
 			used_bytes = excluded.used_bytes,
+			raw_upload_bytes = excluded.raw_upload_bytes,
+			raw_download_bytes = excluded.raw_download_bytes,
 			on_hold_expire_at = excluded.on_hold_expire_at,
 			last_traffic_reset_at = excluded.last_traffic_reset_at,
 			online_at = excluded.online_at,
@@ -54,6 +57,7 @@ func (s *UserStore) UpsertUser(user users.User) (users.User, error) {
 	`,
 		user.ID, user.Username, user.Status, user.Note, formatTimePtr(user.ExpireAt), user.DataLimitResetStrategy,
 		user.TrafficLimit, user.UploadBytes, user.DownloadBytes, user.UsedBytes,
+		user.RawUploadBytes, user.RawDownloadBytes,
 		formatTimePtr(user.OnHoldExpireAt), formatTimePtr(user.LastTrafficResetAt), formatTimePtr(user.OnlineAt),
 		user.Connections, user.Devices, user.CreatedAt.Format(time.RFC3339Nano), user.SubToken,
 	)
@@ -67,6 +71,7 @@ func (s *UserStore) GetUser(id string) (users.User, error) {
 	row := s.db.QueryRow(`
 		SELECT id, username, status, note, expire_at, data_limit_reset_strategy,
 		       traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
+		       raw_upload_bytes, raw_download_bytes,
 		       on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices, created_at, sub_token
 		FROM users WHERE id = ?
 	`, id)
@@ -77,6 +82,7 @@ func (s *UserStore) GetUserBySubToken(token string) (users.User, error) {
 	row := s.db.QueryRow(`
 		SELECT id, username, status, note, expire_at, data_limit_reset_strategy,
 		       traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
+		       raw_upload_bytes, raw_download_bytes,
 		       on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices, created_at, sub_token
 		FROM users WHERE sub_token = ?
 	`, token)
@@ -87,6 +93,7 @@ func (s *UserStore) ListUsers() ([]users.User, error) {
 	rows, err := s.db.Query(`
 		SELECT id, username, status, note, expire_at, data_limit_reset_strategy,
 		       traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
+		       raw_upload_bytes, raw_download_bytes,
 		       on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices, created_at, sub_token
 		FROM users ORDER BY id
 	`)
@@ -125,6 +132,7 @@ func (s *UserStore) GetUsersByIDs(ids []string) (map[string]users.User, error) {
 	query := fmt.Sprintf(`
 		SELECT id, username, status, note, expire_at, data_limit_reset_strategy,
 		       traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
+		       raw_upload_bytes, raw_download_bytes,
 		       on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices, created_at, sub_token
 		FROM users WHERE id IN (%s)
 	`, strings.Join(placeholders, ","))
@@ -354,6 +362,7 @@ func scanUser(row scanner) (users.User, error) {
 	err := row.Scan(
 		&user.ID, &user.Username, &user.Status, &user.Note, &expireAt, &user.DataLimitResetStrategy,
 		&user.TrafficLimit, &user.UploadBytes, &user.DownloadBytes, &user.UsedBytes,
+		&user.RawUploadBytes, &user.RawDownloadBytes,
 		&onHoldExpireAt, &lastTrafficResetAt, &onlineAt, &user.Connections, &user.Devices, &createdAt, &user.SubToken,
 	)
 	if errors.Is(err, sql.ErrNoRows) {

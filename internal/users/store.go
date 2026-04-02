@@ -36,6 +36,8 @@ type User struct {
 	UploadBytes            int64      `json:"upload_bytes"`
 	DownloadBytes          int64      `json:"download_bytes"`
 	UsedBytes              int64      `json:"used_bytes"`
+	RawUploadBytes         int64      `json:"raw_upload_bytes"`   // 实际上行流量（不含倍率）
+	RawDownloadBytes       int64      `json:"raw_download_bytes"` // 实际下行流量（不含倍率）
 	OnHoldExpireAt         *time.Time `json:"on_hold_expire_at,omitempty"`
 	LastTrafficResetAt     *time.Time `json:"last_traffic_reset_at,omitempty"`
 	OnlineAt               *time.Time `json:"online_at,omitempty"`

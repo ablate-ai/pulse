@@ -111,6 +111,8 @@ func (db *DB) init() error {
 			upload_bytes INTEGER NOT NULL DEFAULT 0,
 			download_bytes INTEGER NOT NULL DEFAULT 0,
 			used_bytes INTEGER NOT NULL DEFAULT 0,
+			raw_upload_bytes INTEGER NOT NULL DEFAULT 0,
+			raw_download_bytes INTEGER NOT NULL DEFAULT 0,
 			on_hold_expire_at TEXT,
 			last_traffic_reset_at TEXT,
 			online_at TEXT,
@@ -317,11 +319,13 @@ func (db *DB) migrateUsersTable() error {
 	}
 
 	additions := map[string]string{
-		"note":              `ALTER TABLE users ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
-		"online_at":         `ALTER TABLE users ADD COLUMN online_at TEXT`,
-		"on_hold_expire_at": `ALTER TABLE users ADD COLUMN on_hold_expire_at TEXT`,
-		"connections":       `ALTER TABLE users ADD COLUMN connections INTEGER NOT NULL DEFAULT 0`,
-		"devices":           `ALTER TABLE users ADD COLUMN devices INTEGER NOT NULL DEFAULT 0`,
+		"note":               `ALTER TABLE users ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
+		"online_at":          `ALTER TABLE users ADD COLUMN online_at TEXT`,
+		"on_hold_expire_at":  `ALTER TABLE users ADD COLUMN on_hold_expire_at TEXT`,
+		"connections":        `ALTER TABLE users ADD COLUMN connections INTEGER NOT NULL DEFAULT 0`,
+		"devices":            `ALTER TABLE users ADD COLUMN devices INTEGER NOT NULL DEFAULT 0`,
+		"raw_upload_bytes":   `ALTER TABLE users ADD COLUMN raw_upload_bytes INTEGER NOT NULL DEFAULT 0`,
+		"raw_download_bytes": `ALTER TABLE users ADD COLUMN raw_download_bytes INTEGER NOT NULL DEFAULT 0`,
 	}
 	for col, ddl := range additions {
 		if _, ok := columns[col]; !ok {
@@ -552,6 +556,8 @@ func (db *DB) rebuildUsersTable(columns map[string]struct{}) error {
 			upload_bytes INTEGER NOT NULL DEFAULT 0,
 			download_bytes INTEGER NOT NULL DEFAULT 0,
 			used_bytes INTEGER NOT NULL DEFAULT 0,
+			raw_upload_bytes INTEGER NOT NULL DEFAULT 0,
+			raw_download_bytes INTEGER NOT NULL DEFAULT 0,
 			on_hold_expire_at TEXT,
 			last_traffic_reset_at TEXT,
 			online_at TEXT,

@@ -165,6 +165,7 @@
         <div class="bg-indigo-500 h-1 rounded-full transition-all" style="width: {{trafficPct .UsedBytes .TrafficLimit}}%"></div>
       </div>
       <span class="text-xs text-gray-400">{{formatBytes .UsedBytes}} / {{if gt0 .TrafficLimit}}{{formatBytes .TrafficLimit}}{{else}}∞{{end}}</span>
+      {{- $rawUsed := addInt64 .RawUploadBytes .RawDownloadBytes}}{{if ne $rawUsed .UsedBytes}}<span class="text-xs text-gray-600" title="实际流量（不含倍率）">实: {{formatBytes $rawUsed}}</span>{{end}}
     </div>
   </td>
   <td class="px-4 py-3 text-sm text-gray-400">{{formatExpire .ExpireAt}}</td>

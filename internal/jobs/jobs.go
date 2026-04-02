@@ -146,9 +146,11 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			if stats, ok := usageByUser[user.Username]; ok {
 				uploadDelta := stats.UploadTotal
 				downloadDelta := stats.DownloadTotal
-				// 用户计费流量乘以节点倍率
+				// 用户计费流量乘以节点倍率，同时累加实际原始流量
 				user.UploadBytes += applyRate(uploadDelta, trafficRate)
 				user.DownloadBytes += applyRate(downloadDelta, trafficRate)
+				user.RawUploadBytes += uploadDelta
+				user.RawDownloadBytes += downloadDelta
 				// 累加连接数和在线设备数（支持多节点求和）
 				user.Connections += stats.Connections
 				user.Devices += stats.Devices
@@ -330,6 +332,8 @@ func ResetTraffic(ctx context.Context, store users.Store, nodeStore nodes.Store,
 		user.UploadBytes = 0
 		user.DownloadBytes = 0
 		user.UsedBytes = 0
+		user.RawUploadBytes = 0
+		user.RawDownloadBytes = 0
 		user.LastTrafficResetAt = &now
 		if _, err := store.UpsertUser(user); err != nil {
 			result.Errors = append(result.Errors, user.ID+": "+err.Error())
