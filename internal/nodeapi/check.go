@@ -99,12 +99,23 @@ func checkNetflix(ctx context.Context) serviceCheckResult {
 
 func checkClaude(ctx context.Context) serviceCheckResult {
 	r := serviceCheckResult{Service: "claude"}
-	resp, err := doCheck(ctx, "https://claude.ai")
+	// /api/auth/session 对封锁地区会重定向到 /unavailable，可访问地区返回 JSON
+	resp, err := doCheck(ctx, "https://claude.ai/api/auth/session")
 	if err != nil {
 		return r
 	}
 	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+
+	finalURL := resp.Request.URL.String()
+	if strings.Contains(finalURL, "unavailable") {
+		return r
+	}
+	// 响应体含地区限制提示
+	lower := strings.ToLower(string(body))
+	if strings.Contains(lower, "unavailable") || strings.Contains(lower, "not available") {
+		return r
+	}
 	r.Unlocked = resp.StatusCode < 400
 	return r
 }
