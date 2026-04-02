@@ -125,7 +125,8 @@
       <div class="h-36">
         <canvas data-chart-type="top-users"
           data-labels='[{{range $i,$u := .Data.TopUsers}}{{if $i}},{{end}}"{{$u.Username}}"{{end}}]'
-          data-values='[{{range $i,$u := .Data.TopUsers}}{{if $i}},{{end}}{{$u.UsedBytes}}{{end}}]'>
+          data-values='[{{range $i,$u := .Data.TopUsers}}{{if $i}},{{end}}{{$u.UsedBytes}}{{end}}]'
+          data-raw-values='[{{range $i,$u := .Data.TopUsers}}{{if $i}},{{end}}{{$u.RawUsedBytes}}{{end}}]'>
         </canvas>
       </div>
     </div>

@@ -65,7 +65,8 @@ type UserGrowthPoint struct {
 // TopUserStat 流量排行用户（Top 10）。
 type TopUserStat struct {
 	Username     string
-	UsedBytes    int64
+	UsedBytes    int64 // 计费流量（含节点倍率）
+	RawUsedBytes int64 // 实际流量（不含倍率）
 	TrafficLimit int64
 }
 
@@ -286,6 +287,7 @@ func Build(nodeStore nodes.Store, userStore users.Store, days int) (Summary, err
 		s.TopUsers = append(s.TopUsers, TopUserStat{
 			Username:     u.Username,
 			UsedBytes:    u.UsedBytes,
+			RawUsedBytes: u.RawUploadBytes + u.RawDownloadBytes,
 			TrafficLimit: u.TrafficLimit,
 		})
 	}
