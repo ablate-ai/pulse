@@ -119,7 +119,8 @@ func Run() error {
 	serverapi.RegisterSubAPI(mux, userStore, inboundStore)
 
 	// 面板（HTMX + 服务端模板）
-	panelHandler, err := panel.New(authManager, userStore, store, inboundStore, outboundStore, nodeAPI.Dial, applyOpts, cfg.ServerAddr, cfg.ServerNodeClientCertFile, db.SettingsStore())
+	discourseCfg := auth.NewDiscourseConfig(cfg.DiscourseURL, cfg.DiscourseSSOSecret, cfg.DiscourseAdminUsers)
+	panelHandler, err := panel.New(authManager, userStore, store, inboundStore, outboundStore, nodeAPI.Dial, applyOpts, cfg.ServerAddr, cfg.ServerNodeClientCertFile, db.SettingsStore(), discourseCfg)
 	if err != nil {
 		return fmt.Errorf("初始化面板: %w", err)
 	}

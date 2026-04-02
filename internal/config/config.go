@@ -21,6 +21,10 @@ type Config struct {
 	ACMEEmail string // ACME 账号邮箱（Let's Encrypt 要求）
 	// sing-box 最近一次配置快照路径（调试用）
 	SingboxLastConfigFile string // PULSE_SINGBOX_LAST_CONFIG_FILE
+	// Discourse SSO（可选）
+	DiscourseURL        string // PULSE_DISCOURSE_URL
+	DiscourseSSOSecret  string // PULSE_DISCOURSE_SSO_SECRET
+	DiscourseAdminUsers string // PULSE_DISCOURSE_ADMIN_USERS，逗号分隔；空则信任所有 Discourse 用户
 }
 
 func Load() Config {
@@ -39,6 +43,9 @@ func Load() Config {
 		CertDir:               envOrDefault("PULSE_CERT_DIR", "./certs"),
 		ACMEEmail:             envOrDefault("PULSE_ACME_EMAIL", ""),
 		SingboxLastConfigFile: envOrDefault("PULSE_SINGBOX_LAST_CONFIG_FILE", ""),
+		DiscourseURL:          envOrDefault("PULSE_DISCOURSE_URL", ""),
+		DiscourseSSOSecret:    envOrDefault("PULSE_DISCOURSE_SSO_SECRET", ""),
+		DiscourseAdminUsers:   envOrDefault("PULSE_DISCOURSE_ADMIN_USERS", ""),
 	}
 }
 

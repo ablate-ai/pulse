@@ -143,6 +143,7 @@ func nodeIDsKey(ids map[string]struct{}) string {
 // Handler 面板 HTTP 处理器，持有所有依赖。
 type Handler struct {
 	auth           *auth.Manager
+	discourse      *auth.DiscourseConfig // 可为 nil，表示未启用
 	userStore      users.Store
 	nodeStore      nodes.Store
 	ibStore        inbounds.InboundStore
@@ -218,9 +219,11 @@ func New(
 	serverAddr string,
 	clientCertFile string,
 	settingsStore SettingsStore,
+	discourse *auth.DiscourseConfig,
 ) (*Handler, error) {
 	h := &Handler{
 		auth:           authMgr,
+		discourse:      discourse,
 		userStore:      userStore,
 		nodeStore:      nodeStore,
 		ibStore:        ibStore,
@@ -257,6 +260,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /login", h.loginPage)
 	mux.HandleFunc("POST /login", h.processLogin)
 	mux.HandleFunc("POST /logout", h.processLogout)
+	mux.HandleFunc("GET /auth/discourse", h.discourseRedirect)
+	mux.HandleFunc("GET /auth/discourse/callback", h.discourseCallback)
 
 	// 用户自助门户（以 sub_token 鉴权，无需管理员登录）
 	mux.HandleFunc("GET /user/{sub_token}", h.userPortalPage)
@@ -492,8 +497,69 @@ func (h *Handler) renderPartial(w http.ResponseWriter, name string, data any) {
 
 // ─── 公开页面 ─────────────────────────────────────────────────────────────────
 
+// loginPageData 登录页面专用数据。
+type loginPageData struct {
+	Error            string // 登录错误消息
+	DiscourseEnabled bool   // 是否显示 Discourse 登录按钮
+}
+
 func (h *Handler) loginPage(w http.ResponseWriter, r *http.Request) {
-	h.renderPage(w, "login", pageData{Page: "login"})
+	var errMsg string
+	if r.URL.Query().Get("error") == "1" {
+		errMsg = "用户名或密码错误"
+	}
+	h.renderPage(w, "login", pageData{
+		Page: "login",
+		Data: loginPageData{
+			Error:            errMsg,
+			DiscourseEnabled: h.discourse.Enabled(),
+		},
+	})
+}
+
+// discourseRedirect 发起 Discourse SSO 认证流程，将用户重定向到 Discourse。
+func (h *Handler) discourseRedirect(w http.ResponseWriter, r *http.Request) {
+	if !h.discourse.Enabled() {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+	scheme := "https"
+	if r.TLS == nil {
+		scheme = "http"
+	}
+	returnURL := fmt.Sprintf("%s://%s/auth/discourse/callback", scheme, r.Host)
+	redirectURL, err := h.discourse.BuildRedirectURL(returnURL)
+	if err != nil {
+		http.Error(w, "SSO 初始化失败", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, redirectURL, http.StatusFound)
+}
+
+// discourseCallback 处理 Discourse 认证回调，验证签名后建立 session。
+func (h *Handler) discourseCallback(w http.ResponseWriter, r *http.Request) {
+	if !h.discourse.Enabled() {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+	rawSSO := r.URL.Query().Get("sso")
+	sig := r.URL.Query().Get("sig")
+	username, err := h.discourse.ParseCallback(rawSSO, sig)
+	if err != nil {
+		http.Redirect(w, r, "/login?error=1", http.StatusFound)
+		return
+	}
+	if !h.discourse.IsAllowed(username) {
+		http.Redirect(w, r, "/login?error=1", http.StatusFound)
+		return
+	}
+	token, err := h.auth.CreateSession(username)
+	if err != nil {
+		http.Error(w, "创建 session 失败", http.StatusInternalServerError)
+		return
+	}
+	setSessionCookie(w, token)
+	http.Redirect(w, r, "/dashboard", http.StatusFound)
 }
 
 func (h *Handler) processLogin(w http.ResponseWriter, r *http.Request) {

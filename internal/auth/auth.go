@@ -187,6 +187,15 @@ func (m *Manager) LoginFromRequest(r *http.Request, username, password string) (
 	return token, nil
 }
 
+// CreateSession 直接为指定用户名创建 session，供 Discourse SSO 等第三方认证使用。
+func (m *Manager) CreateSession(username string) (string, error) {
+	token := randomToken()
+	if err := m.sessions.Create(token, username); err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
 // ValidateToken 检查 token 是否有效。
 func (m *Manager) ValidateToken(token string) bool {
 	return m.valid(token)
