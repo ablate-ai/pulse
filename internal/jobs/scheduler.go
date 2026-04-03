@@ -3,7 +3,6 @@ package jobs
 import (
 	"context"
 	"log"
-	"sync"
 	"time"
 )
 
@@ -15,9 +14,9 @@ type Job struct {
 }
 
 // Scheduler 管理一组定时任务，每个任务在独立 goroutine 中运行。
-// 所有任务共享同一把互斥锁，避免 SyncUsage 和 ResetTraffic 并发竞争。
+// 任务间的数据一致性由 jobs.go 中的 mu 在各 job 函数内部保护，
+// 不在调度层持锁，避免网络 IO 期间阻塞其他任务。
 type Scheduler struct {
-	mu     sync.Mutex
 	jobs   []Job
 	logger *log.Logger
 }
@@ -60,8 +59,6 @@ func (s *Scheduler) run(ctx context.Context, job Job) {
 }
 
 func (s *Scheduler) execute(ctx context.Context, job Job) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if err := job.Fn(ctx); err != nil {
 		s.logger.Printf("[jobs] %s error: %v", job.Name, err)
 	}

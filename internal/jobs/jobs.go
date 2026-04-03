@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"pulse/internal/inbounds"
@@ -13,6 +14,11 @@ import (
 	"pulse/internal/routerules"
 	"pulse/internal/users"
 )
+
+// mu 保护三个 job 之间的数据一致性。
+// 所有 job 均使用 UpsertUser 全字段覆盖写，因此读-改-写必须互斥。
+// 锁只包住 DB 读写段，网络 IO（节点流量拉取、配置下发）在锁外执行。
+var mu sync.Mutex
 
 // NodeDialer 根据节点 ID 返回 RPC 客户端。
 type NodeDialer func(nodeID string) (*nodes.Client, error)
@@ -30,6 +36,11 @@ type SyncUsageResult struct {
 
 // SyncUsage 从各节点拉取流量统计，更新用户字节数，
 // 若某节点上的用户启用状态发生变化则重新下发配置。
+//
+// 执行分三阶段，最小化锁持有时间：
+//  1. 并发拉取各节点流量（网络 IO，不持锁）
+//  2. 批量更新 DB（持锁，纯 DB 操作，快速）
+//  3. 对状态变化的节点重新下发配置（网络 IO，不持锁）
 func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ibStore inbounds.InboundStore, dial NodeDialer, applyOpts ApplyOptions, outboundStore outbounds.Store) (SyncUsageResult, error) {
 	nodesList, err := nodeStore.List()
 	if err != nil {
@@ -37,93 +48,96 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 	}
 
 	result := SyncUsageResult{Errors: make([]string, 0)}
-	// 记录本轮已首次处理的用户，确保连接数从零开始累加而非叠加上轮旧值
-	connResetUsers := make(map[string]struct{})
-	// 同一 sync 周期使用统一时间，避免 EffectiveStatus 边界抖动
 	now := time.Now().UTC()
 
-	for _, node := range nodesList {
-		client, err := dial(node.ID)
-		if err != nil {
-			result.Errors = append(result.Errors, node.ID+": "+err.Error())
-			continue
-		}
+	// ── 阶段 1：并发拉取各节点流量（网络 IO，不持锁） ────────────────────────
+	type nodeFetch struct {
+		node     nodes.Node
+		client   *nodes.Client
+		usage    nodes.UsageStats
+		dialErr  error
+		usageErr error
+	}
+	fetched := make([]nodeFetch, len(nodesList))
+	var wg sync.WaitGroup
+	for i, node := range nodesList {
+		wg.Add(1)
+		go func(idx int, n nodes.Node) {
+			defer wg.Done()
+			c, err := dial(n.ID)
+			if err != nil {
+				fetched[idx] = nodeFetch{node: n, dialErr: err}
+				return
+			}
+			u, err := c.Usage(ctx, true)
+			fetched[idx] = nodeFetch{node: n, client: c, usage: u, usageErr: err}
+		}(i, node)
+	}
+	wg.Wait()
 
-		usage, err := client.Usage(ctx, true)
-		if err != nil {
-			result.Errors = append(result.Errors, node.ID+": "+err.Error())
-			sendAlert(ctx, applyOpts.Alerter, "节点离线", fmt.Sprintf("无法连接节点 %s", node.Name))
+	// ── 阶段 2：更新 DB（持锁，不含网络 IO） ─────────────────────────────────
+	type pendingApply struct {
+		node    nodes.Node
+		client  *nodes.Client
+		recover bool // true = sing-box 未运行，需恢复重启
+	}
+	var pending []pendingApply
+
+	mu.Lock()
+	// 记录本轮已首次处理的用户，确保连接数从零开始累加而非叠加上轮旧值
+	connResetUsers := make(map[string]struct{})
+	date := now.Format("2006-01-02")
+
+	for _, fr := range fetched {
+		if fr.dialErr != nil {
+			result.Errors = append(result.Errors, fr.node.ID+": "+fr.dialErr.Error())
+			sendAlert(ctx, applyOpts.Alerter, "节点离线", fmt.Sprintf("无法连接节点 %s", fr.node.Name))
 			continue
 		}
-		if !usage.Available {
-			result.Errors = append(result.Errors, node.ID+": V2Ray Stats not available")
-			// sing-box 进程未运行（非 idle 配置）时，主动下发配置恢复
-			if !usage.Running {
-				sendAlert(ctx, applyOpts.Alerter, "节点异常", fmt.Sprintf("节点 %s sing-box 停止运行", node.Name))
-				nodeInbounds, err := ibStore.ListInboundsByNode(node.ID)
-				if err != nil {
-					result.Errors = append(result.Errors, node.ID+": recovery load inbounds: "+err.Error())
-					continue
-				}
-				recoveryAccesses, err := store.ListUserInboundsByNode(node.ID)
-				if err != nil {
-					result.Errors = append(result.Errors, node.ID+": recovery load users: "+err.Error())
-					continue
-				}
-				recoveryMap, err := store.GetUsersByIDs(collectUserIDs(recoveryAccesses))
-				if err != nil {
-					result.Errors = append(result.Errors, node.ID+": recovery load usermap: "+err.Error())
-					continue
-				}
-				status, _, err := ApplyNodeUsers(ctx, client, nodeInbounds, recoveryAccesses, recoveryMap, ibStore, outboundStore, applyOpts, node)
-				if err != nil {
-					result.Errors = append(result.Errors, node.ID+": recovery restart: "+err.Error())
-				} else if status.Running {
-					result.NodesReloaded++
-				} else {
-					result.NodesStopped++
-				}
+		if fr.usageErr != nil {
+			result.Errors = append(result.Errors, fr.node.ID+": "+fr.usageErr.Error())
+			sendAlert(ctx, applyOpts.Alerter, "节点离线", fmt.Sprintf("无法连接节点 %s", fr.node.Name))
+			continue
+		}
+		if !fr.usage.Available {
+			result.Errors = append(result.Errors, fr.node.ID+": V2Ray Stats not available")
+			if !fr.usage.Running {
+				sendAlert(ctx, applyOpts.Alerter, "节点异常", fmt.Sprintf("节点 %s sing-box 停止运行", fr.node.Name))
+				pending = append(pending, pendingApply{node: fr.node, client: fr.client, recover: true})
 			}
 			continue
 		}
 		result.NodesSynced++
 
-		// 每个 (user, node) 只有一条凭据记录，直接用于流量同步
-		userAccesses, err := store.ListUserInboundsByNode(node.ID)
+		userAccesses, err := store.ListUserInboundsByNode(fr.node.ID)
 		if err != nil {
-			result.Errors = append(result.Errors, node.ID+": "+err.Error())
+			result.Errors = append(result.Errors, fr.node.ID+": "+err.Error())
+			continue
+		}
+		userMap, err := store.GetUsersByIDs(collectUserIDs(userAccesses))
+		if err != nil {
+			result.Errors = append(result.Errors, fr.node.ID+": "+err.Error())
 			continue
 		}
 
-		// 批量获取涉及的 User
-		userIDs := collectUserIDs(userAccesses)
-		userMap, err := store.GetUsersByIDs(userIDs)
-		if err != nil {
-			result.Errors = append(result.Errors, node.ID+": "+err.Error())
-			continue
-		}
-
-		usageByUser := make(map[string]nodes.UserUsage, len(usage.Users))
-		for _, item := range usage.Users {
+		usageByUser := make(map[string]nodes.UserUsage, len(fr.usage.Users))
+		for _, item := range fr.usage.Users {
 			usageByUser[item.User] = item
 		}
 
-		reloadNeeded := false
-
 		// 节点维度流量从所有上报用户汇总（包含已删除用户），避免 reset=true 后丢失流量
 		var nodeUploadDelta, nodeDownloadDelta int64
-		for _, item := range usage.Users {
+		for _, item := range fr.usage.Users {
 			nodeUploadDelta += item.UploadTotal
 			nodeDownloadDelta += item.DownloadTotal
 		}
 
-		// 取节点倍率，≤0 时视为 1.0
-		trafficRate := node.TrafficRate
+		trafficRate := fr.node.TrafficRate
 		if trafficRate <= 0 {
 			trafficRate = 1.0
 		}
 
-		// 按 UserID 去重，避免同一用户在同一节点有多条 inbound 时流量被重复计算。
+		reloadNeeded := false
 		seenUsers := make(map[string]struct{})
 		for _, acc := range userAccesses {
 			if _, seen := seenUsers[acc.UserID]; seen {
@@ -147,15 +161,12 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			if stats, ok := usageByUser[user.Username]; ok {
 				uploadDelta := stats.UploadTotal
 				downloadDelta := stats.DownloadTotal
-				// 用户计费流量乘以节点倍率，同时累加实际原始流量
 				user.UploadBytes += applyRate(uploadDelta, trafficRate)
 				user.DownloadBytes += applyRate(downloadDelta, trafficRate)
 				user.RawUploadBytes += uploadDelta
 				user.RawDownloadBytes += downloadDelta
-				// 累加连接数和在线设备数（支持多节点求和）
 				user.Connections += stats.Connections
 				user.Devices += stats.Devices
-				// 有新增流量则更新在线时间
 				if uploadDelta > 0 || downloadDelta > 0 {
 					user.OnlineAt = &now
 				}
@@ -167,13 +178,11 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			// 在同一用户出现在多个节点时被下一个节点循环的 GetUsersByIDs 读到旧值。
 			savedUser, err := store.UpsertUser(user)
 			if err != nil {
-				result.Errors = append(result.Errors, node.ID+": "+err.Error())
+				result.Errors = append(result.Errors, fr.node.ID+": "+err.Error())
 				continue
 			}
-			// 仅在用户状态持久化成功后才触发节点重下发，避免基于未保存状态重载
 			if statusChanged {
 				reloadNeeded = true
-				// 状态变为 limited/expired 时发送一次性告警（状态已持久化，不会重复触发）
 				switch savedUser.EffectiveStatusAt(now) {
 				case users.StatusLimited:
 					sendAlert(ctx, applyOpts.Alerter, "流量超限", fmt.Sprintf("用户 %s 已超出流量限额", savedUser.Username))
@@ -184,19 +193,15 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			result.UsersUpdated++
 		}
 
-		// 累积节点维度流量（使用从全部上报用户汇总的真实值）
-		date := now.Format("2006-01-02")
 		if nodeUploadDelta > 0 || nodeDownloadDelta > 0 {
-			if err := nodeStore.AddTraffic(node.ID, nodeUploadDelta, nodeDownloadDelta); err != nil {
-				result.Errors = append(result.Errors, node.ID+": add traffic: "+err.Error())
+			if err := nodeStore.AddTraffic(fr.node.ID, nodeUploadDelta, nodeDownloadDelta); err != nil {
+				result.Errors = append(result.Errors, fr.node.ID+": add traffic: "+err.Error())
 			}
-			// 写入节点日统计桶（用于历史趋势图）
-			if err := nodeStore.AddNodeDailyUsage(node.ID, date, nodeUploadDelta, nodeDownloadDelta); err != nil {
-				result.Errors = append(result.Errors, node.ID+": daily usage: "+err.Error())
+			if err := nodeStore.AddNodeDailyUsage(fr.node.ID, date, nodeUploadDelta, nodeDownloadDelta); err != nil {
+				result.Errors = append(result.Errors, fr.node.ID+": daily usage: "+err.Error())
 			}
 		}
 
-		// 写入用户-节点日流量（用于节点用量分析）
 		for userID, user := range userMap {
 			stats, ok := usageByUser[user.Username]
 			if !ok || (stats.UploadTotal == 0 && stats.DownloadTotal == 0) {
@@ -204,45 +209,62 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			}
 			upload := applyRate(stats.UploadTotal, trafficRate)
 			download := applyRate(stats.DownloadTotal, trafficRate)
-			if err := store.AddUserNodeTraffic(userID, node.ID, date, upload, download); err != nil {
-				result.Errors = append(result.Errors, node.ID+": user node traffic: "+err.Error())
+			if err := store.AddUserNodeTraffic(userID, fr.node.ID, date, upload, download); err != nil {
+				result.Errors = append(result.Errors, fr.node.ID+": user node traffic: "+err.Error())
 			}
 		}
 
-		if !reloadNeeded {
-			continue
-		}
-
-		// 获取节点 inbound 配置，重新下发
-		nodeInbounds, err := ibStore.ListInboundsByNode(node.ID)
-		if err != nil {
-			result.Errors = append(result.Errors, node.ID+": reload inbounds: "+err.Error())
-			continue
-		}
-
-		// 重新查全量 userMap（流量已更新）
-		allUserIDs := collectUserIDs(userAccesses)
-		allUserMap, err := store.GetUsersByIDs(allUserIDs)
-		if err != nil {
-			result.Errors = append(result.Errors, node.ID+": reload usermap: "+err.Error())
-			continue
-		}
-
-		status, _, err := ApplyNodeUsers(ctx, client, nodeInbounds, userAccesses, allUserMap, ibStore, outboundStore, applyOpts, node)
-		if err != nil {
-			result.Errors = append(result.Errors, node.ID+": reload: "+err.Error())
-			continue
-		}
-		if status.Running {
-			result.NodesReloaded++
-		} else {
-			result.NodesStopped++
+		if reloadNeeded {
+			pending = append(pending, pendingApply{node: fr.node, client: fr.client})
 		}
 	}
 
 	// 定期清理过期的日统计数据（保留 180 天）
 	if err := nodeStore.CleanupOldDailyUsage(180); err != nil {
 		result.Errors = append(result.Errors, "cleanup daily usage: "+err.Error())
+	}
+	mu.Unlock()
+
+	// ── 阶段 3：下发配置（网络 IO，不持锁） ──────────────────────────────────
+	for _, pa := range pending {
+		// 下发前重新从 DB 读取最新数据（锁住读取段，下发本身不持锁）
+		mu.Lock()
+		nodeInbounds, err := ibStore.ListInboundsByNode(pa.node.ID)
+		if err != nil {
+			result.Errors = append(result.Errors, pa.node.ID+": load inbounds: "+err.Error())
+			mu.Unlock()
+			continue
+		}
+		nodeAccesses, err := store.ListUserInboundsByNode(pa.node.ID)
+		if err != nil {
+			result.Errors = append(result.Errors, pa.node.ID+": load accesses: "+err.Error())
+			mu.Unlock()
+			continue
+		}
+		applyMap, err := store.GetUsersByIDs(collectUserIDs(nodeAccesses))
+		if err != nil {
+			result.Errors = append(result.Errors, pa.node.ID+": load usermap: "+err.Error())
+			mu.Unlock()
+			continue
+		}
+		mu.Unlock()
+
+		status, _, err := ApplyNodeUsers(ctx, pa.client, nodeInbounds, nodeAccesses, applyMap, ibStore, outboundStore, applyOpts, pa.node)
+		if err != nil {
+			result.Errors = append(result.Errors, pa.node.ID+": apply: "+err.Error())
+			continue
+		}
+		if pa.recover {
+			if status.Running {
+				result.NodesReloaded++
+			} else {
+				result.NodesStopped++
+			}
+		} else if status.Running {
+			result.NodesReloaded++
+		} else {
+			result.NodesStopped++
+		}
 	}
 
 	return result, nil
@@ -253,14 +275,16 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 // ActivateExpiredOnHold 将 on_hold_expire_at 已到期的 on_hold 用户状态改为 active，
 // 并对涉及的节点重新下发配置。
 func ActivateExpiredOnHold(ctx context.Context, store users.Store, nodeStore nodes.Store, ibStore inbounds.InboundStore, dial NodeDialer, applyOpts ApplyOptions, outboundStore outbounds.Store) error {
+	now := time.Now().UTC()
+	dirtySet := make(map[string]struct{})
+
+	// ── DB 段（持锁） ─────────────────────────────────────────────────────────
+	mu.Lock()
 	allUsers, err := store.ListUsers()
 	if err != nil {
+		mu.Unlock()
 		return err
 	}
-
-	now := time.Now().UTC()
-	dirtyNodes := make(map[string]struct{})
-
 	for _, u := range allUsers {
 		if u.Status != users.StatusOnHold {
 			continue
@@ -277,29 +301,36 @@ func ActivateExpiredOnHold(ctx context.Context, store users.Store, nodeStore nod
 		log.Printf("ActivateExpiredOnHold: 用户 %s (%s) 已激活", u.Username, u.ID)
 		accesses, _ := store.ListUserInboundsByUser(u.ID)
 		for _, acc := range accesses {
-			dirtyNodes[acc.NodeID] = struct{}{}
+			dirtySet[acc.NodeID] = struct{}{}
 		}
 	}
+	mu.Unlock()
 
-	for nodeID := range dirtyNodes {
+	// ── 下发配置（网络 IO，不持锁） ───────────────────────────────────────────
+	for nodeID := range dirtySet {
 		client, err := dial(nodeID)
 		if err != nil {
 			continue
 		}
+		mu.Lock()
 		nodeInbounds, err := ibStore.ListInboundsByNode(nodeID)
 		if err != nil {
+			mu.Unlock()
 			continue
 		}
 		nodeAccesses, err := store.ListUserInboundsByNode(nodeID)
 		if err != nil {
+			mu.Unlock()
 			continue
 		}
-		userIDs := collectUserIDs(nodeAccesses)
-		userMap, err := store.GetUsersByIDs(userIDs)
+		userMap, err := store.GetUsersByIDs(collectUserIDs(nodeAccesses))
 		if err != nil {
+			mu.Unlock()
 			continue
 		}
 		node, _ := nodeStore.Get(nodeID)
+		mu.Unlock()
+
 		ApplyNodeUsers(ctx, client, nodeInbounds, nodeAccesses, userMap, ibStore, outboundStore, applyOpts, node) //nolint:errcheck
 	}
 
@@ -317,16 +348,17 @@ type ResetTrafficResult struct {
 
 // ResetTraffic 检查所有用户的流量重置策略，到期则清零并重新下发节点配置。
 func ResetTraffic(ctx context.Context, store users.Store, nodeStore nodes.Store, ibStore inbounds.InboundStore, dial NodeDialer, applyOpts ApplyOptions, outboundStore outbounds.Store) (ResetTrafficResult, error) {
-	allUsers, err := store.ListUsers()
-	if err != nil {
-		return ResetTrafficResult{}, err
-	}
-
 	result := ResetTrafficResult{Errors: make([]string, 0)}
 	now := time.Now().UTC()
+	dirtySet := make(map[string]struct{})
 
-	dirtyNodes := make(map[string]struct{})
-
+	// ── DB 段（持锁） ─────────────────────────────────────────────────────────
+	mu.Lock()
+	allUsers, err := store.ListUsers()
+	if err != nil {
+		mu.Unlock()
+		return result, err
+	}
 	for _, user := range allUsers {
 		if !ShouldResetTraffic(user.DataLimitResetStrategy, user.CreatedAt, user.LastTrafficResetAt, now) {
 			continue
@@ -341,48 +373,51 @@ func ResetTraffic(ctx context.Context, store users.Store, nodeStore nodes.Store,
 			result.Errors = append(result.Errors, user.ID+": "+err.Error())
 			continue
 		}
-
-		// 标记涉及的节点为 dirty，需要重新下发配置
 		userAccesses, err := store.ListUserInboundsByUser(user.ID)
 		if err != nil {
 			result.Errors = append(result.Errors, user.ID+": list accesses: "+err.Error())
 			continue
 		}
 		for _, acc := range userAccesses {
-			dirtyNodes[acc.NodeID] = struct{}{}
+			dirtySet[acc.NodeID] = struct{}{}
 		}
-
 		result.UsersReset++
 	}
+	mu.Unlock()
 
-	if len(dirtyNodes) == 0 {
+	if len(dirtySet) == 0 {
 		return result, nil
 	}
 
-	// 对涉及的节点重新下发配置
-	for nodeID := range dirtyNodes {
+	// ── 下发配置（网络 IO，不持锁） ───────────────────────────────────────────
+	for nodeID := range dirtySet {
 		client, err := dial(nodeID)
 		if err != nil {
 			result.Errors = append(result.Errors, nodeID+": "+err.Error())
 			continue
 		}
+		mu.Lock()
 		nodeInbounds, err := ibStore.ListInboundsByNode(nodeID)
 		if err != nil {
 			result.Errors = append(result.Errors, nodeID+": list inbounds: "+err.Error())
+			mu.Unlock()
 			continue
 		}
 		nodeAccesses, err := store.ListUserInboundsByNode(nodeID)
 		if err != nil {
 			result.Errors = append(result.Errors, nodeID+": list accesses: "+err.Error())
+			mu.Unlock()
 			continue
 		}
-		userIDs := collectUserIDs(nodeAccesses)
-		userMap, err := store.GetUsersByIDs(userIDs)
+		userMap, err := store.GetUsersByIDs(collectUserIDs(nodeAccesses))
 		if err != nil {
 			result.Errors = append(result.Errors, nodeID+": get users: "+err.Error())
+			mu.Unlock()
 			continue
 		}
 		node, _ := nodeStore.Get(nodeID)
+		mu.Unlock()
+
 		status, _, err := ApplyNodeUsers(ctx, client, nodeInbounds, nodeAccesses, userMap, ibStore, outboundStore, applyOpts, node)
 		if err != nil {
 			result.Errors = append(result.Errors, nodeID+": reload: "+err.Error())
