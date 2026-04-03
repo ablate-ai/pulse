@@ -1,0 +1,280 @@
+{{define "shop"}}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+{{template "head" .}}
+<meta name="description" content="Pulse — 安全、快速的网络加速服务。选择适合您的套餐，即刻开始使用。">
+<style>
+  .plan-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+  .plan-card:hover { transform: translateY(-4px); box-shadow: 0 12px 40px rgba(99,102,241,0.08); }
+</style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="border-b border-gray-800/50">
+    <div class="max-w-6xl mx-auto px-4 py-8 text-center">
+      <a href="/shop" class="inline-flex items-center gap-2.5 text-indigo-400 text-2xl font-bold mb-3">
+        <svg class="w-8 h-8" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="32" height="32" rx="8" fill="#4f46e5"/>
+          <polyline points="3,16 9,16 12,8 16,24 20,11 23,16 29,16" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Pulse
+      </a>
+      <p class="text-gray-400 text-sm">安全、快速的网络加速服务</p>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 max-w-6xl mx-auto px-4 py-10 w-full">
+
+    <!-- Error -->
+    {{with .Data}}{{if .Error}}
+    <div class="mb-8">
+      <div class="text-red-400 text-sm text-center bg-red-500/10 border border-red-500/20 rounded-xl py-3 px-4">{{.Error}}</div>
+    </div>
+    {{end}}{{end}}
+
+    <!-- Section Heading -->
+    <div class="text-center mb-10">
+      <h1 class="text-3xl font-bold text-white mb-3">选择您的套餐</h1>
+      <p class="text-gray-500 text-sm">选择最适合您的方案，即刻开始使用</p>
+    </div>
+
+    <!-- Plans Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 justify-items-center">
+      {{range .Data.Plans}}
+      <div class="plan-card bg-gray-900 rounded-2xl border border-gray-800 p-6 flex flex-col w-full max-w-sm">
+
+        <!-- Plan Name -->
+        <h2 class="text-xl font-bold text-white mb-1">{{.Name}}</h2>
+
+        <!-- Plan Type Badge -->
+        <div class="mb-4">
+          {{if eq .Type "subscription"}}
+          <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-indigo-500/15 text-indigo-400">订阅</span>
+          {{else}}
+          <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-500/15 text-emerald-400">一次性</span>
+          {{end}}
+        </div>
+
+        <!-- Price -->
+        <div class="mb-4">
+          <span class="text-3xl font-bold text-white price-display" data-cents="{{.PriceCents}}" data-currency="{{.Currency}}" data-type="{{.Type}}"></span>
+        </div>
+
+        <!-- Description -->
+        {{if .Description}}
+        <p class="text-gray-400 text-sm mb-5 leading-relaxed">{{.Description}}</p>
+        {{end}}
+
+        <!-- Features List -->
+        <ul class="space-y-3 mb-6 flex-1">
+          <li class="flex items-center gap-2.5 text-sm">
+            <svg class="w-4 h-4 text-indigo-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+            <span class="text-gray-300">流量：{{if gt0 .TrafficLimit}}{{formatBytes .TrafficLimit}}{{else}}<span class="text-indigo-400 font-medium">无限流量</span>{{end}}</span>
+          </li>
+          <li class="flex items-center gap-2.5 text-sm">
+            <svg class="w-4 h-4 text-indigo-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+            <span class="text-gray-300">时长：{{.DurationDays}}天</span>
+          </li>
+          <li class="flex items-center gap-2.5 text-sm">
+            <svg class="w-4 h-4 text-indigo-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+            <span class="text-gray-300">重置策略：{{if eq .DataLimitResetStrategy "day"}}每天重置{{else if eq .DataLimitResetStrategy "week"}}每周重置{{else if eq .DataLimitResetStrategy "month"}}每月重置{{else}}不重置{{end}}</span>
+          </li>
+        </ul>
+
+        <!-- Divider -->
+        <div class="border-t border-gray-800 my-2"></div>
+
+        <!-- Purchase Form -->
+        <form method="POST" action="/shop/checkout" class="space-y-3 mt-4">
+          <input type="hidden" name="plan_id" value="{{.ID}}">
+          <div>
+            <input type="email" name="email" placeholder="邮箱地址" required autocomplete="email"
+                   class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-gray-100 placeholder-gray-500 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors">
+          </div>
+          <div>
+            <input type="text" name="sub_token" placeholder="续费Token（可选）" autocomplete="off"
+                   class="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-gray-100 placeholder-gray-500 text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors">
+          </div>
+          <button type="submit"
+                  class="w-full bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-semibold py-3 rounded-xl text-sm transition-colors cursor-pointer">
+            购买
+          </button>
+        </form>
+      </div>
+      {{else}}
+      <!-- Empty State -->
+      <div class="col-span-full text-center py-20">
+        <div class="text-gray-700 mb-4">
+          <svg class="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+          </svg>
+        </div>
+        <p class="text-gray-500 text-lg">暂无可用套餐</p>
+        <p class="text-gray-600 text-sm mt-1">请稍后再来查看</p>
+      </div>
+      {{end}}
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-gray-800/50 mt-auto">
+    <div class="max-w-6xl mx-auto px-4 py-6 text-center">
+      <p class="text-gray-600 text-xs">Powered by Pulse</p>
+    </div>
+  </footer>
+
+  <script>
+  (function() {
+    // Format price from cents to display string
+    var currencySymbols = {
+      'usd': '$', 'USD': '$',
+      'cny': '¥', 'CNY': '¥',
+      'eur': '€', 'EUR': '€',
+      'gbp': '£', 'GBP': '£',
+      'jpy': '¥', 'JPY': '¥'
+    };
+    document.querySelectorAll('.price-display').forEach(function(el) {
+      var cents = parseInt(el.dataset.cents, 10) || 0;
+      var currency = el.dataset.currency || 'usd';
+      var type = el.dataset.type || 'one_time';
+      var symbol = currencySymbols[currency] || '$';
+      var formatted = symbol + (cents / 100).toFixed(2);
+      if (type === 'subscription') {
+        el.innerHTML = formatted + '<span class="text-base font-normal text-gray-400">/月</span>';
+      } else {
+        el.textContent = formatted;
+      }
+    });
+  })();
+  </script>
+
+</body>
+</html>
+{{end}}
+
+
+{{define "shop-success"}}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+{{template "head" .}}
+<meta name="robots" content="noindex">
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen flex items-center justify-center p-4">
+  <div class="w-full max-w-md space-y-4">
+
+    <!-- Logo -->
+    <div class="text-center mb-2">
+      <a href="/shop" class="inline-flex items-center gap-2 text-indigo-400 text-xl font-bold">
+        <svg class="w-6 h-6" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect width="32" height="32" rx="8" fill="#4f46e5"/>
+          <polyline points="3,16 9,16 12,8 16,24 20,11 23,16 29,16" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Pulse
+      </a>
+    </div>
+
+    <!-- Success Card -->
+    <div class="bg-gray-900 rounded-2xl border border-gray-800 p-8 space-y-6">
+
+      <!-- Success Icon -->
+      <div class="text-center">
+        <div class="mx-auto w-16 h-16 bg-emerald-500/10 border border-emerald-500/30 rounded-full flex items-center justify-center mb-4">
+          <svg class="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+          </svg>
+        </div>
+        <h1 class="text-2xl font-bold text-white">支付成功！</h1>
+        <p class="text-gray-400 text-sm mt-2">您的订阅已激活</p>
+      </div>
+
+      <!-- Email -->
+      {{if .Data.Email}}
+      <div class="flex items-center justify-between bg-gray-800/50 rounded-lg px-4 py-3">
+        <span class="text-xs text-gray-500">账号</span>
+        <span class="text-sm text-gray-300">{{.Data.Email}}</span>
+      </div>
+      {{end}}
+
+      <!-- Subscription Link -->
+      <div class="space-y-2">
+        <div class="text-xs font-medium text-gray-400 uppercase tracking-wider">订阅链接</div>
+        <div class="flex items-center gap-2">
+          <input
+            id="shop-sub-link"
+            type="text"
+            readonly
+            value="{{.Data.SubLink}}"
+            class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-xs text-gray-300 font-mono truncate focus:outline-none focus:border-indigo-500">
+          <button
+            id="shop-copy-btn"
+            onclick="copyShopSubLink()"
+            class="flex-shrink-0 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer">
+            复制
+          </button>
+        </div>
+        <p class="text-xs text-gray-600 leading-relaxed">请将此订阅链接导入您的客户端（如 Clash、V2rayN、Shadowrocket 等）</p>
+      </div>
+
+      <!-- Important Notice -->
+      <div class="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+        <div class="flex items-start gap-2">
+          <svg class="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <p class="text-xs text-amber-200/80 leading-relaxed">请妥善保存此订阅链接，它是您访问服务的唯一凭证。请勿分享给他人。</p>
+        </div>
+      </div>
+
+      <!-- Back to Shop -->
+      <div class="text-center pt-2">
+        <a href="/shop" class="inline-flex items-center gap-1 text-sm text-indigo-400 hover:text-indigo-300 transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+          </svg>
+          返回商店
+        </a>
+      </div>
+
+    </div>
+
+    <p class="text-center text-xs text-gray-700">Powered by Pulse</p>
+  </div>
+
+  <script>
+  function copyShopSubLink() {
+    var input = document.getElementById('shop-sub-link');
+    var btn = document.getElementById('shop-copy-btn');
+    var originalText = btn.textContent;
+    navigator.clipboard.writeText(input.value).then(function() {
+      btn.textContent = '已复制 ✓';
+      btn.classList.remove('bg-indigo-600', 'hover:bg-indigo-500');
+      btn.classList.add('bg-emerald-600', 'hover:bg-emerald-500');
+      setTimeout(function() {
+        btn.textContent = originalText;
+        btn.classList.remove('bg-emerald-600', 'hover:bg-emerald-500');
+        btn.classList.add('bg-indigo-600', 'hover:bg-indigo-500');
+      }, 2000);
+    }).catch(function() {
+      // Fallback for older browsers / non-HTTPS
+      input.select();
+      input.setSelectionRange(0, 99999);
+      document.execCommand('copy');
+      btn.textContent = '已复制 ✓';
+      setTimeout(function() { btn.textContent = originalText; }, 2000);
+    });
+  }
+  </script>
+
+</body>
+</html>
+{{end}}

@@ -1,0 +1,311 @@
+{{define "plans"}}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>{{template "head" .}}</head>
+<body class="bg-gray-950 text-gray-100 flex flex-col h-screen">
+{{template "mobile-header" .}}
+<div class="flex flex-1 overflow-hidden">
+  <aside id="sidebar" class="fixed inset-y-0 left-0 z-50 w-60 bg-gray-900 border-r border-gray-800 flex-shrink-0 -translate-x-full lg:relative lg:inset-auto lg:translate-x-0 transition-transform duration-200">
+    {{template "nav" .}}
+  </aside>
+  <div class="flex-1 overflow-auto">
+    <div class="p-4 md:p-6">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div>
+          <h1 class="text-xl font-semibold text-gray-100">Plans</h1>
+          <p class="text-sm text-gray-500 mt-0.5">套餐管理</p>
+        </div>
+        <button class="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                hx-get="/panel/plans/new"
+                hx-target="#modal-body"
+                hx-on::after-request="document.getElementById('app-modal').showModal()">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          添加套餐
+        </button>
+      </div>
+
+      <div class="rounded-xl border border-gray-800 overflow-auto">
+        <table class="w-full text-sm bg-gray-900 min-w-[780px]">
+          <thead>
+            <tr class="border-b border-gray-800">
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">名称</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">类型</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">价格</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">流量</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">时长</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">排序</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+            </tr>
+          </thead>
+          <tbody id="plans-tbody"
+                 hx-get="/panel/plans/list"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+            <tr><td colspan="8" class="px-4 py-10 text-center text-sm text-gray-500">加载中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{{template "modal-container" .}}
+{{template "toast" .}}
+</body>
+</html>
+{{end}}
+
+
+{{define "plans-list"}}
+{{range .Data}}
+<tr class="border-b border-gray-800 hover:bg-gray-800/40 transition-colors">
+  <td class="px-4 py-3 font-medium text-gray-100">{{.Name}}</td>
+  <td class="px-4 py-3">
+    {{if eq .Type "subscription"}}
+    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-indigo-500/15 text-indigo-400">订阅</span>
+    {{else}}
+    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-500/15 text-emerald-400">一次性</span>
+    {{end}}
+  </td>
+  <td class="px-4 py-3 text-sm text-gray-400">{{.PriceCents}} ¢ {{.Currency}}</td>
+  <td class="px-4 py-3 text-sm text-gray-400">{{if gt0 .TrafficLimit}}{{formatBytes .TrafficLimit}}{{else}}不限{{end}}</td>
+  <td class="px-4 py-3 text-sm text-gray-400">{{if gt .DurationDays 0}}{{.DurationDays}}天{{else}}不限{{end}}</td>
+  <td class="px-4 py-3 text-sm text-gray-500">{{.SortOrder}}</td>
+  <td class="px-4 py-3">
+    {{if .Enabled}}
+    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-500/15 text-emerald-400">已启用</span>
+    {{else}}
+    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-gray-500/15 text-gray-400">已禁用</span>
+    {{end}}
+  </td>
+  <td class="px-4 py-3">
+    <div class="flex items-center gap-2">
+      <button hx-get="/panel/plans/{{.ID}}/edit"
+              hx-target="#modal-body"
+              hx-swap="innerHTML"
+              onclick="document.getElementById('app-modal').showModal()"
+              class="text-xs text-gray-400 hover:text-indigo-400 transition-colors">编辑</button>
+      <button hx-delete="/panel/plans/{{.ID}}"
+              hx-target="#plans-tbody"
+              hx-swap="innerHTML"
+              hx-confirm="确定删除？"
+              class="text-xs text-gray-400 hover:text-red-400 transition-colors">删除</button>
+    </div>
+  </td>
+</tr>
+{{end}}
+{{if not .Data}}
+<tr>
+  <td colspan="8" class="px-4 py-10 text-center text-sm text-gray-600">暂无套餐</td>
+</tr>
+{{end}}
+{{end}}
+
+
+{{define "plans-new-form"}}
+<form hx-post="/panel/plans"
+      hx-target="#plans-tbody"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful) { document.getElementById('app-modal').close(); this.reset(); }">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+    <h3 class="text-sm font-semibold text-gray-100">添加套餐</h3>
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="px-5 py-4 space-y-4 overflow-y-auto max-h-[70vh]">
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">名称</label>
+      <input type="text" name="name" required placeholder="如：月度基础套餐"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">描述</label>
+      <textarea name="description" rows="2" placeholder="套餐描述（可选）"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors"></textarea>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">类型</label>
+        <select name="type"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+          <option value="subscription">订阅 (subscription)</option>
+          <option value="one_time">一次性 (one_time)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">货币</label>
+        <select name="currency"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+          <option value="cny">CNY</option>
+          <option value="usd">USD</option>
+          <option value="eur">EUR</option>
+        </select>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">价格（分）</label>
+        <input type="number" name="price_cents" min="0" value="0"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">Stripe Price ID</label>
+        <input type="text" name="stripe_price_id" placeholder="price_xxx（可选）"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">流量限额（GB，0=不限）</label>
+        <input type="number" name="traffic_limit_gb" min="0" step="0.01" value="0"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">时长（天，0=不限）</label>
+        <input type="number" name="duration_days" min="0" value="0"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">流量重置策略</label>
+      <select name="data_limit_reset_strategy"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+        <option value="no_reset">不重置 (no_reset)</option>
+        <option value="day">每天 (day)</option>
+        <option value="week">每周 (week)</option>
+        <option value="month">每月 (month)</option>
+        <option value="year">每年 (year)</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">Inbound IDs（逗号分隔，可选）</label>
+      <input type="text" name="inbound_ids" placeholder="inb_xxx,inb_yyy"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">排序（越小越靠前）</label>
+        <input type="number" name="sort_order" value="0"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+      <div class="flex items-end pb-1">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" name="enabled" checked
+                 class="w-4 h-4 rounded bg-gray-800 border-gray-600 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-gray-900">
+          <span class="text-sm text-gray-300">启用</span>
+        </label>
+      </div>
+    </div>
+  </div>
+  <div class="px-5 py-4 border-t border-gray-700 flex justify-end gap-3">
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="px-4 py-2 text-sm text-gray-400 hover:text-gray-200 transition-colors">取消</button>
+    <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors">保存</button>
+  </div>
+</form>
+{{end}}
+
+
+{{define "plans-edit-form"}}
+<form hx-put="/panel/plans/{{.Data.ID}}"
+      hx-target="#plans-tbody"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful) document.getElementById('app-modal').close()">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+    <h3 class="text-sm font-semibold text-gray-100">编辑套餐 — <span class="text-indigo-400">{{.Data.Name}}</span></h3>
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="px-5 py-4 space-y-4 overflow-y-auto max-h-[70vh]">
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">名称</label>
+      <input type="text" name="name" required value="{{.Data.Name}}"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">描述</label>
+      <textarea name="description" rows="2"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">{{.Data.Description}}</textarea>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">类型</label>
+        <select name="type"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+          <option value="subscription" {{if eq .Data.Type "subscription"}}selected{{end}}>订阅 (subscription)</option>
+          <option value="one_time" {{if eq .Data.Type "one_time"}}selected{{end}}>一次性 (one_time)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">货币</label>
+        <select name="currency"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+          <option value="cny" {{if eq .Data.Currency "cny"}}selected{{end}}>CNY</option>
+          <option value="usd" {{if eq .Data.Currency "usd"}}selected{{end}}>USD</option>
+          <option value="eur" {{if eq .Data.Currency "eur"}}selected{{end}}>EUR</option>
+        </select>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">价格（分）</label>
+        <input type="number" name="price_cents" min="0" value="{{.Data.PriceCents}}"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">Stripe Price ID</label>
+        <input type="text" name="stripe_price_id" value="{{.Data.StripePriceID}}"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">流量限额（GB，0=不限）</label>
+        <input type="number" name="traffic_limit_gb" min="0" step="0.01" value="{{formatGB .Data.TrafficLimit}}"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">时长（天，0=不限）</label>
+        <input type="number" name="duration_days" min="0" value="{{.Data.DurationDays}}"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">流量重置策略</label>
+      <select name="data_limit_reset_strategy"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+        <option value="no_reset" {{if eq .Data.DataLimitResetStrategy "no_reset"}}selected{{end}}>不重置 (no_reset)</option>
+        <option value="day" {{if eq .Data.DataLimitResetStrategy "day"}}selected{{end}}>每天 (day)</option>
+        <option value="week" {{if eq .Data.DataLimitResetStrategy "week"}}selected{{end}}>每周 (week)</option>
+        <option value="month" {{if eq .Data.DataLimitResetStrategy "month"}}selected{{end}}>每月 (month)</option>
+        <option value="year" {{if eq .Data.DataLimitResetStrategy "year"}}selected{{end}}>每年 (year)</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">Inbound IDs（逗号分隔，可选）</label>
+      <input type="text" name="inbound_ids" value="{{.Data.InboundIDs}}"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-400 mb-1.5">排序（越小越靠前）</label>
+        <input type="number" name="sort_order" value="{{.Data.SortOrder}}"
+               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      </div>
+      <div class="flex items-end pb-1">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" name="enabled" {{if .Data.Enabled}}checked{{end}}
+                 class="w-4 h-4 rounded bg-gray-800 border-gray-600 text-indigo-600 focus:ring-indigo-500 focus:ring-offset-gray-900">
+          <span class="text-sm text-gray-300">启用</span>
+        </label>
+      </div>
+    </div>
+  </div>
+  <div class="px-5 py-4 border-t border-gray-700 flex justify-end gap-3">
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="px-4 py-2 text-sm text-gray-400 hover:text-gray-200 transition-colors">取消</button>
+    <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors">保存</button>
+  </div>
+</form>
+{{end}}

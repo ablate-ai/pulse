@@ -74,6 +74,8 @@ func Run() error {
 		Handler:           mux,
 		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      30 * time.Second, // 节点无 SSE，限制慢客户端占用
+		IdleTimeout:       120 * time.Second,
 	}
 
 	if runtimeInfo.Available {

@@ -18,6 +18,7 @@ import (
 	"pulse/internal/nodes"
 	"pulse/internal/outbounds"
 	"pulse/internal/panel"
+	"pulse/internal/payment"
 	"pulse/internal/serverapi"
 	sqliteStore "pulse/internal/store/sqlite"
 	"pulse/internal/usage"
@@ -126,6 +127,51 @@ func Run() error {
 	if err != nil {
 		return fmt.Errorf("初始化面板: %w", err)
 	}
+	// Stripe 支付（仅在配置了密钥时启用）
+	if cfg.StripeSecretKey != "" && cfg.ShopEnabled {
+		payment.Init(cfg.StripeSecretKey)
+		planStore := db.PlanStore()
+		orderStore := db.OrderStore()
+		panelHandler.SetShopEnabled(planStore)
+		webhookDeps := &payment.WebhookDeps{
+			OrderStore:    orderStore,
+			PlanStore:     planStore,
+			UserStore:     userStore,
+			WebhookSecret: cfg.StripeWebhookSecret,
+			SyncUserInbounds: func(userID string, inboundIDs []string) ([]string, error) {
+				return panelHandler.SyncUserInbounds(userID, inboundIDs)
+			},
+			ApplyNodes: func(nodeIDs []string) {
+				panelHandler.ApplyNodes(nodeIDs)
+			},
+		}
+		mux.HandleFunc("POST /webhook/stripe", webhookDeps.HandleWebhook)
+		shopAPI := &payment.ShopAPI{
+			PlanStore:  planStore,
+			OrderStore: orderStore,
+			UserStore:  userStore,
+			Deps:       webhookDeps,
+			BaseURL:    fmt.Sprintf("http://localhost%s", cfg.ServerAddr),
+		}
+		shopAPI.Register(mux)
+		go func() {
+			time.Sleep(30 * time.Second)
+			ticker := time.NewTicker(5 * time.Minute)
+			defer ticker.Stop()
+			for {
+				if err := payment.SyncSubscriptions(ctx, orderStore, userStore); err != nil {
+					log.Printf("[jobs] sync-stripe error: %v", err)
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+				}
+			}
+		}()
+		log.Printf("payment: Stripe shop enabled")
+	}
+
 	panelHandler.Register(mux)
 	panelHandler.Start(ctx)
 	serverapi.NewWithUsers(store, userStore, inboundStore, outboundStore, clientOptions, applyOpts).Register(protectedV1)
@@ -154,6 +200,8 @@ func Run() error {
 		Addr:              cfg.ServerAddr,
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
+		// WriteTimeout 不设：panel 有 SSE 长连接，设了会强制断流
+		IdleTimeout: 120 * time.Second, // keep-alive 空闲连接最长保留时间
 	}
 
 	log.Printf("pulse-server listening on %s", cfg.ServerAddr)

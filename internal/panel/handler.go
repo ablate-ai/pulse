@@ -33,6 +33,7 @@ import (
 	"pulse/internal/jobs"
 	"pulse/internal/nodes"
 	"pulse/internal/outbounds"
+	"pulse/internal/plans"
 	"pulse/internal/routerules"
 	"pulse/internal/usage"
 	"pulse/internal/users"
@@ -174,6 +175,8 @@ type Handler struct {
 		mu   sync.RWMutex
 		data map[string][2]int
 	}
+	planStore plans.Store
+	shopEnabled bool
 }
 
 // pageData 传入完整页面模板的数据结构。
@@ -369,9 +372,166 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /panel/caddy/{nodeID}/config-form", h.requireAuth(h.caddyConfigForm))
 	mux.HandleFunc("POST /panel/caddy/{nodeID}/config", h.requireAuth(h.caddySaveConfig))
 	mux.HandleFunc("GET /panel/caddy/{nodeID}/caddyfile", h.requireAuth(h.caddyfileModal))
+
+	// 公开商店页面（仅在 ShopEnabled 时注册）
+	if h.shopEnabled {
+		mux.HandleFunc("GET /shop", h.shopPage)
+		mux.HandleFunc("GET /shop/success", h.shopSuccessPage)
+
+		mux.HandleFunc("GET /plans", h.requireAuth(h.plansPage))
+		mux.HandleFunc("GET /panel/plans/list", h.requireAuth(h.plansListPartial))
+		mux.HandleFunc("GET /panel/plans/new", h.requireAuth(h.planNewForm))
+		mux.HandleFunc("POST /panel/plans", h.requireAuth(h.createPlan))
+		mux.HandleFunc("GET /panel/plans/{id}/edit", h.requireAuth(h.planEditForm))
+		mux.HandleFunc("PUT /panel/plans/{id}", h.requireAuth(h.updatePlan))
+		mux.HandleFunc("DELETE /panel/plans/{id}", h.requireAuth(h.deletePlan))
+	}
 }
 
 // ─── 认证中间件 ──────────────────────────────────────────────────────────────
+
+// SetShopEnabled configures the shop page for the panel handler.
+func (h *Handler) SetShopEnabled(ps plans.Store) {
+	h.planStore = ps
+	h.shopEnabled = true
+}
+
+func (h *Handler) shopPage(w http.ResponseWriter, r *http.Request) {
+	list, _ := h.planStore.ListEnabledPlans()
+	type shopData struct {
+		Plans []plans.Plan
+		Error string
+	}
+	h.tmpl.ExecuteTemplate(w, "shop", pageData{Data: shopData{Plans: list}})
+}
+
+func (h *Handler) shopSuccessPage(w http.ResponseWriter, r *http.Request) {
+	type successData struct {
+		Email  string
+		SubURL string
+	}
+	email := r.URL.Query().Get("email")
+	subURL := r.URL.Query().Get("sub_url")
+	h.tmpl.ExecuteTemplate(w, "shop-success", pageData{Data: successData{Email: email, SubURL: subURL}})
+}
+
+// ─── 套餐管理 ─────────────────────────────────────────────────────────────────
+
+func (h *Handler) plansPage(w http.ResponseWriter, r *http.Request) {
+	h.renderPage(w, r, "plans", pageData{
+		Page:     "plans",
+		Username: h.currentUsername(r),
+	})
+}
+
+func (h *Handler) plansListPartial(w http.ResponseWriter, r *http.Request) {
+	list, err := h.planStore.ListPlans()
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to list plans: "+err.Error())
+		return
+	}
+	h.renderPartial(w, "plans-list", list)
+}
+
+func (h *Handler) planNewForm(w http.ResponseWriter, r *http.Request) {
+	h.renderPartial(w, "plans-new-form", nil)
+}
+
+func (h *Handler) createPlan(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		htmxError(w, http.StatusBadRequest, "invalid form data")
+		return
+	}
+	trafficGB, _ := strconv.ParseFloat(r.FormValue("traffic_limit_gb"), 64)
+	priceCents, _ := strconv.Atoi(r.FormValue("price_cents"))
+	durationDays, _ := strconv.Atoi(r.FormValue("duration_days"))
+	sortOrder, _ := strconv.Atoi(r.FormValue("sort_order"))
+
+	plan := plans.Plan{
+		ID:                     idgen.NextString(),
+		Name:                   r.FormValue("name"),
+		Description:            r.FormValue("description"),
+		Type:                   r.FormValue("type"),
+		PriceCents:             priceCents,
+		Currency:               r.FormValue("currency"),
+		StripePriceID:          r.FormValue("stripe_price_id"),
+		TrafficLimit:           int64(trafficGB * 1e9),
+		DurationDays:           durationDays,
+		DataLimitResetStrategy: r.FormValue("data_limit_reset_strategy"),
+		InboundIDs:             r.FormValue("inbound_ids"),
+		SortOrder:              sortOrder,
+		Enabled:                r.FormValue("enabled") == "on",
+	}
+	if _, err := h.planStore.UpsertPlan(plan); err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to create plan: "+err.Error())
+		return
+	}
+	h.renderPlansListFromStore(w)
+}
+
+func (h *Handler) planEditForm(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	plan, err := h.planStore.GetPlan(id)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "plan not found")
+		return
+	}
+	h.renderPartial(w, "plans-edit-form", plan)
+}
+
+func (h *Handler) updatePlan(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	plan, err := h.planStore.GetPlan(id)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "plan not found")
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		htmxError(w, http.StatusBadRequest, "invalid form data")
+		return
+	}
+	trafficGB, _ := strconv.ParseFloat(r.FormValue("traffic_limit_gb"), 64)
+	priceCents, _ := strconv.Atoi(r.FormValue("price_cents"))
+	durationDays, _ := strconv.Atoi(r.FormValue("duration_days"))
+	sortOrder, _ := strconv.Atoi(r.FormValue("sort_order"))
+
+	plan.Name = r.FormValue("name")
+	plan.Description = r.FormValue("description")
+	plan.Type = r.FormValue("type")
+	plan.PriceCents = priceCents
+	plan.Currency = r.FormValue("currency")
+	plan.StripePriceID = r.FormValue("stripe_price_id")
+	plan.TrafficLimit = int64(trafficGB * 1e9)
+	plan.DurationDays = durationDays
+	plan.DataLimitResetStrategy = r.FormValue("data_limit_reset_strategy")
+	plan.InboundIDs = r.FormValue("inbound_ids")
+	plan.SortOrder = sortOrder
+	plan.Enabled = r.FormValue("enabled") == "on"
+
+	if _, err := h.planStore.UpsertPlan(plan); err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to update plan: "+err.Error())
+		return
+	}
+	h.renderPlansListFromStore(w)
+}
+
+func (h *Handler) deletePlan(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := h.planStore.DeletePlan(id); err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to delete plan: "+err.Error())
+		return
+	}
+	h.renderPlansListFromStore(w)
+}
+
+func (h *Handler) renderPlansListFromStore(w http.ResponseWriter) {
+	list, err := h.planStore.ListPlans()
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to list plans: "+err.Error())
+		return
+	}
+	h.renderPartial(w, "plans-list", list)
+}
 
 // requireAuth 封装需要认证的 handler。
 // 对 POST/PUT/DELETE 请求额外校验 CSRF token。
@@ -811,12 +971,12 @@ func (h *Handler) createUser(w http.ResponseWriter, r *http.Request) {
 
 	// 处理 inbound 关联，变更后异步推送配置到受影响节点
 	if selectedIDs := r.Form["inbound_ids"]; len(selectedIDs) > 0 {
-		affected, err := h.syncUserInbounds(newUser.ID, selectedIDs)
+		affected, err := h.SyncUserInbounds(newUser.ID, selectedIDs)
 		if err != nil {
 			htmxError(w, http.StatusInternalServerError, "failed to sync inbounds: "+err.Error())
 			return
 		}
-		h.applyNodes(affected)
+		h.ApplyNodes(affected)
 	}
 
 	// 返回更新后的用户列表
@@ -916,12 +1076,12 @@ func (h *Handler) updateUser(w http.ResponseWriter, r *http.Request) {
 
 	// 有提交 inbound_sync 标记时（无论是否选中），都同步 inbound 关联
 	if r.Form.Has("inbound_sync") {
-		affected, err := h.syncUserInbounds(user.ID, r.Form["inbound_ids"])
+		affected, err := h.SyncUserInbounds(user.ID, r.Form["inbound_ids"])
 		if err != nil {
 			htmxError(w, http.StatusInternalServerError, "failed to sync inbounds: "+err.Error())
 			return
 		}
-		h.applyNodes(affected)
+		h.ApplyNodes(affected)
 	}
 
 	h.renderUsersListFromStore(w)
@@ -1974,7 +2134,8 @@ func (h *Handler) buildNodeMap() map[string]string {
 }
 
 // applyNodes 异步将最新用户配置下发到指定节点列表（后台执行，不阻塞请求）。
-func (h *Handler) applyNodes(nodeIDs []string) {
+// ApplyNodes pushes config to the given nodes. Exported for payment webhook use.
+func (h *Handler) ApplyNodes(nodeIDs []string) {
 	for _, nodeID := range nodeIDs {
 		go func(id string) {
 			client, err := h.dial(id)
@@ -2011,7 +2172,8 @@ func (h *Handler) applyNodes(nodeIDs []string) {
 // syncUserInbounds 根据选中的 inbound ID 列表同步用户的 inbound 访问凭据。
 // 新增：为未有凭据的 inbound 创建 UserInbound；删除：移除未选中 inbound 的旧记录。
 // 返回所有发生变更的 nodeID（新增 + 删除），供调用方触发配置下发。
-func (h *Handler) syncUserInbounds(userID string, selectedInboundIDs []string) ([]string, error) {
+// SyncUserInbounds reconciles a user's inbound assignments. Exported for payment webhook use.
+func (h *Handler) SyncUserInbounds(userID string, selectedInboundIDs []string) ([]string, error) {
 	// 收集选中的 inbound → nodeID 映射
 	wantedInbounds := make(map[string]inbounds.Inbound) // inboundID → Inbound
 	for _, ibID := range selectedInboundIDs {
@@ -3327,6 +3489,9 @@ type userPortalData struct {
 	HasAnnouncement     bool
 	DailyTraffic        []users.UserDailyUsage // 近7天每日流量
 	NodeUsage           []userNodeUsageRow      // 各节点流量分布
+	// Billing
+	PlanName    string // empty if no plan
+	ShopEnabled bool
 }
 
 // subURL 根据请求构造完整的订阅链接。
@@ -3446,6 +3611,15 @@ func (h *Handler) userPortalPage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+
+	// Billing info
+	portalData.ShopEnabled = h.shopEnabled
+	if h.shopEnabled && h.planStore != nil && user.CurrentPlanID != "" {
+		if plan, err := h.planStore.GetPlan(user.CurrentPlanID); err == nil {
+			portalData.PlanName = plan.Name
+		}
+	}
+
 	w.Header().Set("X-Robots-Tag", "noindex")
 	h.renderPage(w, r, "user_portal", pageData{
 		Page: "user_portal",
@@ -3543,7 +3717,7 @@ func (h *Handler) apiResetToken(w http.ResponseWriter, r *http.Request) {
 	for id := range affectedNodeIDs {
 		affected = append(affected, id)
 	}
-	h.applyNodes(affected)
+	h.ApplyNodes(affected)
 
 	// 若是 HTMX 请求，重定向到新门户页面
 	if isHTMX(r) {
