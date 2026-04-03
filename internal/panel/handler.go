@@ -32,6 +32,7 @@ import (
 	"pulse/internal/inbounds"
 	"pulse/internal/jobs"
 	"pulse/internal/nodes"
+	"pulse/internal/orders"
 	"pulse/internal/outbounds"
 	"pulse/internal/plans"
 	"pulse/internal/routerules"
@@ -175,7 +176,8 @@ type Handler struct {
 		mu   sync.RWMutex
 		data map[string][2]int
 	}
-	planStore plans.Store
+	planStore   plans.Store
+	orderStore  orders.Store
 	shopEnabled bool
 }
 
@@ -391,8 +393,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 // ─── 认证中间件 ──────────────────────────────────────────────────────────────
 
 // SetShopEnabled configures the shop page for the panel handler.
-func (h *Handler) SetShopEnabled(ps plans.Store) {
+func (h *Handler) SetShopEnabled(ps plans.Store, os orders.Store) {
 	h.planStore = ps
+	h.orderStore = os
 	h.shopEnabled = true
 }
 
@@ -410,9 +413,18 @@ func (h *Handler) shopSuccessPage(w http.ResponseWriter, r *http.Request) {
 		Email  string
 		SubURL string
 	}
-	email := r.URL.Query().Get("email")
-	subURL := r.URL.Query().Get("sub_url")
-	h.tmpl.ExecuteTemplate(w, "shop-success", pageData{Data: successData{Email: email, SubURL: subURL}})
+	var data successData
+	if sessionID := r.URL.Query().Get("session_id"); sessionID != "" && h.orderStore != nil {
+		if order, err := h.orderStore.GetOrderByStripeSession(sessionID); err == nil {
+			data.Email = order.Email
+			if order.UserID != "" {
+				if user, err := h.userStore.GetUser(order.UserID); err == nil && user.SubToken != "" {
+					data.SubURL = subURL(r, user.SubToken)
+				}
+			}
+		}
+	}
+	h.tmpl.ExecuteTemplate(w, "shop-success", pageData{Data: data})
 }
 
 // ─── 套餐管理 ─────────────────────────────────────────────────────────────────

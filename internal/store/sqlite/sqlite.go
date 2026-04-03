@@ -260,6 +260,7 @@ func (db *DB) init() error {
 		`CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);`,
 		`CREATE INDEX IF NOT EXISTS idx_orders_email ON orders(email);`,
 		`CREATE INDEX IF NOT EXISTS idx_orders_stripe_session_id ON orders(stripe_session_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_orders_stripe_subscription_id ON orders(stripe_subscription_id);`,
 	}
 
 	for _, stmt := range stmts {

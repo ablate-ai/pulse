@@ -132,7 +132,7 @@ func Run() error {
 		payment.Init(cfg.StripeSecretKey)
 		planStore := db.PlanStore()
 		orderStore := db.OrderStore()
-		panelHandler.SetShopEnabled(planStore)
+		panelHandler.SetShopEnabled(planStore, orderStore)
 		webhookDeps := &payment.WebhookDeps{
 			OrderStore:    orderStore,
 			PlanStore:     planStore,

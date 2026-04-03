@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/stripe/stripe-go/v82"
@@ -16,6 +17,10 @@ import (
 	"pulse/internal/plans"
 	"pulse/internal/users"
 )
+
+// webhookMu serializes webhook processing to prevent race conditions
+// on read-modify-write cycles (e.g., duplicate checkout.session.completed).
+var webhookMu sync.Mutex
 
 // WebhookDeps holds the dependencies for webhook processing.
 type WebhookDeps struct {
@@ -46,13 +51,21 @@ func (d *WebhookDeps) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	switch event.Type {
 	case "checkout.session.completed":
+		webhookMu.Lock()
 		d.handleCheckoutCompleted(event)
+		webhookMu.Unlock()
 	case "invoice.paid":
+		webhookMu.Lock()
 		d.handleInvoicePaid(event)
+		webhookMu.Unlock()
 	case "invoice.payment_failed":
+		webhookMu.Lock()
 		d.handleInvoicePaymentFailed(event)
+		webhookMu.Unlock()
 	case "customer.subscription.deleted":
+		webhookMu.Lock()
 		d.handleSubscriptionDeleted(event)
+		webhookMu.Unlock()
 	}
 
 	w.WriteHeader(http.StatusOK)
