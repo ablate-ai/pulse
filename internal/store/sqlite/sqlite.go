@@ -222,6 +222,9 @@ func (db *DB) init() error {
 	if err := db.migrateOutboundsTable(); err != nil {
 		return err
 	}
+	if err := db.migrateRouteRulesTable(); err != nil {
+		return err
+	}
 	// inbound_id 索引必须在迁移完成后创建，避免旧库中该列尚不存在时报错
 	if _, err := db.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_user_inbounds_inbound_id ON user_inbounds(inbound_id)`); err != nil {
 		return fmt.Errorf("init sqlite schema: create idx_user_inbounds_inbound_id: %w", err)
@@ -246,6 +249,25 @@ func (db *DB) migrateOutboundsTable() error {
 		if _, ok := columns[col]; !ok {
 			if _, err := db.conn.Exec(ddl); err != nil {
 				return fmt.Errorf("migrate outbounds add %s: %w", col, err)
+			}
+		}
+	}
+	return nil
+}
+
+func (db *DB) migrateRouteRulesTable() error {
+	columns, err := db.tableColumns("route_rules")
+	if err != nil {
+		return err
+	}
+	additions := map[string]string{
+		"rule_set_url":    `ALTER TABLE route_rules ADD COLUMN rule_set_url TEXT NOT NULL DEFAULT ''`,
+		"rule_set_format": `ALTER TABLE route_rules ADD COLUMN rule_set_format TEXT NOT NULL DEFAULT 'binary'`,
+	}
+	for col, ddl := range additions {
+		if _, ok := columns[col]; !ok {
+			if _, err := db.conn.Exec(ddl); err != nil {
+				return fmt.Errorf("migrate route_rules add %s: %w", col, err)
 			}
 		}
 	}

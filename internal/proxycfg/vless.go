@@ -37,8 +37,17 @@ type v2rayStats struct {
 }
 
 type routeBlock struct {
-	Rules []routeRule `json:"rules"`
-	Final string      `json:"final"`
+	Rules   []routeRule    `json:"rules"`
+	RuleSet []ruleSetBlock `json:"rule_set,omitempty"`
+	Final   string         `json:"final"`
+}
+
+// ruleSetBlock 对应 sing-box route.rule_set 数组元素。
+type ruleSetBlock struct {
+	Type   string `json:"type"`   // 固定 "remote"
+	Tag    string `json:"tag"`
+	Format string `json:"format"` // "binary" 或 "source"
+	URL    string `json:"url"`
 }
 
 type routeRule struct {
@@ -47,6 +56,7 @@ type routeRule struct {
 	DomainKeyword []string `json:"domain_keyword,omitempty"`
 	Domain        []string `json:"domain,omitempty"`
 	IPCIDR        []string `json:"ip_cidr,omitempty"`
+	RuleSet       []string `json:"rule_set,omitempty"`
 	Outbound      string   `json:"outbound"`
 }
 
@@ -209,24 +219,49 @@ func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.Us
 	}
 
 	// 全局分流规则（优先级高，先匹配）
+	seenRuleSetTags := make(map[string]struct{})
+	var ruleSetBlocks []ruleSetBlock
 	for _, rr := range opts.RouteRules {
-		patterns := splitPatterns(rr.Patterns)
-		if len(patterns) == 0 {
-			continue
-		}
 		obTag := ensureOutbound(rr.OutboundID)
 		rule := routeRule{Outbound: obTag}
-		switch rr.RuleType {
-		case "domain_suffix":
-			rule.DomainSuffix = patterns
-		case "domain_keyword":
-			rule.DomainKeyword = patterns
-		case "domain":
-			rule.Domain = patterns
-		case "ip_cidr":
-			rule.IPCIDR = patterns
-		default:
-			continue
+
+		if rr.RuleType == "rule_set" {
+			// patterns 为单个 tag 名称，URL 直接存在 RuleSetURL 字段
+			tag := strings.TrimSpace(rr.Patterns)
+			if tag == "" || rr.RuleSetURL == "" {
+				continue
+			}
+			if _, seen := seenRuleSetTags[tag]; !seen {
+				seenRuleSetTags[tag] = struct{}{}
+				format := rr.RuleSetFormat
+				if format == "" {
+					format = "binary"
+				}
+				ruleSetBlocks = append(ruleSetBlocks, ruleSetBlock{
+					Type:   "remote",
+					Tag:    tag,
+					Format: format,
+					URL:    rr.RuleSetURL,
+				})
+			}
+			rule.RuleSet = []string{tag}
+		} else {
+			patterns := splitPatterns(rr.Patterns)
+			if len(patterns) == 0 {
+				continue
+			}
+			switch rr.RuleType {
+			case "domain_suffix":
+				rule.DomainSuffix = patterns
+			case "domain_keyword":
+				rule.DomainKeyword = patterns
+			case "domain":
+				rule.Domain = patterns
+			case "ip_cidr":
+				rule.IPCIDR = patterns
+			default:
+				continue
+			}
 		}
 		rules = append(rules, rule)
 	}
@@ -281,8 +316,8 @@ func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.Us
 			},
 		},
 	}
-	if len(rules) > 0 {
-		cfg.Route = &routeBlock{Rules: rules, Final: "direct"}
+	if len(rules) > 0 || len(ruleSetBlocks) > 0 {
+		cfg.Route = &routeBlock{Rules: rules, RuleSet: ruleSetBlocks, Final: "direct"}
 	}
 
 	data, err := json.MarshalIndent(cfg, "", "  ")

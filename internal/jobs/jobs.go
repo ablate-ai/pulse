@@ -463,8 +463,8 @@ type Alerter interface {
 
 // ApplyOptions 控制 ApplyNodeUsers 的行为。
 type ApplyOptions struct {
-	Alerter         Alerter          // nil 时不发送告警
-	RouteRuleStore  routerules.Store // nil 时不应用全局分流规则
+	Alerter        Alerter          // nil 时不发送告警
+	RouteRuleStore routerules.Store // nil 时不应用全局分流规则
 }
 
 // ApplyNodeUsers 根据节点 inbound 配置和用户凭据生成配置并下发到节点。

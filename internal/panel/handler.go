@@ -148,9 +148,9 @@ type Handler struct {
 	userStore      users.Store
 	nodeStore      nodes.Store
 	ibStore        inbounds.InboundStore
-	outboundStore   outbounds.Store
-	routeRuleStore  routerules.Store
-	dial            jobs.NodeDialer
+	outboundStore  outbounds.Store
+	routeRuleStore routerules.Store
+	dial           jobs.NodeDialer
 	applyOpts      jobs.ApplyOptions
 	tmpl           *template.Template
 	serverAddr     string
@@ -316,6 +316,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /panel/routerules/{id}/edit", h.requireAuth(h.routeRuleEditForm))
 	mux.HandleFunc("PUT /panel/routerules/{id}", h.requireAuth(h.updateRouteRule))
 	mux.HandleFunc("DELETE /panel/routerules/{id}", h.requireAuth(h.deleteRouteRule))
+
 
 	mux.HandleFunc("GET /panel/tools/reality-keypair", h.requireAuth(h.realityKeypair))
 
@@ -2613,12 +2614,14 @@ func (h *Handler) createRouteRule(w http.ResponseWriter, r *http.Request) {
 		priority = v
 	}
 	rule := routerules.RouteRule{
-		ID:         idgen.NextString(),
-		Name:       name,
-		RuleType:   ruleType,
-		Patterns:   patterns,
-		OutboundID: outboundID,
-		Priority:   priority,
+		ID:            idgen.NextString(),
+		Name:          name,
+		RuleType:      ruleType,
+		Patterns:      patterns,
+		OutboundID:    outboundID,
+		Priority:      priority,
+		RuleSetURL:    r.FormValue("rule_set_url"),
+		RuleSetFormat: r.FormValue("rule_set_format"),
 	}
 	if _, err := h.routeRuleStore.Upsert(rule); err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to create route rule: "+err.Error())
@@ -2653,6 +2656,8 @@ func (h *Handler) updateRouteRule(w http.ResponseWriter, r *http.Request) {
 	rule.RuleType = r.FormValue("rule_type")
 	rule.Patterns = r.FormValue("patterns")
 	rule.OutboundID = r.FormValue("outbound_id")
+	rule.RuleSetURL = r.FormValue("rule_set_url")
+	rule.RuleSetFormat = r.FormValue("rule_set_format")
 	if v, err := strconv.Atoi(r.FormValue("priority")); err == nil {
 		rule.Priority = v
 	}
@@ -2684,10 +2689,11 @@ func (h *Handler) renderRouteRulesListFromStore(w http.ResponseWriter) {
 		obMap[ob.ID] = ob
 	}
 	h.renderPartial(w, "partial-routerule-rows", struct {
-		Rules     []routerules.RouteRule
+		Rules       []routerules.RouteRule
 		OutboundMap map[string]outbounds.Outbound
 	}{Rules: list, OutboundMap: obMap})
 }
+
 
 // ─── 模板函数 ─────────────────────────────────────────────────────────────────
 
