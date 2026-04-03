@@ -7,8 +7,42 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
+
+// validDomain returns true if s is safe to interpolate into a Caddyfile
+// and to use as a filename component.
+func validDomain(s string) bool {
+	if s == "" || len(s) > 253 {
+		return false
+	}
+	if strings.Contains(s, "..") {
+		return false
+	}
+	for _, c := range s {
+		switch {
+		case c >= 'a' && c <= 'z':
+		case c >= 'A' && c <= 'Z':
+		case c >= '0' && c <= '9':
+		case c == '-', c == '.', c == '_', c == '*', c == ':':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// validACMEEmail returns true if the email is safe to interpolate into a Caddyfile.
+func validACMEEmail(s string) bool {
+	return !strings.ContainsAny(s, "\n\r{}")
+}
+
+// validPort returns true if s is a decimal integer in range 1-65535.
+func validPort(s string) bool {
+	n, err := strconv.Atoi(s)
+	return err == nil && n >= 1 && n <= 65535
+}
 
 const (
 	caddyPulseDDir = "/etc/caddy/pulse.d"
@@ -58,12 +92,18 @@ func syncCaddyRoutes(routes []trojanRoute) error {
 		if route.Domain == "" {
 			continue
 		}
+		if !validDomain(route.Domain) {
+			continue
+		}
+		if route.Port < 1 || route.Port > 65535 {
+			continue
+		}
 		wanted[route.Domain] = struct{}{}
 		content := fmt.Sprintf(
 			"%s {\n\thandle /ws {\n\t\treverse_proxy 127.0.0.1:%d\n\t}\n}\n",
 			route.Domain, route.Port,
 		)
-		path := filepath.Join(caddyPulseDDir, route.Domain+".caddy")
+		path := filepath.Join(caddyPulseDDir, filepath.Base(route.Domain)+".caddy")
 		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 			return fmt.Errorf("write caddy config for %s: %w", route.Domain, err)
 		}
@@ -174,13 +214,16 @@ func writeCaddyfileFromConfig(acmeEmail, panelDomain string, panelPort int, extr
 
 	var buf strings.Builder
 	if acmeEmail != "" {
+		if !validACMEEmail(acmeEmail) {
+			return fmt.Errorf("invalid acme email")
+		}
 		fmt.Fprintf(&buf, "{\n\temail %s\n}\n\n", acmeEmail)
 	}
 
 	// 面板反代：支持多域名（逗号或换行分隔），生成一个 Caddy 块
 	var domains []string
 	for _, d := range strings.FieldsFunc(panelDomain, func(r rune) bool { return r == ',' || r == '\n' }) {
-		if d = strings.TrimSpace(d); d != "" {
+		if d = strings.TrimSpace(d); d != "" && validDomain(d) {
 			domains = append(domains, d)
 		}
 	}
@@ -205,6 +248,9 @@ func writeCaddyfileFromConfig(acmeEmail, panelDomain string, panelPort int, extr
 		domain := strings.TrimSpace(line[:colonIdx])
 		port := strings.TrimSpace(line[colonIdx+1:])
 		if domain == "" || port == "" {
+			continue
+		}
+		if !validDomain(domain) || !validPort(port) {
 			continue
 		}
 		fmt.Fprintf(&buf, "%s {\n\treverse_proxy 127.0.0.1:%s {\n\t\tflush_interval -1\n\t}\n}\n\n", domain, port)
