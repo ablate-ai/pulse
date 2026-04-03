@@ -168,10 +168,29 @@
 
 <script>
 (function() {
+  function sanitizeHTML(html) {
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    doc.querySelectorAll('script').forEach(function(el) { el.remove(); });
+    doc.querySelectorAll('*').forEach(function(el) {
+      for (var i = el.attributes.length - 1; i >= 0; i--) {
+        if (el.attributes[i].name.startsWith('on')) {
+          el.removeAttribute(el.attributes[i].name);
+        }
+      }
+      if (el.tagName === 'A') {
+        var href = el.getAttribute('href') || '';
+        if (href.toLowerCase().trim().startsWith('javascript:')) {
+          el.removeAttribute('href');
+        }
+      }
+    });
+    return doc.body.innerHTML;
+  }
+
   var container = document.getElementById('user-nodes-container');
   var es = new EventSource('/panel/user-node-status/{{.Data.User.SubToken}}/stream');
   es.addEventListener('update', function(e) {
-    container.innerHTML = e.data;
+    container.innerHTML = sanitizeHTML(e.data);
   });
 })();
 </script>
