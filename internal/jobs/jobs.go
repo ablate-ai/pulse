@@ -163,7 +163,9 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 
 			user.UsedBytes = user.UploadBytes + user.DownloadBytes
 			statusChanged := prevEnabled != user.EffectiveEnabledAt(now)
-			user, err = store.UpsertUser(user)
+			// 使用 savedUser 接收持久化结果，不写回 userMap，避免本节点累加的脏数据
+			// 在同一用户出现在多个节点时被下一个节点循环的 GetUsersByIDs 读到旧值。
+			savedUser, err := store.UpsertUser(user)
 			if err != nil {
 				result.Errors = append(result.Errors, node.ID+": "+err.Error())
 				continue
@@ -172,15 +174,14 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 			if statusChanged {
 				reloadNeeded = true
 				// 状态变为 limited/expired 时发送一次性告警（状态已持久化，不会重复触发）
-				switch user.EffectiveStatusAt(now) {
+				switch savedUser.EffectiveStatusAt(now) {
 				case users.StatusLimited:
-					sendAlert(ctx, applyOpts.Alerter, "流量超限", fmt.Sprintf("用户 %s 已超出流量限额", user.Username))
+					sendAlert(ctx, applyOpts.Alerter, "流量超限", fmt.Sprintf("用户 %s 已超出流量限额", savedUser.Username))
 				case users.StatusExpired:
-					sendAlert(ctx, applyOpts.Alerter, "用户到期", fmt.Sprintf("用户 %s 已到期", user.Username))
+					sendAlert(ctx, applyOpts.Alerter, "用户到期", fmt.Sprintf("用户 %s 已到期", savedUser.Username))
 				}
 			}
 			result.UsersUpdated++
-			userMap[user.ID] = user
 		}
 
 		// 累积节点维度流量（使用从全部上报用户汇总的真实值）
@@ -587,7 +588,12 @@ func sendAlert(ctx context.Context, a Alerter, title, body string) {
 }
 
 // applyRate 将 delta 乘以倍率并防止 int64 溢出。
+// delta 理论上不会为负（V2Ray Stats reset=true 返回的是增量），
+// 但节点重启或计数器跳变时可能出现异常负值，直接截断为 0 避免流量统计写入负数。
 func applyRate(delta int64, rate float64) int64 {
+	if delta <= 0 {
+		return 0
+	}
 	// float64(1<<63 - 1) 在 float64 中向上取整为 2^63 = 9.223372036854776e+18，
 	// 任何 >= 该值的 float64 转换为 int64 都会溢出，因此用它作为上界。
 	const maxInt64Float = float64(1<<63 - 1)
