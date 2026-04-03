@@ -18,10 +18,10 @@ type subAPI struct {
 	inbounds inbounds.InboundStore
 }
 
-// RegisterSubAPI 注册公开订阅端点 GET /sub/{userID}，无需认证。
+// RegisterSubAPI 注册公开订阅端点 GET /user/{token}，无需认证。
 func RegisterSubAPI(mux *http.ServeMux, userStore users.Store, ibStore inbounds.InboundStore) {
 	a := &subAPI{users: userStore, inbounds: ibStore}
-	mux.HandleFunc("/sub/", a.handleSub)
+	mux.HandleFunc("/user/", a.handleSub)
 }
 
 func (a *subAPI) handleSub(w http.ResponseWriter, r *http.Request) {
@@ -30,8 +30,8 @@ func (a *subAPI) handleSub(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 从路径提取 token：/sub/{token}
-	userID := strings.TrimPrefix(r.URL.Path, "/sub/")
+	// 从路径提取 token：/user/{token}
+	userID := strings.TrimPrefix(r.URL.Path, "/user/")
 	userID = strings.TrimSuffix(userID, "/")
 	if userID == "" {
 		http.NotFound(w, r)

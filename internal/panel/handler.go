@@ -3518,7 +3518,7 @@ func subURL(r *http.Request, token string) string {
 	if fwdHost := r.Header.Get("X-Forwarded-Host"); fwdHost != "" {
 		host = fwdHost
 	}
-	return scheme + "://" + host + "/sub/" + token
+	return scheme + "://" + host + "/user/" + token
 }
 
 // userPortalPage 渲染用户主页（无需管理员认证，以 sub_token 鉴权）。
