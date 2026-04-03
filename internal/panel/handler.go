@@ -3,7 +3,9 @@ package panel
 import (
 	"context"
 	"crypto/ecdh"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"embed"
 	"encoding/base64"
 	"encoding/hex"
@@ -156,6 +158,7 @@ type Handler struct {
 	serverAddr     string
 	clientCertFile string // 面板客户端证书路径，用于 node 安装时粘贴
 	settingsStore  SettingsStore
+	csrfSecret     []byte   // HMAC key for deriving per-session CSRF tokens
 	speedCache     sync.Map // key=nodeID, value=nodeTrafficSample；重启丢失可接受
 	hub            metricsHub
 	lastAccessAt   atomic.Int64 // unix nano，有人访问时更新
@@ -175,10 +178,11 @@ type Handler struct {
 
 // pageData 传入完整页面模板的数据结构。
 type pageData struct {
-	Page     string // "dashboard", "users", "nodes"
-	Username string
-	Version  string
-	Data     any
+	Page      string // "dashboard", "users", "nodes"
+	Username  string
+	Version   string
+	CSRFToken string
+	Data      any
 }
 
 // nodeWithStatus 节点及其运行状态。
@@ -238,6 +242,11 @@ func New(
 		clientCertFile: clientCertFile,
 		settingsStore:  settingsStore,
 	}
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return nil, fmt.Errorf("generate csrf secret: %w", err)
+	}
+	h.csrfSecret = secret
 	h.hub.subs = make(map[*metricsSubscriber]struct{})
 
 	tmpl, err := template.New("").Funcs(templateFuncs()).ParseFS(embedFS, "templates/*.html")
@@ -365,6 +374,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 // ─── 认证中间件 ──────────────────────────────────────────────────────────────
 
 // requireAuth 封装需要认证的 handler。
+// 对 POST/PUT/DELETE 请求额外校验 CSRF token。
 func (h *Handler) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie(cookieName)
@@ -376,6 +386,16 @@ func (h *Handler) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 			}
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
+		}
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			if !h.validateCSRF(r) {
+				if isHTMX(r) {
+					htmxError(w, http.StatusForbidden, "CSRF token invalid")
+					return
+				}
+				http.Error(w, "CSRF token invalid", http.StatusForbidden)
+				return
+			}
 		}
 		next(w, r)
 	}
@@ -433,6 +453,38 @@ func clearSessionCookie(w http.ResponseWriter) {
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
+}
+
+// ─── CSRF 防护 ───────────────────────────────────────────────────────────────
+
+// csrfToken 根据 session token 通过 HMAC-SHA256 派生 CSRF token（无状态）。
+func (h *Handler) csrfToken(sessionToken string) string {
+	mac := hmac.New(sha256.New, h.csrfSecret)
+	mac.Write([]byte(sessionToken))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// csrfTokenFromRequest 从当前请求的 session cookie 派生 CSRF token。
+func (h *Handler) csrfTokenFromRequest(r *http.Request) string {
+	cookie, err := r.Cookie(cookieName)
+	if err != nil {
+		return ""
+	}
+	return h.csrfToken(cookie.Value)
+}
+
+// validateCSRF 检查请求中的 CSRF token 是否与 session 匹配。
+// 优先检查 X-CSRF-Token header（HTMX 请求），回退到 _csrf 表单字段（普通表单）。
+func (h *Handler) validateCSRF(r *http.Request) bool {
+	expected := h.csrfTokenFromRequest(r)
+	if expected == "" {
+		return false
+	}
+	token := r.Header.Get("X-CSRF-Token")
+	if token == "" {
+		token = r.FormValue("_csrf")
+	}
+	return hmac.Equal([]byte(token), []byte(expected))
 }
 
 // htmxError 向 HTMX 请求返回错误响应。
@@ -494,8 +546,9 @@ func setHXTriggerToast(w http.ResponseWriter, msg string) {
 }
 
 // renderPage 使用完整 layout 模板渲染页面。
-func (h *Handler) renderPage(w http.ResponseWriter, name string, data pageData) {
+func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, name string, data pageData) {
 	data.Version = buildinfo.Version
+	data.CSRFToken = h.csrfTokenFromRequest(r)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.tmpl.ExecuteTemplate(w, name, data); err != nil {
 		http.Error(w, "template render error: "+err.Error(), http.StatusInternalServerError)
@@ -523,7 +576,7 @@ func (h *Handler) loginPage(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("error") == "1" {
 		errMsg = "用户名或密码错误"
 	}
-	h.renderPage(w, "login", pageData{
+	h.renderPage(w, r, "login", pageData{
 		Page: "login",
 		Data: loginPageData{
 			Error:            errMsg,
@@ -601,6 +654,10 @@ func (h *Handler) processLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) processLogout(w http.ResponseWriter, r *http.Request) {
+	if !h.validateCSRF(r) {
+		http.Error(w, "CSRF token invalid", http.StatusForbidden)
+		return
+	}
 	cookie, err := r.Cookie(cookieName)
 	if err == nil {
 		_ = h.auth.DeleteToken(cookie.Value)
@@ -616,21 +673,21 @@ func (h *Handler) redirectDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) dashboardPage(w http.ResponseWriter, r *http.Request) {
-	h.renderPage(w, "dashboard", pageData{
+	h.renderPage(w, r, "dashboard", pageData{
 		Page:     "dashboard",
 		Username: h.currentUsername(r),
 	})
 }
 
 func (h *Handler) usersPage(w http.ResponseWriter, r *http.Request) {
-	h.renderPage(w, "users", pageData{
+	h.renderPage(w, r, "users", pageData{
 		Page:     "users",
 		Username: h.currentUsername(r),
 	})
 }
 
 func (h *Handler) nodesPage(w http.ResponseWriter, r *http.Request) {
-	h.renderPage(w, "nodes", pageData{
+	h.renderPage(w, r, "nodes", pageData{
 		Page:     "nodes",
 		Username: h.currentUsername(r),
 	})
@@ -891,6 +948,8 @@ func (h *Handler) resetUserTraffic(w http.ResponseWriter, r *http.Request) {
 	user.UploadBytes = 0
 	user.DownloadBytes = 0
 	user.UsedBytes = 0
+	user.RawUploadBytes = 0
+	user.RawDownloadBytes = 0
 	user.LastTrafficResetAt = &now
 
 	if _, err := h.userStore.UpsertUser(user); err != nil {
@@ -926,7 +985,7 @@ func (h *Handler) settingsPage(w http.ResponseWriter, r *http.Request) {
 		d.AnnouncementEnabled = enabled == "true"
 		d.BarkURL, _ = h.settingsStore.GetSetting("alert_bark_url")
 	}
-	h.renderPage(w, "settings", pageData{
+	h.renderPage(w, r, "settings", pageData{
 		Page:     "settings",
 		Username: h.currentUsername(r),
 		Data:     d,
@@ -2030,14 +2089,14 @@ func collectUserIDs(accesses []users.UserInbound) []string {
 // ─── Inbound Handlers ────────────────────────────────────────────────────────
 
 func (h *Handler) inboundsPage(w http.ResponseWriter, r *http.Request) {
-	h.renderPage(w, "inbounds", pageData{
+	h.renderPage(w, r, "inbounds", pageData{
 		Page:     "inbounds",
 		Username: h.currentUsername(r),
 	})
 }
 
 func (h *Handler) outboundsPage(w http.ResponseWriter, r *http.Request) {
-	h.renderPage(w, "outbounds", pageData{
+	h.renderPage(w, r, "outbounds", pageData{
 		Page:     "outbounds",
 		Username: h.currentUsername(r),
 	})
@@ -2696,7 +2755,7 @@ func (h *Handler) renderOutboundsListFromStore(w http.ResponseWriter) {
 // ─── 路由规则 ─────────────────────────────────────────────────────────────────
 
 func (h *Handler) routeRulesPage(w http.ResponseWriter, r *http.Request) {
-	h.renderPage(w, "routerules", pageData{
+	h.renderPage(w, r, "routerules", pageData{
 		Page:     "routerules",
 		Username: h.currentUsername(r),
 	})
@@ -3047,7 +3106,7 @@ type nodeCaddyStatus struct {
 }
 
 func (h *Handler) caddyPage(w http.ResponseWriter, r *http.Request) {
-	h.renderPage(w, "caddy", pageData{
+	h.renderPage(w, r, "caddy", pageData{
 		Page:     "caddy",
 		Username: h.currentUsername(r),
 	})
@@ -3388,7 +3447,7 @@ func (h *Handler) userPortalPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.Header().Set("X-Robots-Tag", "noindex")
-	h.renderPage(w, "user_portal", pageData{
+	h.renderPage(w, r, "user_portal", pageData{
 		Page: "user_portal",
 		Data: portalData,
 	})
