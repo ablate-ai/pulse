@@ -126,7 +126,7 @@ func (s *MemoryStore) ListUserInboundsByNode(nodeID string) ([]UserInbound, erro
 	defer s.mu.RUnlock()
 	out := make([]UserInbound, 0)
 	for _, acc := range s.inbounds {
-		if nodeID == "" || acc.NodeID == nodeID {
+		if acc.NodeID == nodeID {
 			out = append(out, acc)
 		}
 	}
@@ -138,7 +138,7 @@ func (s *MemoryStore) ListUserInboundsByInbound(inboundID string) ([]UserInbound
 	defer s.mu.RUnlock()
 	out := make([]UserInbound, 0)
 	for _, acc := range s.inbounds {
-		if inboundID == "" || acc.InboundID == inboundID {
+		if acc.InboundID == inboundID {
 			out = append(out, acc)
 		}
 	}
