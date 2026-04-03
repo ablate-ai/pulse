@@ -44,7 +44,7 @@ func (a *subAPI) handleSub(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 异步记录订阅访问日志
+	// 异步记录订阅访问日志（无论用户状态如何，均记录）
 	go func() {
 		ip := realIP(r)
 		ua := r.Header.Get("User-Agent")
@@ -52,6 +52,16 @@ func (a *subAPI) handleSub(w http.ResponseWriter, r *http.Request) {
 			log.Printf("sub access log: %v", err)
 		}
 	}()
+
+	// 非活跃用户（disabled / expired / limited / on_hold）返回空订阅。
+	// 仍携带 Subscription-Userinfo header，让客户端能展示流量/到期信息。
+	if !user.EffectiveEnabled() {
+		w.Header().Set("Subscription-Userinfo", buildUserinfo(user))
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(base64.StdEncoding.EncodeToString(nil)))
+		return
+	}
 
 	// 收集该用户所有节点的全部订阅链接
 	accesses, err := a.users.ListUserInboundsByUser(user.ID)
