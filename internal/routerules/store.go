@@ -9,6 +9,7 @@ var ErrNotFound = errors.New("route rule not found")
 // Patterns 为逗号分隔的匹配列表；rule_set 类型时为 sing-box tag 名称。
 // Priority 越小越优先；OutboundID 为空时流量走 direct。
 // RuleSetURL / RuleSetFormat 仅 rule_set 类型使用。
+// NodeIDs 为逗号分隔的节点 ID 列表；空 = 下发到所有节点。
 type RouteRule struct {
 	ID            string `json:"id"`
 	Name          string `json:"name"`
@@ -18,6 +19,7 @@ type RouteRule struct {
 	Priority      int    `json:"priority"`
 	RuleSetURL    string `json:"rule_set_url,omitempty"`    // rule_set 类型的下载地址
 	RuleSetFormat string `json:"rule_set_format,omitempty"` // "binary"（默认）或 "source"
+	NodeIDs       string `json:"node_ids,omitempty"`        // 逗号分隔节点 ID；空 = 全部节点
 }
 
 type Store interface {

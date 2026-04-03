@@ -502,6 +502,7 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []in
 	cfg, err := proxycfg.BuildSingboxConfig(nodeInbounds, userAccesses, userMap, proxycfg.BuildOptions{
 		OutboundMap: outboundMap,
 		RouteRules:  globalRouteRules,
+		NodeID:      node.ID,
 	})
 	if err != nil {
 		return nodes.Status{}, "", err

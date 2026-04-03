@@ -263,6 +263,7 @@ func (db *DB) migrateRouteRulesTable() error {
 	additions := map[string]string{
 		"rule_set_url":    `ALTER TABLE route_rules ADD COLUMN rule_set_url TEXT NOT NULL DEFAULT ''`,
 		"rule_set_format": `ALTER TABLE route_rules ADD COLUMN rule_set_format TEXT NOT NULL DEFAULT 'binary'`,
+		"node_ids":        `ALTER TABLE route_rules ADD COLUMN node_ids TEXT NOT NULL DEFAULT ''`,
 	}
 	for col, ddl := range additions {
 		if _, ok := columns[col]; !ok {

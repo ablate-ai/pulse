@@ -19,8 +19,8 @@ func (db *DB) RouteRuleStore() *RouteRuleStore {
 
 func (s *RouteRuleStore) Upsert(rule routerules.RouteRule) (routerules.RouteRule, error) {
 	_, err := s.db.Exec(`
-		INSERT INTO route_rules (id, name, rule_type, patterns, outbound_id, priority, rule_set_url, rule_set_format)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO route_rules (id, name, rule_type, patterns, outbound_id, priority, rule_set_url, rule_set_format, node_ids)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name            = excluded.name,
 			rule_type       = excluded.rule_type,
@@ -28,9 +28,10 @@ func (s *RouteRuleStore) Upsert(rule routerules.RouteRule) (routerules.RouteRule
 			outbound_id     = excluded.outbound_id,
 			priority        = excluded.priority,
 			rule_set_url    = excluded.rule_set_url,
-			rule_set_format = excluded.rule_set_format
+			rule_set_format = excluded.rule_set_format,
+			node_ids        = excluded.node_ids
 	`, rule.ID, rule.Name, rule.RuleType, rule.Patterns, rule.OutboundID, rule.Priority,
-		rule.RuleSetURL, rule.RuleSetFormat)
+		rule.RuleSetURL, rule.RuleSetFormat, rule.NodeIDs)
 	if err != nil {
 		return routerules.RouteRule{}, fmt.Errorf("upsert route rule: %w", err)
 	}
@@ -40,10 +41,10 @@ func (s *RouteRuleStore) Upsert(rule routerules.RouteRule) (routerules.RouteRule
 func (s *RouteRuleStore) Get(id string) (routerules.RouteRule, error) {
 	var r routerules.RouteRule
 	err := s.db.QueryRow(
-		`SELECT id, name, rule_type, patterns, outbound_id, priority, rule_set_url, rule_set_format
+		`SELECT id, name, rule_type, patterns, outbound_id, priority, rule_set_url, rule_set_format, node_ids
 		 FROM route_rules WHERE id = ?`, id,
 	).Scan(&r.ID, &r.Name, &r.RuleType, &r.Patterns, &r.OutboundID, &r.Priority,
-		&r.RuleSetURL, &r.RuleSetFormat)
+		&r.RuleSetURL, &r.RuleSetFormat, &r.NodeIDs)
 	if errors.Is(err, sql.ErrNoRows) {
 		return routerules.RouteRule{}, routerules.ErrNotFound
 	}
@@ -55,7 +56,7 @@ func (s *RouteRuleStore) Get(id string) (routerules.RouteRule, error) {
 
 func (s *RouteRuleStore) List() ([]routerules.RouteRule, error) {
 	rows, err := s.db.Query(
-		`SELECT id, name, rule_type, patterns, outbound_id, priority, rule_set_url, rule_set_format
+		`SELECT id, name, rule_type, patterns, outbound_id, priority, rule_set_url, rule_set_format, node_ids
 		 FROM route_rules ORDER BY priority, id`,
 	)
 	if err != nil {
@@ -67,7 +68,7 @@ func (s *RouteRuleStore) List() ([]routerules.RouteRule, error) {
 	for rows.Next() {
 		var r routerules.RouteRule
 		if err := rows.Scan(&r.ID, &r.Name, &r.RuleType, &r.Patterns, &r.OutboundID, &r.Priority,
-			&r.RuleSetURL, &r.RuleSetFormat); err != nil {
+			&r.RuleSetURL, &r.RuleSetFormat, &r.NodeIDs); err != nil {
 			return nil, fmt.Errorf("scan route rule: %w", err)
 		}
 		items = append(items, r)

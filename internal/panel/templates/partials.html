@@ -1818,6 +1818,20 @@
       <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-500/15 text-emerald-400">direct</span>
     {{end}}
   </td>
+  <td class="px-4 py-3 text-sm">
+    {{if .NodeIDs}}
+      {{$nodeIDs := .NodeIDs}}
+      <div class="flex flex-wrap gap-1">
+        {{range $nid, $node := $.Data.NodeMap}}
+          {{if containsID $nodeIDs $nid}}
+            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-sky-500/15 text-sky-400">{{$node.Name}}</span>
+          {{end}}
+        {{end}}
+      </div>
+    {{else}}
+      <span class="text-gray-600 text-xs">全部</span>
+    {{end}}
+  </td>
   <td class="px-4 py-3">
     <div class="flex items-center gap-2">
       <button hx-get="/panel/routerules/{{.ID}}/edit"
@@ -1836,7 +1850,7 @@
 {{end}}
 {{if not .Data.Rules}}
 <tr>
-  <td colspan="6" class="px-4 py-4 text-center text-sm text-gray-600">暂无分流规则，所有流量走出口绑定或直连</td>
+  <td colspan="7" class="px-4 py-4 text-center text-sm text-gray-600">暂无分流规则，所有流量走出口绑定或直连</td>
 </tr>
 {{end}}
 {{end}}
@@ -1899,6 +1913,16 @@
         <option value="{{.ID}}">{{.Name}} ({{.Protocol}})</option>
         {{end}}
       </select>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">节点范围（不选 = 下发到所有节点）</label>
+      <select name="node_ids" multiple size="4"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+        {{range .Data.Nodes}}
+        <option value="{{.ID}}">{{.Name}}</option>
+        {{end}}
+      </select>
+      <p class="mt-1 text-xs text-gray-600">按住 Ctrl / Cmd 可多选</p>
     </div>
     <div>
       <label class="block text-xs font-medium text-gray-400 mb-1.5">优先级（数字越小越优先）</label>
@@ -1972,6 +1996,16 @@
         <option value="{{.ID}}" {{if eq $.Data.Rule.OutboundID .ID}}selected{{end}}>{{.Name}} ({{.Protocol}})</option>
         {{end}}
       </select>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">节点范围（不选 = 下发到所有节点）</label>
+      <select name="node_ids" multiple size="4"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+        {{range .Data.Nodes}}
+        <option value="{{.ID}}" {{if containsID $.Data.Rule.NodeIDs .ID}}selected{{end}}>{{.Name}}</option>
+        {{end}}
+      </select>
+      <p class="mt-1 text-xs text-gray-600">按住 Ctrl / Cmd 可多选</p>
     </div>
     <div>
       <label class="block text-xs font-medium text-gray-400 mb-1.5">优先级（数字越小越优先）</label>

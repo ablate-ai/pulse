@@ -2710,11 +2710,13 @@ func (h *Handler) routeRulesListPartial(w http.ResponseWriter, r *http.Request) 
 type routeRuleFormData struct {
 	Rule      *routerules.RouteRule
 	Outbounds []outbounds.Outbound
+	Nodes     []nodes.Node
 }
 
 func (h *Handler) routeRuleNewForm(w http.ResponseWriter, r *http.Request) {
 	obList, _ := h.outboundStore.List()
-	h.renderPartial(w, "partial-routerule-new-form", routeRuleFormData{Outbounds: obList})
+	nodeList, _ := h.nodeStore.List()
+	h.renderPartial(w, "partial-routerule-new-form", routeRuleFormData{Outbounds: obList, Nodes: nodeList})
 }
 
 func (h *Handler) createRouteRule(w http.ResponseWriter, r *http.Request) {
@@ -2744,6 +2746,7 @@ func (h *Handler) createRouteRule(w http.ResponseWriter, r *http.Request) {
 		Priority:      priority,
 		RuleSetURL:    r.FormValue("rule_set_url"),
 		RuleSetFormat: r.FormValue("rule_set_format"),
+		NodeIDs:       strings.Join(r.Form["node_ids"], ","),
 	}
 	if _, err := h.routeRuleStore.Upsert(rule); err != nil {
 		htmxError(w, http.StatusInternalServerError, "failed to create route rule: "+err.Error())
@@ -2760,7 +2763,8 @@ func (h *Handler) routeRuleEditForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	obList, _ := h.outboundStore.List()
-	h.renderPartial(w, "partial-routerule-edit-form", routeRuleFormData{Rule: &rule, Outbounds: obList})
+	nodeList, _ := h.nodeStore.List()
+	h.renderPartial(w, "partial-routerule-edit-form", routeRuleFormData{Rule: &rule, Outbounds: obList, Nodes: nodeList})
 }
 
 func (h *Handler) updateRouteRule(w http.ResponseWriter, r *http.Request) {
@@ -2780,6 +2784,7 @@ func (h *Handler) updateRouteRule(w http.ResponseWriter, r *http.Request) {
 	rule.OutboundID = r.FormValue("outbound_id")
 	rule.RuleSetURL = r.FormValue("rule_set_url")
 	rule.RuleSetFormat = r.FormValue("rule_set_format")
+	rule.NodeIDs = strings.Join(r.Form["node_ids"], ",")
 	if v, err := strconv.Atoi(r.FormValue("priority")); err == nil {
 		rule.Priority = v
 	}
@@ -2810,10 +2815,16 @@ func (h *Handler) renderRouteRulesListFromStore(w http.ResponseWriter) {
 	for _, ob := range obList {
 		obMap[ob.ID] = ob
 	}
+	nodeList, _ := h.nodeStore.List()
+	nodeMap := make(map[string]nodes.Node, len(nodeList))
+	for _, n := range nodeList {
+		nodeMap[n.ID] = n
+	}
 	h.renderPartial(w, "partial-routerule-rows", struct {
 		Rules       []routerules.RouteRule
 		OutboundMap map[string]outbounds.Outbound
-	}{Rules: list, OutboundMap: obMap})
+		NodeMap     map[string]nodes.Node
+	}{Rules: list, OutboundMap: obMap, NodeMap: nodeMap})
 }
 
 
@@ -2822,6 +2833,18 @@ func (h *Handler) renderRouteRulesListFromStore(w http.ResponseWriter) {
 // templateFuncs 返回模板函数映射。
 func templateFuncs() template.FuncMap {
 	return template.FuncMap{
+		// containsID 检查逗号分隔的 ID 列表中是否包含指定 ID。
+		"containsID": func(ids, id string) bool {
+			if ids == "" {
+				return false
+			}
+			for _, s := range strings.Split(ids, ",") {
+				if strings.TrimSpace(s) == id {
+					return true
+				}
+			}
+			return false
+		},
 		// formatBytes 将字节数格式化为可读字符串（如 "1.23 GB"）。
 		"formatBytes": func(n int64) string {
 			const (

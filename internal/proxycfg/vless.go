@@ -78,6 +78,8 @@ type BuildOptions struct {
 	OutboundMap map[string]outbounds.Outbound
 	// RouteRules 全局分流规则，按 Priority 升序匹配，优先于 inbound 绑定规则。
 	RouteRules []routerules.RouteRule
+	// NodeID 当前节点 ID，用于过滤 NodeIDs 非空的分流规则。
+	NodeID string
 }
 
 // BuildSingboxConfig 根据节点 inbound 配置和用户凭据生成 sing-box 配置 JSON。
@@ -222,6 +224,19 @@ func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.Us
 	seenRuleSetTags := make(map[string]struct{})
 	var ruleSetBlocks []ruleSetBlock
 	for _, rr := range opts.RouteRules {
+		// NodeIDs 非空时，检查当前节点是否在列表中
+		if rr.NodeIDs != "" && opts.NodeID != "" {
+			allowed := false
+			for _, nid := range strings.Split(rr.NodeIDs, ",") {
+				if strings.TrimSpace(nid) == opts.NodeID {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				continue
+			}
+		}
 		obTag := ensureOutbound(rr.OutboundID)
 		rule := routeRule{Outbound: obTag}
 
