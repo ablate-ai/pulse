@@ -183,11 +183,12 @@ type Handler struct {
 
 // pageData 传入完整页面模板的数据结构。
 type pageData struct {
-	Page      string // "dashboard", "users", "nodes"
-	Username  string
-	Version   string
-	CSRFToken string
-	Data      any
+	Page        string // "dashboard", "users", "nodes"
+	Username    string
+	Version     string
+	CSRFToken   string
+	ShopEnabled bool
+	Data        any
 }
 
 // nodeWithStatus 节点及其运行状态。
@@ -721,6 +722,7 @@ func setHXTriggerToast(w http.ResponseWriter, msg string) {
 func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, name string, data pageData) {
 	data.Version = buildinfo.Version
 	data.CSRFToken = h.csrfTokenFromRequest(r)
+	data.ShopEnabled = h.shopEnabled
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.tmpl.ExecuteTemplate(w, name, data); err != nil {
 		http.Error(w, "template render error: "+err.Error(), http.StatusInternalServerError)
