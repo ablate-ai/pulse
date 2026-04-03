@@ -1,8 +1,11 @@
 package sqlite
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
+	"log"
 	"strings"
 
 	_ "modernc.org/sqlite"
@@ -550,6 +553,7 @@ func (db *DB) migrateUserInboundsAddInboundID(columns map[string]struct{}) error
 		// 查找该节点上的所有 inbound
 		ibRows, err := db.conn.Query(`SELECT id FROM inbounds WHERE node_id = ? ORDER BY id`, rec.nodeID)
 		if err != nil {
+			log.Printf("migrate user_inbounds: query inbounds for node %s: %v", rec.nodeID, err)
 			continue
 		}
 		var ibIDs []string
@@ -560,6 +564,9 @@ func (db *DB) migrateUserInboundsAddInboundID(columns map[string]struct{}) error
 			}
 		}
 		ibRows.Close()
+		if err := ibRows.Err(); err != nil {
+			log.Printf("migrate user_inbounds: iterate inbounds for node %s: %v", rec.nodeID, err)
+		}
 
 		if len(ibIDs) == 0 {
 			// 节点无 inbound，保留原记录不处理（inbound_id 仍为空）
@@ -568,16 +575,20 @@ func (db *DB) migrateUserInboundsAddInboundID(columns map[string]struct{}) error
 
 		// 为第一个 inbound 直接更新原记录（复用游标值）
 		if _, err := db.conn.Exec(`UPDATE user_inbounds SET inbound_id = ? WHERE id = ?`, ibIDs[0], rec.id); err != nil {
+			log.Printf("migrate user_inbounds: update inbound_id for %s: %v", rec.id, err)
 			continue
 		}
 
 		// 为其余 inbound 插入新记录（游标清零，凭据与原记录相同）
 		for _, ibID := range ibIDs[1:] {
-			newID := rec.userID + "-" + ibID // 简单唯一性保证
-			db.conn.Exec(`
+			hash := sha256.Sum256([]byte(rec.userID + "|" + rec.nodeID + "|" + ibID))
+			newID := hex.EncodeToString(hash[:8])
+			if _, err := db.conn.Exec(`
 				INSERT OR IGNORE INTO user_inbounds (id, user_id, inbound_id, node_id, uuid, secret, synced_upload_bytes, synced_download_bytes, created_at)
 				VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?)
-			`, newID, rec.userID, ibID, rec.nodeID, rec.uuid, rec.secret, rec.createdAt)
+			`, newID, rec.userID, ibID, rec.nodeID, rec.uuid, rec.secret, rec.createdAt); err != nil {
+				log.Printf("migrate user_inbounds: insert for user %s inbound %s: %v", rec.userID, ibID, err)
+			}
 		}
 	}
 
@@ -696,6 +707,14 @@ func (db *DB) rebuildUsersTable(columns map[string]struct{}) error {
 }
 
 func (db *DB) tableColumns(name string) (map[string]struct{}, error) {
+	// Whitelist of known table names to prevent injection via PRAGMA query.
+	validTables := map[string]struct{}{
+		"outbounds": {}, "route_rules": {}, "nodes": {}, "users": {},
+		"inbounds": {}, "hosts": {}, "user_inbounds": {},
+	}
+	if _, ok := validTables[name]; !ok {
+		return nil, fmt.Errorf("unknown table name: %s", name)
+	}
 	rows, err := db.conn.Query("PRAGMA table_info(" + name + ")")
 	if err != nil {
 		return nil, fmt.Errorf("query table info for %s: %w", name, err)
