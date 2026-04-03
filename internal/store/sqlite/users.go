@@ -33,8 +33,9 @@ func (s *UserStore) UpsertUser(user users.User) (users.User, error) {
 			id, username, status, note, expire_at, data_limit_reset_strategy,
 			traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
 			raw_upload_bytes, raw_download_bytes,
-			on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices, created_at, sub_token
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices, created_at, sub_token,
+			stripe_customer_id, current_plan_id, email
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			username = excluded.username,
 			status = excluded.status,
@@ -53,13 +54,17 @@ func (s *UserStore) UpsertUser(user users.User) (users.User, error) {
 			connections = excluded.connections,
 			devices = excluded.devices,
 			created_at = excluded.created_at,
-			sub_token = excluded.sub_token
+			sub_token = excluded.sub_token,
+			stripe_customer_id = excluded.stripe_customer_id,
+			current_plan_id = excluded.current_plan_id,
+			email = excluded.email
 	`,
 		user.ID, user.Username, user.Status, user.Note, formatTimePtr(user.ExpireAt), user.DataLimitResetStrategy,
 		user.TrafficLimit, user.UploadBytes, user.DownloadBytes, user.UsedBytes,
 		user.RawUploadBytes, user.RawDownloadBytes,
 		formatTimePtr(user.OnHoldExpireAt), formatTimePtr(user.LastTrafficResetAt), formatTimePtr(user.OnlineAt),
 		user.Connections, user.Devices, user.CreatedAt.Format(time.RFC3339Nano), user.SubToken,
+		user.StripeCustomerID, user.CurrentPlanID, user.Email,
 	)
 	if err != nil {
 		return users.User{}, fmt.Errorf("upsert user: %w", err)
@@ -72,7 +77,8 @@ func (s *UserStore) GetUser(id string) (users.User, error) {
 		SELECT id, username, status, note, expire_at, data_limit_reset_strategy,
 		       traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
 		       raw_upload_bytes, raw_download_bytes,
-		       on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices, created_at, sub_token
+		       on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices, created_at, sub_token,
+		       stripe_customer_id, current_plan_id, email
 		FROM users WHERE id = ?
 	`, id)
 	return scanUser(row)
@@ -83,9 +89,22 @@ func (s *UserStore) GetUserBySubToken(token string) (users.User, error) {
 		SELECT id, username, status, note, expire_at, data_limit_reset_strategy,
 		       traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
 		       raw_upload_bytes, raw_download_bytes,
-		       on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices, created_at, sub_token
+		       on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices, created_at, sub_token,
+		       stripe_customer_id, current_plan_id, email
 		FROM users WHERE sub_token = ?
 	`, token)
+	return scanUser(row)
+}
+
+func (s *UserStore) GetUserByStripeCustomerID(customerID string) (users.User, error) {
+	row := s.db.QueryRow(`
+		SELECT id, username, status, note, expire_at, data_limit_reset_strategy,
+		       traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
+		       raw_upload_bytes, raw_download_bytes,
+		       on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices, created_at, sub_token,
+		       stripe_customer_id, current_plan_id, email
+		FROM users WHERE stripe_customer_id = ?
+	`, customerID)
 	return scanUser(row)
 }
 
@@ -94,7 +113,8 @@ func (s *UserStore) ListUsers() ([]users.User, error) {
 		SELECT id, username, status, note, expire_at, data_limit_reset_strategy,
 		       traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
 		       raw_upload_bytes, raw_download_bytes,
-		       on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices, created_at, sub_token
+		       on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices, created_at, sub_token,
+		       stripe_customer_id, current_plan_id, email
 		FROM users ORDER BY id
 	`)
 	if err != nil {
@@ -133,7 +153,8 @@ func (s *UserStore) GetUsersByIDs(ids []string) (map[string]users.User, error) {
 		SELECT id, username, status, note, expire_at, data_limit_reset_strategy,
 		       traffic_limit_bytes, upload_bytes, download_bytes, used_bytes,
 		       raw_upload_bytes, raw_download_bytes,
-		       on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices, created_at, sub_token
+		       on_hold_expire_at, last_traffic_reset_at, online_at, connections, devices, created_at, sub_token,
+		       stripe_customer_id, current_plan_id, email
 		FROM users WHERE id IN (%s)
 	`, strings.Join(placeholders, ","))
 
@@ -392,6 +413,7 @@ func scanUser(row scanner) (users.User, error) {
 		&user.TrafficLimit, &user.UploadBytes, &user.DownloadBytes, &user.UsedBytes,
 		&user.RawUploadBytes, &user.RawDownloadBytes,
 		&onHoldExpireAt, &lastTrafficResetAt, &onlineAt, &user.Connections, &user.Devices, &createdAt, &user.SubToken,
+		&user.StripeCustomerID, &user.CurrentPlanID, &user.Email,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return users.User{}, users.ErrUserNotFound

@@ -45,6 +45,9 @@ type User struct {
 	Devices                int        `json:"devices"`
 	CreatedAt              time.Time  `json:"created_at"`
 	SubToken               string     `json:"sub_token,omitempty"`
+	StripeCustomerID       string     `json:"stripe_customer_id,omitempty"`
+	CurrentPlanID          string     `json:"current_plan_id,omitempty"`
+	Email                  string     `json:"email,omitempty"`
 }
 
 // UserInbound 用户对某个具体 inbound 的访问凭据（一条记录对应一个 (user_id, inbound_id) 对）。
@@ -75,6 +78,7 @@ type Store interface {
 	UpsertUser(user User) (User, error)
 	GetUser(id string) (User, error)
 	GetUserBySubToken(token string) (User, error)
+	GetUserByStripeCustomerID(customerID string) (User, error)
 	ListUsers() ([]User, error)
 	DeleteUser(id string) error
 

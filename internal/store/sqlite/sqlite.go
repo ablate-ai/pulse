@@ -21,6 +21,20 @@ func Open(path string) (*DB, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 
+	// SQLite 单连接串行化：消除连接间写竞争，避免 SQLITE_BUSY
+	conn.SetMaxOpenConns(1)
+
+	// 开启 WAL 模式：读写互不阻塞；busy_timeout 兜底等待而非立即报错
+	for _, pragma := range []string{
+		"PRAGMA journal_mode=WAL",
+		"PRAGMA busy_timeout=5000",
+	} {
+		if _, err := conn.Exec(pragma); err != nil {
+			conn.Close()
+			return nil, fmt.Errorf("sqlite pragma (%s): %w", pragma, err)
+		}
+	}
+
 	db := &DB{conn: conn}
 	if err := db.init(); err != nil {
 		conn.Close()
@@ -47,6 +61,14 @@ func (db *DB) SessionStore() *SessionStore {
 
 func (db *DB) SettingsStore() *SettingsStore {
 	return &SettingsStore{db: db.conn}
+}
+
+func (db *DB) PlanStore() *PlanStore {
+	return &PlanStore{db: db.conn}
+}
+
+func (db *DB) OrderStore() *OrderStore {
+	return &OrderStore{db: db.conn}
 }
 
 func (db *DB) init() error {
@@ -121,7 +143,10 @@ func (db *DB) init() error {
 			online_at TEXT,
 			connections INTEGER NOT NULL DEFAULT 0,
 			devices INTEGER NOT NULL DEFAULT 0,
-			created_at TEXT NOT NULL
+			created_at TEXT NOT NULL,
+			stripe_customer_id TEXT NOT NULL DEFAULT '',
+			current_plan_id TEXT NOT NULL DEFAULT '',
+			email TEXT NOT NULL DEFAULT ''
 		);`,
 		// user_inbounds：用户对具体 inbound 的访问凭据（一条记录对应一个 user+inbound 对）
 		// 注：synced_upload_bytes / synced_download_bytes 为旧版 cursor 设计遗留字段，
@@ -200,6 +225,41 @@ func (db *DB) init() error {
 			outbound_id TEXT NOT NULL DEFAULT '',
 			priority    INTEGER NOT NULL DEFAULT 100
 		);`,
+		// plans：套餐定义
+		`CREATE TABLE IF NOT EXISTS plans (
+			id                      TEXT PRIMARY KEY,
+			name                    TEXT NOT NULL DEFAULT '',
+			description             TEXT NOT NULL DEFAULT '',
+			type                    TEXT NOT NULL DEFAULT 'one_time',
+			price_cents             INTEGER NOT NULL DEFAULT 0,
+			currency                TEXT NOT NULL DEFAULT 'usd',
+			stripe_price_id         TEXT NOT NULL DEFAULT '',
+			traffic_limit           INTEGER NOT NULL DEFAULT 0,
+			duration_days           INTEGER NOT NULL DEFAULT 0,
+			data_limit_reset_strategy TEXT NOT NULL DEFAULT 'no_reset',
+			inbound_ids             TEXT NOT NULL DEFAULT '',
+			sort_order              INTEGER NOT NULL DEFAULT 0,
+			enabled                 INTEGER NOT NULL DEFAULT 0,
+			created_at              TEXT NOT NULL
+		);`,
+		// orders：支付订单
+		`CREATE TABLE IF NOT EXISTS orders (
+			id                     TEXT PRIMARY KEY,
+			user_id                TEXT NOT NULL DEFAULT '',
+			plan_id                TEXT NOT NULL DEFAULT '',
+			email                  TEXT NOT NULL DEFAULT '',
+			stripe_session_id      TEXT NOT NULL DEFAULT '',
+			stripe_subscription_id TEXT NOT NULL DEFAULT '',
+			stripe_customer_id     TEXT NOT NULL DEFAULT '',
+			status                 TEXT NOT NULL DEFAULT 'pending',
+			amount_cents           INTEGER NOT NULL DEFAULT 0,
+			currency               TEXT NOT NULL DEFAULT 'usd',
+			created_at             TEXT NOT NULL,
+			paid_at                TEXT
+		);`,
+		`CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);`,
+		`CREATE INDEX IF NOT EXISTS idx_orders_email ON orders(email);`,
+		`CREATE INDEX IF NOT EXISTS idx_orders_stripe_session_id ON orders(stripe_session_id);`,
 	}
 
 	for _, stmt := range stmts {
@@ -377,6 +437,9 @@ func (db *DB) migrateUsersTable() error {
 		"devices":            `ALTER TABLE users ADD COLUMN devices INTEGER NOT NULL DEFAULT 0`,
 		"raw_upload_bytes":   `ALTER TABLE users ADD COLUMN raw_upload_bytes INTEGER NOT NULL DEFAULT 0`,
 		"raw_download_bytes": `ALTER TABLE users ADD COLUMN raw_download_bytes INTEGER NOT NULL DEFAULT 0`,
+		"stripe_customer_id": `ALTER TABLE users ADD COLUMN stripe_customer_id TEXT NOT NULL DEFAULT ''`,
+		"current_plan_id":    `ALTER TABLE users ADD COLUMN current_plan_id TEXT NOT NULL DEFAULT ''`,
+		"email":              `ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''`,
 	}
 	for col, ddl := range additions {
 		if _, ok := columns[col]; !ok {
@@ -623,7 +686,10 @@ func (db *DB) rebuildUsersTable(columns map[string]struct{}) error {
 			connections INTEGER NOT NULL DEFAULT 0,
 			devices INTEGER NOT NULL DEFAULT 0,
 			created_at TEXT NOT NULL,
-			sub_token TEXT NOT NULL DEFAULT ''
+			sub_token TEXT NOT NULL DEFAULT '',
+			stripe_customer_id TEXT NOT NULL DEFAULT '',
+			current_plan_id TEXT NOT NULL DEFAULT '',
+			email TEXT NOT NULL DEFAULT ''
 		)
 	`); err != nil {
 		return fmt.Errorf("create users_slim: %w", err)
@@ -710,7 +776,7 @@ func (db *DB) tableColumns(name string) (map[string]struct{}, error) {
 	// Whitelist of known table names to prevent injection via PRAGMA query.
 	validTables := map[string]struct{}{
 		"outbounds": {}, "route_rules": {}, "nodes": {}, "users": {},
-		"inbounds": {}, "hosts": {}, "user_inbounds": {},
+		"inbounds": {}, "hosts": {}, "user_inbounds": {}, "plans": {}, "orders": {},
 	}
 	if _, ok := validTables[name]; !ok {
 		return nil, fmt.Errorf("unknown table name: %s", name)
