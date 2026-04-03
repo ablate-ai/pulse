@@ -353,7 +353,7 @@ function toggleNav() {
 </script>
 <script>
 // CSRF: automatically attach token to all HTMX mutating requests
-document.body.addEventListener('htmx:configRequest', function(e) {
+document.addEventListener('htmx:configRequest', function(e) {
   var m = document.querySelector('meta[name="csrf-token"]');
   if (m) e.detail.headers['X-CSRF-Token'] = m.content;
 });
