@@ -1845,8 +1845,8 @@
       <label class="block text-xs font-medium text-gray-400 mb-1.5">规则集格式（仅 rule_set 类型）</label>
       <select name="rule_set_format"
               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-        <option value="binary">binary（.srs 推荐）</option>
-        <option value="source">source（.json）</option>
+        <option value="binary">binary（.srs）</option>
+        <option value="source" selected>source（.json）</option>
       </select>
     </div>
     <div>
@@ -1918,8 +1918,8 @@
       <label class="block text-xs font-medium text-gray-400 mb-1.5">规则集格式（仅 rule_set 类型）</label>
       <select name="rule_set_format"
               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-        <option value="binary" {{if or (eq .Data.Rule.RuleSetFormat "binary") (eq .Data.Rule.RuleSetFormat "")}}selected{{end}}>binary（.srs 推荐）</option>
-        <option value="source" {{if eq .Data.Rule.RuleSetFormat "source"}}selected{{end}}>source（.json）</option>
+        <option value="binary" {{if eq .Data.Rule.RuleSetFormat "binary"}}selected{{end}}>binary（.srs）</option>
+        <option value="source" {{if or (eq .Data.Rule.RuleSetFormat "source") (eq .Data.Rule.RuleSetFormat "")}}selected{{end}}>source（.json）</option>
       </select>
     </div>
     <div>

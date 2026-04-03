@@ -235,7 +235,7 @@ func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.Us
 				seenRuleSetTags[tag] = struct{}{}
 				format := rr.RuleSetFormat
 				if format == "" {
-					format = "binary"
+					format = "source"
 				}
 				ruleSetBlocks = append(ruleSetBlocks, ruleSetBlock{
 					Type:   "remote",
