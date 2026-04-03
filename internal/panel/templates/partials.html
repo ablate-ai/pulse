@@ -1758,3 +1758,160 @@
   {{end}}
 </div>
 {{end}}
+
+
+{{define "partial-routerule-rows"}}
+{{range .Data.Rules}}
+<tr class="border-b border-gray-800 hover:bg-gray-800/40 transition-colors">
+  <td class="px-4 py-3 text-sm text-gray-400 font-mono">{{.Priority}}</td>
+  <td class="px-4 py-3 font-medium text-gray-100">{{.Name}}</td>
+  <td class="px-4 py-3">
+    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-violet-500/15 text-violet-400">{{.RuleType}}</span>
+  </td>
+  <td class="px-4 py-3 text-sm text-gray-400 font-mono max-w-[200px] truncate" title="{{.Patterns}}">{{.Patterns}}</td>
+  <td class="px-4 py-3 text-sm">
+    {{if .OutboundID}}
+      {{$ob := index $.Data.OutboundMap .OutboundID}}
+      {{if $ob.Name}}<span class="text-indigo-400">{{$ob.Name}}</span>{{else}}<span class="text-gray-500">—</span>{{end}}
+    {{else}}
+      <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-500/15 text-emerald-400">direct</span>
+    {{end}}
+  </td>
+  <td class="px-4 py-3">
+    <div class="flex items-center gap-2">
+      <button hx-get="/panel/routerules/{{.ID}}/edit"
+              hx-target="#modal-body"
+              hx-swap="innerHTML"
+              onclick="document.getElementById('app-modal').showModal()"
+              class="text-xs text-gray-400 hover:text-indigo-400 transition-colors">编辑</button>
+      <button hx-delete="/panel/routerules/{{.ID}}"
+              hx-target="#routerules-tbody"
+              hx-swap="innerHTML"
+              hx-confirm="确认删除规则 {{.Name}}？"
+              class="text-xs text-gray-400 hover:text-red-400 transition-colors">删除</button>
+    </div>
+  </td>
+</tr>
+{{end}}
+{{if not .Data.Rules}}
+<tr>
+  <td colspan="6" class="px-4 py-4 text-center text-sm text-gray-600">暂无分流规则，所有流量走出口绑定或直连</td>
+</tr>
+{{end}}
+{{end}}
+
+
+{{define "partial-routerule-new-form"}}
+<form hx-post="/panel/routerules"
+      hx-target="#routerules-tbody"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful) { document.getElementById('app-modal').close(); this.reset(); }">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+    <h3 class="text-sm font-semibold text-gray-100">添加分流规则</h3>
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="px-5 py-4 space-y-4 overflow-y-auto max-h-[70vh]">
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">名称</label>
+      <input type="text" name="name" required placeholder="如：AI 服务"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">匹配类型</label>
+      <select name="rule_type"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+        <option value="domain_suffix">domain_suffix（域名后缀，如 openai.com）</option>
+        <option value="domain_keyword">domain_keyword（域名关键词，如 google）</option>
+        <option value="domain">domain（完整域名精确匹配）</option>
+        <option value="ip_cidr">ip_cidr（IP 段，如 1.1.1.0/24）</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">匹配列表（逗号或换行分隔）</label>
+      <textarea name="patterns" required rows="4" placeholder="openai.com, anthropic.com, claude.ai"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors resize-none"></textarea>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">出口（空 = direct 直连）</label>
+      <select name="outbound_id"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+        <option value="">直连 (direct)</option>
+        {{range .Data.Outbounds}}
+        <option value="{{.ID}}">{{.Name}} ({{.Protocol}})</option>
+        {{end}}
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">优先级（数字越小越优先）</label>
+      <input type="number" name="priority" value="100" min="0" max="9999"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+  </div>
+  <div class="px-5 py-4 border-t border-gray-700 flex justify-end gap-2">
+    <button type="button" onclick="document.getElementById('app-modal').close()"
+            class="px-4 py-2 text-sm text-gray-400 hover:text-gray-200 transition-colors">取消</button>
+    <button type="submit"
+            class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors">保存</button>
+  </div>
+</form>
+{{end}}
+
+
+{{define "partial-routerule-edit-form"}}
+<form hx-put="/panel/routerules/{{.Data.Rule.ID}}"
+      hx-target="#routerules-tbody"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful) { document.getElementById('app-modal').close(); }">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+    <h3 class="text-sm font-semibold text-gray-100">编辑分流规则</h3>
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="px-5 py-4 space-y-4 overflow-y-auto max-h-[70vh]">
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">名称</label>
+      <input type="text" name="name" required value="{{.Data.Rule.Name}}"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">匹配类型</label>
+      <select name="rule_type"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+        <option value="domain_suffix" {{if eq .Data.Rule.RuleType "domain_suffix"}}selected{{end}}>domain_suffix（域名后缀）</option>
+        <option value="domain_keyword" {{if eq .Data.Rule.RuleType "domain_keyword"}}selected{{end}}>domain_keyword（域名关键词）</option>
+        <option value="domain" {{if eq .Data.Rule.RuleType "domain"}}selected{{end}}>domain（完整域名精确匹配）</option>
+        <option value="ip_cidr" {{if eq .Data.Rule.RuleType "ip_cidr"}}selected{{end}}>ip_cidr（IP 段）</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">匹配列表（逗号或换行分隔）</label>
+      <textarea name="patterns" required rows="4"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono focus:outline-none focus:border-indigo-500 transition-colors resize-none">{{.Data.Rule.Patterns}}</textarea>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">出口（空 = direct 直连）</label>
+      <select name="outbound_id"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+        <option value="" {{if eq .Data.Rule.OutboundID ""}}selected{{end}}>直连 (direct)</option>
+        {{range .Data.Outbounds}}
+        <option value="{{.ID}}" {{if eq $.Data.Rule.OutboundID .ID}}selected{{end}}>{{.Name}} ({{.Protocol}})</option>
+        {{end}}
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">优先级（数字越小越优先）</label>
+      <input type="number" name="priority" value="{{.Data.Rule.Priority}}" min="0" max="9999"
+             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+    </div>
+  </div>
+  <div class="px-5 py-4 border-t border-gray-700 flex justify-end gap-2">
+    <button type="button" onclick="document.getElementById('app-modal').close()"
+            class="px-4 py-2 text-sm text-gray-400 hover:text-gray-200 transition-colors">取消</button>
+    <button type="submit"
+            class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-lg transition-colors">保存</button>
+  </div>
+</form>
+{{end}}

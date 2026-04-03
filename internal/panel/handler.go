@@ -31,6 +31,7 @@ import (
 	"pulse/internal/jobs"
 	"pulse/internal/nodes"
 	"pulse/internal/outbounds"
+	"pulse/internal/routerules"
 	"pulse/internal/usage"
 	"pulse/internal/users"
 )
@@ -147,8 +148,9 @@ type Handler struct {
 	userStore      users.Store
 	nodeStore      nodes.Store
 	ibStore        inbounds.InboundStore
-	outboundStore  outbounds.Store
-	dial           jobs.NodeDialer
+	outboundStore   outbounds.Store
+	routeRuleStore  routerules.Store
+	dial            jobs.NodeDialer
 	applyOpts      jobs.ApplyOptions
 	tmpl           *template.Template
 	serverAddr     string
@@ -214,6 +216,7 @@ func New(
 	nodeStore nodes.Store,
 	ibStore inbounds.InboundStore,
 	outboundStore outbounds.Store,
+	routeRuleStore routerules.Store,
 	dial jobs.NodeDialer,
 	applyOpts jobs.ApplyOptions,
 	serverAddr string,
@@ -228,6 +231,7 @@ func New(
 		nodeStore:      nodeStore,
 		ibStore:        ibStore,
 		outboundStore:  outboundStore,
+		routeRuleStore: routeRuleStore,
 		dial:           dial,
 		applyOpts:      applyOpts,
 		serverAddr:     serverAddr,
@@ -304,6 +308,14 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /panel/outbounds/{id}/edit", h.requireAuth(h.outboundEditForm))
 	mux.HandleFunc("PUT /panel/outbounds/{id}", h.requireAuth(h.updateOutbound))
 	mux.HandleFunc("DELETE /panel/outbounds/{id}", h.requireAuth(h.deleteOutbound))
+
+	mux.HandleFunc("GET /routerules", h.requireAuth(h.routeRulesPage))
+	mux.HandleFunc("GET /panel/routerules/list", h.requireAuth(h.routeRulesListPartial))
+	mux.HandleFunc("GET /panel/routerules/new", h.requireAuth(h.routeRuleNewForm))
+	mux.HandleFunc("POST /panel/routerules", h.requireAuth(h.createRouteRule))
+	mux.HandleFunc("GET /panel/routerules/{id}/edit", h.requireAuth(h.routeRuleEditForm))
+	mux.HandleFunc("PUT /panel/routerules/{id}", h.requireAuth(h.updateRouteRule))
+	mux.HandleFunc("DELETE /panel/routerules/{id}", h.requireAuth(h.deleteRouteRule))
 
 	mux.HandleFunc("GET /panel/tools/reality-keypair", h.requireAuth(h.realityKeypair))
 
@@ -2556,6 +2568,125 @@ func (h *Handler) renderOutboundsListFromStore(w http.ResponseWriter) {
 		return
 	}
 	h.renderPartial(w, "partial-outbound-rows", list)
+}
+
+// ─── 路由规则 ─────────────────────────────────────────────────────────────────
+
+func (h *Handler) routeRulesPage(w http.ResponseWriter, r *http.Request) {
+	h.renderPage(w, "routerules", pageData{
+		Page:     "routerules",
+		Username: h.currentUsername(r),
+	})
+}
+
+func (h *Handler) routeRulesListPartial(w http.ResponseWriter, r *http.Request) {
+	h.renderRouteRulesListFromStore(w)
+}
+
+// routeRuleFormData 传给路由规则表单模板的数据。
+type routeRuleFormData struct {
+	Rule      *routerules.RouteRule
+	Outbounds []outbounds.Outbound
+}
+
+func (h *Handler) routeRuleNewForm(w http.ResponseWriter, r *http.Request) {
+	obList, _ := h.outboundStore.List()
+	h.renderPartial(w, "partial-routerule-new-form", routeRuleFormData{Outbounds: obList})
+}
+
+func (h *Handler) createRouteRule(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		htmxError(w, http.StatusBadRequest, "invalid form data")
+		return
+	}
+	name := r.FormValue("name")
+	ruleType := r.FormValue("rule_type")
+	patterns := r.FormValue("patterns")
+	outboundID := r.FormValue("outbound_id")
+	priorityStr := r.FormValue("priority")
+	if name == "" || ruleType == "" || patterns == "" {
+		htmxError(w, http.StatusBadRequest, "name, rule_type and patterns are required")
+		return
+	}
+	priority := 100
+	if v, err := strconv.Atoi(priorityStr); err == nil {
+		priority = v
+	}
+	rule := routerules.RouteRule{
+		ID:         idgen.NextString(),
+		Name:       name,
+		RuleType:   ruleType,
+		Patterns:   patterns,
+		OutboundID: outboundID,
+		Priority:   priority,
+	}
+	if _, err := h.routeRuleStore.Upsert(rule); err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to create route rule: "+err.Error())
+		return
+	}
+	h.renderRouteRulesListFromStore(w)
+}
+
+func (h *Handler) routeRuleEditForm(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	rule, err := h.routeRuleStore.Get(id)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "route rule not found")
+		return
+	}
+	obList, _ := h.outboundStore.List()
+	h.renderPartial(w, "partial-routerule-edit-form", routeRuleFormData{Rule: &rule, Outbounds: obList})
+}
+
+func (h *Handler) updateRouteRule(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := r.ParseForm(); err != nil {
+		htmxError(w, http.StatusBadRequest, "invalid form data")
+		return
+	}
+	rule, err := h.routeRuleStore.Get(id)
+	if err != nil {
+		htmxError(w, http.StatusNotFound, "route rule not found")
+		return
+	}
+	rule.Name = r.FormValue("name")
+	rule.RuleType = r.FormValue("rule_type")
+	rule.Patterns = r.FormValue("patterns")
+	rule.OutboundID = r.FormValue("outbound_id")
+	if v, err := strconv.Atoi(r.FormValue("priority")); err == nil {
+		rule.Priority = v
+	}
+	if _, err := h.routeRuleStore.Upsert(rule); err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to update route rule: "+err.Error())
+		return
+	}
+	h.renderRouteRulesListFromStore(w)
+}
+
+func (h *Handler) deleteRouteRule(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := h.routeRuleStore.Delete(id); err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to delete route rule: "+err.Error())
+		return
+	}
+	h.renderRouteRulesListFromStore(w)
+}
+
+func (h *Handler) renderRouteRulesListFromStore(w http.ResponseWriter) {
+	list, err := h.routeRuleStore.List()
+	if err != nil {
+		htmxError(w, http.StatusInternalServerError, "failed to get route rule list: "+err.Error())
+		return
+	}
+	obList, _ := h.outboundStore.List()
+	obMap := make(map[string]outbounds.Outbound, len(obList))
+	for _, ob := range obList {
+		obMap[ob.ID] = ob
+	}
+	h.renderPartial(w, "partial-routerule-rows", struct {
+		Rules     []routerules.RouteRule
+		OutboundMap map[string]outbounds.Outbound
+	}{Rules: list, OutboundMap: obMap})
 }
 
 // ─── 模板函数 ─────────────────────────────────────────────────────────────────

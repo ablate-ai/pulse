@@ -188,6 +188,15 @@ func (db *DB) init() error {
 			download_bytes INTEGER NOT NULL DEFAULT 0,
 			PRIMARY KEY (user_id, node_id, date)
 		);`,
+		// route_rules：全局分流规则，按 priority 升序匹配，优先于 inbound 绑定出口
+		`CREATE TABLE IF NOT EXISTS route_rules (
+			id          TEXT PRIMARY KEY,
+			name        TEXT NOT NULL DEFAULT '',
+			rule_type   TEXT NOT NULL DEFAULT 'domain_suffix',
+			patterns    TEXT NOT NULL DEFAULT '',
+			outbound_id TEXT NOT NULL DEFAULT '',
+			priority    INTEGER NOT NULL DEFAULT 100
+		);`,
 	}
 
 	for _, stmt := range stmts {

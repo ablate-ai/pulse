@@ -10,6 +10,7 @@ import (
 
 	"pulse/internal/inbounds"
 	"pulse/internal/outbounds"
+	"pulse/internal/routerules"
 	"pulse/internal/users"
 )
 
@@ -41,8 +42,12 @@ type routeBlock struct {
 }
 
 type routeRule struct {
-	Inbound  []string `json:"inbound"`
-	Outbound string   `json:"outbound"`
+	Inbound       []string `json:"inbound,omitempty"`
+	DomainSuffix  []string `json:"domain_suffix,omitempty"`
+	DomainKeyword []string `json:"domain_keyword,omitempty"`
+	Domain        []string `json:"domain,omitempty"`
+	IPCIDR        []string `json:"ip_cidr,omitempty"`
+	Outbound      string   `json:"outbound"`
 }
 
 type inboundBlock struct {
@@ -61,6 +66,8 @@ type inboundBlock struct {
 type BuildOptions struct {
 	// OutboundMap 出口 ID → Outbound，用于 inbound 路由绑定。
 	OutboundMap map[string]outbounds.Outbound
+	// RouteRules 全局分流规则，按 Priority 升序匹配，优先于 inbound 绑定规则。
+	RouteRules []routerules.RouteRule
 }
 
 // BuildSingboxConfig 根据节点 inbound 配置和用户凭据生成 sing-box 配置 JSON。
@@ -184,22 +191,55 @@ func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.Us
 	seenOutboundIDs := make(map[string]struct{})
 	var rules []routeRule
 
+	// ensureOutbound 确保出口已加入列表，返回其 tag。
+	ensureOutbound := func(obID string) string {
+		if obID == "" {
+			return "direct"
+		}
+		ob, ok := opts.OutboundMap[obID]
+		if !ok {
+			return "direct"
+		}
+		obTag := "out-" + ob.ID
+		if _, seen := seenOutboundIDs[ob.ID]; !seen {
+			seenOutboundIDs[ob.ID] = struct{}{}
+			outboundList = append(outboundList, buildOutboundBlock(ob, obTag))
+		}
+		return obTag
+	}
+
+	// 全局分流规则（优先级高，先匹配）
+	for _, rr := range opts.RouteRules {
+		patterns := splitPatterns(rr.Patterns)
+		if len(patterns) == 0 {
+			continue
+		}
+		obTag := ensureOutbound(rr.OutboundID)
+		rule := routeRule{Outbound: obTag}
+		switch rr.RuleType {
+		case "domain_suffix":
+			rule.DomainSuffix = patterns
+		case "domain_keyword":
+			rule.DomainKeyword = patterns
+		case "domain":
+			rule.Domain = patterns
+		case "ip_cidr":
+			rule.IPCIDR = patterns
+		default:
+			continue
+		}
+		rules = append(rules, rule)
+	}
+
+	// inbound 绑定出口规则
 	for _, ib := range nodeInbounds {
 		if ib.OutboundID == "" {
 			continue
 		}
-		ob, ok := opts.OutboundMap[ib.OutboundID]
-		if !ok {
+		obTag := ensureOutbound(ib.OutboundID)
+		if obTag == "direct" {
 			continue
 		}
-		obTag := "out-" + ob.ID
-		// 若该出口尚未添加，生成 outbound block
-		if _, seen := seenOutboundIDs[ob.ID]; !seen {
-			seenOutboundIDs[ob.ID] = struct{}{}
-			obBlock := buildOutboundBlock(ob, obTag)
-			outboundList = append(outboundList, obBlock)
-		}
-		// 找到 inbound 对应的 tag
 		ibTag := ib.Tag
 		if ibTag == "" {
 			ibTag = fmt.Sprintf("pulse-%s-%d", ib.Protocol, ib.Port)
@@ -338,6 +378,18 @@ func tlsForInbound(ib inbounds.Inbound, opts BuildOptions) map[string]any {
 		return realityTLSFor(ib)
 	}
 	return nil
+}
+
+// splitPatterns 将逗号或换行分隔的字符串拆分为去空白的非空列表。
+func splitPatterns(s string) []string {
+	parts := strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == '\n' })
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			result = append(result, t)
+		}
+	}
+	return result
 }
 
 func realityTLSFor(ib inbounds.Inbound) map[string]any {

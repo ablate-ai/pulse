@@ -39,6 +39,7 @@ func Run() error {
 	var userStore users.Store = db.UserStore()
 	var inboundStore inbounds.InboundStore = db.InboundStore()
 	var outboundStore outbounds.Store = db.OutboundStore()
+	routeRuleStore := db.RouteRuleStore()
 	authManager := auth.NewManager(cfg.AdminUsername, cfg.AdminPassword, db.SessionStore())
 	clientOptions := nodes.ClientOptions{
 		ClientCertFile: cfg.ServerNodeClientCertFile,
@@ -47,7 +48,8 @@ func Run() error {
 
 	// 启动调度器
 	applyOpts := jobs.ApplyOptions{
-		Alerter: alert.NewBarkSender(db.SettingsStore()),
+		Alerter:        alert.NewBarkSender(db.SettingsStore()),
+		RouteRuleStore: routeRuleStore,
 	}
 	nodeAPI := serverapi.NewWithUsers(store, userStore, inboundStore, outboundStore, clientOptions, applyOpts)
 	scheduler := jobs.NewScheduler(nil)
@@ -120,7 +122,7 @@ func Run() error {
 
 	// 面板（HTMX + 服务端模板）
 	discourseCfg := auth.NewDiscourseConfig(cfg.DiscourseURL, cfg.DiscourseSSOSecret, cfg.DiscourseAdminUsers)
-	panelHandler, err := panel.New(authManager, userStore, store, inboundStore, outboundStore, nodeAPI.Dial, applyOpts, cfg.ServerAddr, cfg.ServerNodeClientCertFile, db.SettingsStore(), discourseCfg)
+	panelHandler, err := panel.New(authManager, userStore, store, inboundStore, outboundStore, routeRuleStore, nodeAPI.Dial, applyOpts, cfg.ServerAddr, cfg.ServerNodeClientCertFile, db.SettingsStore(), discourseCfg)
 	if err != nil {
 		return fmt.Errorf("初始化面板: %w", err)
 	}
