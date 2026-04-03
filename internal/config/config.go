@@ -25,6 +25,10 @@ type Config struct {
 	DiscourseURL        string // PULSE_DISCOURSE_URL
 	DiscourseSSOSecret  string // PULSE_DISCOURSE_SSO_SECRET
 	DiscourseAdminUsers string // PULSE_DISCOURSE_ADMIN_USERS，逗号分隔；空则信任所有 Discourse 用户
+	// Stripe 支付（可选）
+	StripeSecretKey     string // PULSE_STRIPE_SECRET_KEY
+	StripeWebhookSecret string // PULSE_STRIPE_WEBHOOK_SECRET
+	ShopEnabled         bool   // PULSE_SHOP_ENABLED ("true" 启用商店)
 }
 
 func Load() Config {
@@ -46,6 +50,9 @@ func Load() Config {
 		DiscourseURL:          envOrDefault("PULSE_DISCOURSE_URL", ""),
 		DiscourseSSOSecret:    envOrDefault("PULSE_DISCOURSE_SSO_SECRET", ""),
 		DiscourseAdminUsers:   envOrDefault("PULSE_DISCOURSE_ADMIN_USERS", ""),
+		StripeSecretKey:       envOrDefault("PULSE_STRIPE_SECRET_KEY", ""),
+		StripeWebhookSecret:   envOrDefault("PULSE_STRIPE_WEBHOOK_SECRET", ""),
+		ShopEnabled:           envOrDefault("PULSE_SHOP_ENABLED", "") == "true",
 	}
 }
 
