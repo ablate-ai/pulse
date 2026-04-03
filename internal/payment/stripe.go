@@ -50,7 +50,9 @@ func CreateCheckoutSession(plan plans.Plan, email string, orderID string, subTok
 
 // ConstructEvent verifies a webhook payload signature and returns the event.
 func ConstructEvent(payload []byte, sigHeader string, webhookSecret string) (stripe.Event, error) {
-	return webhook.ConstructEvent(payload, sigHeader, webhookSecret)
+	return webhook.ConstructEventWithOptions(payload, sigHeader, webhookSecret, webhook.ConstructEventOptions{
+		IgnoreAPIVersionMismatch: true,
+	})
 }
 
 // CancelSubscription cancels a Stripe subscription immediately.

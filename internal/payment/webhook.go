@@ -45,6 +45,7 @@ func (d *WebhookDeps) HandleWebhook(w http.ResponseWriter, r *http.Request) {
 
 	event, err := ConstructEvent(body, r.Header.Get("Stripe-Signature"), d.WebhookSecret)
 	if err != nil {
+		log.Printf("payment: webhook signature error (secret len=%d): %v", len(d.WebhookSecret), err)
 		http.Error(w, "invalid signature", http.StatusBadRequest)
 		return
 	}

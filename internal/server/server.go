@@ -169,7 +169,7 @@ func Run() error {
 				}
 			}
 		}()
-		log.Printf("payment: Stripe shop enabled")
+		log.Printf("payment: Stripe shop enabled (webhook secret len=%d)", len(cfg.StripeWebhookSecret))
 	}
 
 	panelHandler.Register(mux)
