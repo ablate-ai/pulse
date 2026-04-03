@@ -22,7 +22,6 @@ function initCharts(root) {
     const type = canvas.dataset.chartType;
     if      (type === 'traffic')        initTrafficChart(canvas);
     else if (type === 'node-dist')      initNodeDistChart(canvas);
-    else if (type === 'quota')          initQuotaChart(canvas);
     else if (type === 'expiration')     initExpirationChart(canvas);
     else if (type === 'growth')         initGrowthChart(canvas);
     else if (type === 'top-users')      initTopUsersChart(canvas);
@@ -96,26 +95,6 @@ function initNodeDistChart(canvas) {
       plugins: {
         legend: { position: 'right', labels: { color: '#6b7280', boxWidth: 10, padding: 8, font: { size: 11 } } },
         tooltip: { callbacks: { label: ctx => `${ctx.label}: ${fmtBytes(ctx.raw)}` } },
-      },
-    },
-  });
-}
-function initQuotaChart(canvas) {
-  const labels = JSON.parse(canvas.dataset.labels || '[]');
-  const values = JSON.parse(canvas.dataset.values || '[]');
-  const colors = ['rgba(16,185,129,.7)','rgba(234,179,8,.7)','rgba(245,158,11,.7)','rgba(239,68,68,.7)','rgba(239,68,68,.9)'];
-  new Chart(canvas, {
-    type: 'bar',
-    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 3 }] },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: ctx => `${ctx.raw} 人` } },
-      },
-      scales: {
-        x: { grid: { display: false }, border: { display: false }, ticks: { color: '#4b5563', font: { size: 10 } } },
-        y: { grid: { color: 'rgba(55,65,81,.4)' }, border: { display: false }, ticks: { color: '#4b5563', font: { size: 10 }, precision: 0 } },
       },
     },
   });

@@ -42,12 +42,6 @@ type NodeCombinedStat struct {
 	PeriodTotalBytes    int64  `json:"period_total_bytes"`
 }
 
-// QuotaBucket 配额利用率分桶（只统计有限额的用户）。
-type QuotaBucket struct {
-	Label string
-	Count int
-}
-
 // ExpirationDayPoint 某天到期的用户数（未来30天时间线图）。
 type ExpirationDayPoint struct {
 	Date  string
@@ -118,7 +112,6 @@ type Summary struct {
 	DaysOptions []int `json:"days_options"`
 
 	// 运营报表扩展数据
-	QuotaBuckets   []QuotaBucket        `json:"quota_buckets"`    // 配额利用率分布
 	ExpirationDays []ExpirationDayPoint `json:"expiration_days"`  // 未来 30 天到期时间线
 	UserGrowth     []UserGrowthPoint    `json:"user_growth"`      // 近 days 天用户增长
 	TopUsers       []TopUserStat        `json:"top_users"`        // 流量 Top 10
@@ -212,30 +205,6 @@ func Build(nodeStore nodes.Store, userStore users.Store, days int) (Summary, err
 		})
 	}
 	s.NodeCombinedStats = combined
-
-	// --- 配额利用率分布（只统计有限额用户）---
-	var bucketCounts [5]int
-	for _, u := range usersList {
-		if u.TrafficLimit <= 0 {
-			continue
-		}
-		ratio := float64(u.UsedBytes) / float64(u.TrafficLimit)
-		switch {
-		case ratio >= 1.0:
-			bucketCounts[4]++
-		case ratio >= 0.75:
-			bucketCounts[3]++
-		case ratio >= 0.50:
-			bucketCounts[2]++
-		case ratio >= 0.25:
-			bucketCounts[1]++
-		default:
-			bucketCounts[0]++
-		}
-	}
-	for i, label := range [5]string{"0–25%", "25–50%", "50–75%", "75–100%", "超限"} {
-		s.QuotaBuckets = append(s.QuotaBuckets, QuotaBucket{Label: label, Count: bucketCounts[i]})
-	}
 
 	// --- 未来 30 天到期时间线 ---
 	expMap := make(map[string]int, 30)
