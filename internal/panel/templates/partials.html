@@ -133,18 +133,6 @@
     {{end}}
   </div>
 
-  <!-- 配额利用率 -->
-  {{if gt .Data.UsersCount 0}}
-  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-    <div class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">配额利用率分布</div>
-    <div class="h-36">
-      <canvas data-chart-type="quota"
-        data-labels='[{{range $i,$b := .Data.QuotaBuckets}}{{if $i}},{{end}}"{{$b.Label}}"{{end}}]'
-        data-values='[{{range $i,$b := .Data.QuotaBuckets}}{{if $i}},{{end}}{{$b.Count}}{{end}}]'>
-      </canvas>
-    </div>
-  </div>
-  {{end}}
 
 </div>
 {{end}}
@@ -1915,14 +1903,20 @@
       </select>
     </div>
     <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">节点范围（不选 = 下发到所有节点）</label>
-      <select name="node_ids" multiple size="4"
-              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-        {{range .Data.Nodes}}
-        <option value="{{.ID}}">{{.Name}}</option>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">节点范围（不勾选 = 下发到所有节点）</label>
+      <div class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 space-y-1.5">
+        {{if .Data.Nodes}}
+          {{range .Data.Nodes}}
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" name="node_ids" value="{{.ID}}"
+                   class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-700 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-gray-900">
+            <span class="text-sm text-gray-200">{{.Name}}</span>
+          </label>
+          {{end}}
+        {{else}}
+          <p class="text-xs text-gray-500">暂无节点</p>
         {{end}}
-      </select>
-      <p class="mt-1 text-xs text-gray-600">按住 Ctrl / Cmd 可多选</p>
+      </div>
     </div>
     <div>
       <label class="block text-xs font-medium text-gray-400 mb-1.5">优先级（数字越小越优先）</label>
@@ -1998,14 +1992,21 @@
       </select>
     </div>
     <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">节点范围（不选 = 下发到所有节点）</label>
-      <select name="node_ids" multiple size="4"
-              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-        {{range .Data.Nodes}}
-        <option value="{{.ID}}" {{if containsID $.Data.Rule.NodeIDs .ID}}selected{{end}}>{{.Name}}</option>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">节点范围（不勾选 = 下发到所有节点）</label>
+      <div class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 space-y-1.5">
+        {{if .Data.Nodes}}
+          {{range .Data.Nodes}}
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" name="node_ids" value="{{.ID}}"
+                   {{if containsID $.Data.Rule.NodeIDs .ID}}checked{{end}}
+                   class="w-3.5 h-3.5 rounded border-gray-600 bg-gray-700 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-gray-900">
+            <span class="text-sm text-gray-200">{{.Name}}</span>
+          </label>
+          {{end}}
+        {{else}}
+          <p class="text-xs text-gray-500">暂无节点</p>
         {{end}}
-      </select>
-      <p class="mt-1 text-xs text-gray-600">按住 Ctrl / Cmd 可多选</p>
+      </div>
     </div>
     <div>
       <label class="block text-xs font-medium text-gray-400 mb-1.5">优先级（数字越小越优先）</label>
