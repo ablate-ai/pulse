@@ -1389,9 +1389,15 @@
       hx-on::after-request="if(event.detail.successful) { document.getElementById('app-modal').close(); this.reset(); }">
   <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
     <h3 class="text-sm font-semibold text-gray-100">添加出口</h3>
-    <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
-      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-    </button>
+    <div class="flex items-center gap-3">
+      <button type="button"
+              hx-get="/panel/outbounds/import"
+              hx-target="#modal-body"
+              class="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">从 ss:// 导入</button>
+      <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
   </div>
   <div class="px-5 py-4 space-y-4 overflow-y-auto max-h-[70vh]">
     <div>
@@ -1473,6 +1479,41 @@
             class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">取消</button>
     <button type="submit"
             class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">添加</button>
+  </div>
+</form>
+{{end}}
+
+
+{{define "partial-outbound-import-form"}}
+<form hx-post="/panel/outbounds/import"
+      hx-target="#outbounds-tbody"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful) document.getElementById('app-modal').close()">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
+    <h3 class="text-sm font-semibold text-gray-100">从链接导入</h3>
+    <div class="flex items-center gap-3">
+      <button type="button"
+              hx-get="/panel/outbounds/new"
+              hx-target="#modal-body"
+              class="text-xs text-indigo-400 hover:text-indigo-300 transition-colors">手动填写</button>
+      <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="px-5 py-4 space-y-3">
+    <p class="text-xs text-gray-500">支持格式：<code class="text-gray-400">ss://method:password@host:port#名称</code> 或 <code class="text-gray-400">vless://uuid@host:port?security=reality&amp;pbk=...#名称</code></p>
+    <div>
+      <label class="block text-xs font-medium text-gray-400 mb-1.5">代理链接</label>
+      <textarea name="proxy_url" required rows="3" placeholder="ss:// 或 vless://"
+                class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 font-mono placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors resize-none"></textarea>
+    </div>
+  </div>
+  <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
+    <button type="button" onclick="document.getElementById('app-modal').close()"
+            class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">取消</button>
+    <button type="submit"
+            class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">解析并导入</button>
   </div>
 </form>
 {{end}}

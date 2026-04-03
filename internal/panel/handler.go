@@ -304,6 +304,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /panel/outbounds/list", h.requireAuth(h.outboundsListPartial))
 	mux.HandleFunc("GET /panel/outbounds/new", h.requireAuth(h.outboundNewForm))
+	mux.HandleFunc("GET /panel/outbounds/import", h.requireAuth(h.outboundImportForm))
+	mux.HandleFunc("POST /panel/outbounds/import", h.requireAuth(h.importOutbound))
 	mux.HandleFunc("POST /panel/outbounds", h.requireAuth(h.createOutbound))
 	mux.HandleFunc("GET /panel/outbounds/{id}/edit", h.requireAuth(h.outboundEditForm))
 	mux.HandleFunc("PUT /panel/outbounds/{id}", h.requireAuth(h.updateOutbound))
@@ -2560,6 +2562,126 @@ func (h *Handler) deleteOutbound(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.renderOutboundsListFromStore(w)
+}
+
+func (h *Handler) outboundImportForm(w http.ResponseWriter, r *http.Request) {
+	h.renderPartial(w, "partial-outbound-import-form", nil)
+}
+
+func (h *Handler) importOutbound(w http.ResponseWriter, r *http.Request) {
+	rawURL := strings.TrimSpace(r.FormValue("proxy_url"))
+	var (
+		ob  outbounds.Outbound
+		err error
+	)
+	switch {
+	case strings.HasPrefix(rawURL, "ss://"):
+		ob, err = parseShadowsocksURL(rawURL)
+	case strings.HasPrefix(rawURL, "vless://"):
+		ob, err = parseVlessURL(rawURL)
+	default:
+		htmxError(w, http.StatusBadRequest, "不支持的链接格式，仅支持 ss:// 和 vless://")
+		return
+	}
+	if err != nil {
+		htmxError(w, http.StatusBadRequest, "链接解析失败: "+err.Error())
+		return
+	}
+	ob.ID = idgen.NextString()
+	if _, err := h.outboundStore.Upsert(ob); err != nil {
+		htmxError(w, http.StatusInternalServerError, "保存失败: "+err.Error())
+		return
+	}
+	h.renderOutboundsListFromStore(w)
+}
+
+// parseShadowsocksURL 解析 ss:// 链接，支持 SIP002 和 legacy base64 格式。
+// ss://BASE64(method:password)@host:port#name
+// ss://method:password@host:port#name
+func parseShadowsocksURL(raw string) (outbounds.Outbound, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return outbounds.Outbound{}, fmt.Errorf("URL 解析失败: %w", err)
+	}
+
+	name := u.Fragment
+	if name == "" {
+		name = u.Hostname()
+	}
+
+	host := u.Hostname()
+	portStr := u.Port()
+	if host == "" || portStr == "" {
+		return outbounds.Outbound{}, fmt.Errorf("缺少 host 或 port")
+	}
+	server := net.JoinHostPort(host, portStr)
+
+	var method, password string
+	if u.User == nil {
+		return outbounds.Outbound{}, fmt.Errorf("缺少认证信息")
+	}
+	userinfo := u.User.Username()
+	// 尝试 base64 解码（standard 和 URL-safe 两种）
+	for _, enc := range []*base64.Encoding{base64.StdEncoding, base64.URLEncoding, base64.RawStdEncoding, base64.RawURLEncoding} {
+		if decoded, decErr := enc.DecodeString(userinfo); decErr == nil && strings.Contains(string(decoded), ":") {
+			userinfo = string(decoded)
+			break
+		}
+	}
+	if idx := strings.Index(userinfo, ":"); idx > 0 {
+		method = userinfo[:idx]
+		password = userinfo[idx+1:]
+	} else if pw, ok := u.User.Password(); ok {
+		method = userinfo
+		password = pw
+	} else {
+		return outbounds.Outbound{}, fmt.Errorf("无法解析 method:password")
+	}
+
+	return outbounds.Outbound{
+		Name:     name,
+		Protocol: "ss",
+		Server:   server,
+		Method:   method,
+		Password: password,
+	}, nil
+}
+
+// parseVlessURL 解析 vless:// 链接（Reality 格式）。
+// vless://uuid@host:port?security=reality&pbk=公钥&sid=shortid&sni=域名&fp=指纹#名称
+func parseVlessURL(raw string) (outbounds.Outbound, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return outbounds.Outbound{}, fmt.Errorf("URL 解析失败: %w", err)
+	}
+
+	name := u.Fragment
+	if name == "" {
+		name = u.Hostname()
+	}
+
+	host := u.Hostname()
+	portStr := u.Port()
+	if host == "" || portStr == "" {
+		return outbounds.Outbound{}, fmt.Errorf("缺少 host 或 port")
+	}
+
+	uuid := u.User.Username()
+	if uuid == "" {
+		return outbounds.Outbound{}, fmt.Errorf("缺少 UUID")
+	}
+
+	q := u.Query()
+	return outbounds.Outbound{
+		Name:        name,
+		Protocol:    "vless",
+		Server:      net.JoinHostPort(host, portStr),
+		UUID:        uuid,
+		SNI:         q.Get("sni"),
+		PublicKey:   q.Get("pbk"),
+		ShortID:     q.Get("sid"),
+		Fingerprint: q.Get("fp"),
+	}, nil
 }
 
 func (h *Handler) renderOutboundsListFromStore(w http.ResponseWriter) {
