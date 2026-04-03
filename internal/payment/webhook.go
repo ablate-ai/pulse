@@ -81,8 +81,14 @@ func (d *WebhookDeps) handleCheckoutCompleted(event stripe.Event) {
 
 	order, err := d.OrderStore.GetOrderByStripeSession(sess.ID)
 	if err != nil {
-		log.Printf("payment: get order by session %s: %v", sess.ID, err)
-		return
+		// sessionID 可能因写入失败未关联，回退到 metadata 中的 order_id
+		if orderID, ok := sess.Metadata["order_id"]; ok && orderID != "" {
+			order, err = d.OrderStore.GetOrder(orderID)
+		}
+		if err != nil {
+			log.Printf("payment: get order by session %s: %v", sess.ID, err)
+			return
+		}
 	}
 
 	// Idempotency: skip if already processed
@@ -108,7 +114,11 @@ func (d *WebhookDeps) handleCheckoutCompleted(event stripe.Event) {
 
 	if order.UserID == "" {
 		// New user from shop purchase
-		d.provisionNewUser(&order, plan, now)
+		if err := d.provisionNewUser(&order, plan, now); err != nil {
+			log.Printf("payment: provision user for order %s: %v", order.ID, err)
+			// 不更新订单状态，保留 pending 以便 webhook 重试可重新处理
+			return
+		}
 	} else {
 		// Existing user renewal
 		d.renewExistingUser(order, plan, now)
@@ -119,12 +129,15 @@ func (d *WebhookDeps) handleCheckoutCompleted(event stripe.Event) {
 	}
 }
 
-func (d *WebhookDeps) provisionNewUser(order *orders.Order, plan plans.Plan, now time.Time) {
+func (d *WebhookDeps) provisionNewUser(order *orders.Order, plan plans.Plan, now time.Time) error {
 	username := emailToUsername(order.Email)
 
-	// Check for username collision and append random suffix
+	// 检查用户名冲突，最多追加两次随机后缀
 	if _, err := d.findUserByUsername(username); err == nil {
 		username = username + "-" + randomHex(3)
+		if _, err := d.findUserByUsername(username); err == nil {
+			username = username + "-" + randomHex(3)
+		}
 	}
 
 	expireAt := now.Add(time.Duration(plan.DurationDays) * 24 * time.Hour)
@@ -145,8 +158,7 @@ func (d *WebhookDeps) provisionNewUser(order *orders.Order, plan plans.Plan, now
 	}
 
 	if _, err := d.UserStore.UpsertUser(newUser); err != nil {
-		log.Printf("payment: create user for order %s: %v", order.ID, err)
-		return
+		return fmt.Errorf("create user: %w", err)
 	}
 
 	order.UserID = newUser.ID
@@ -159,11 +171,11 @@ func (d *WebhookDeps) provisionNewUser(order *orders.Order, plan plans.Plan, now
 		}
 		affected, err := d.SyncUserInbounds(newUser.ID, ibIDs)
 		if err != nil {
-			log.Printf("payment: sync inbounds for user %s: %v", newUser.ID, err)
-			return
+			return fmt.Errorf("sync inbounds: %w", err)
 		}
 		d.ApplyNodes(affected)
 	}
+	return nil
 }
 
 func (d *WebhookDeps) renewExistingUser(order orders.Order, plan plans.Plan, now time.Time) {
@@ -194,14 +206,19 @@ func (d *WebhookDeps) renewExistingUser(order orders.Order, plan plans.Plan, now
 
 func (d *WebhookDeps) handleInvoicePaid(event stripe.Event) {
 	var invoice struct {
-		Subscription string `json:"subscription"`
-		Customer     string `json:"customer"`
+		Subscription  string `json:"subscription"`
+		Customer      string `json:"customer"`
+		BillingReason string `json:"billing_reason"`
 	}
 	if err := json.Unmarshal(event.Data.Raw, &invoice); err != nil {
 		log.Printf("payment: unmarshal invoice: %v", err)
 		return
 	}
 	if invoice.Subscription == "" {
+		return
+	}
+	// 首次订阅已由 checkout.session.completed 处理，跳过避免双倍延期
+	if invoice.BillingReason == "subscription_create" {
 		return
 	}
 

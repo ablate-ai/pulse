@@ -84,6 +84,14 @@ func (s *ShopAPI) createCheckout(w http.ResponseWriter, r *http.Request) {
 		Currency:    plan.Currency,
 	}
 
+	// 先落库订单，再调用 Stripe，防止 Stripe Session 创建成功但订单未入库
+	// 导致付款成功后 webhook 找不到订单、账号无法激活
+	if _, err := s.OrderStore.UpsertOrder(order); err != nil {
+		log.Printf("payment: save order %s: %v", orderID, err)
+		http.Error(w, "failed to save order", http.StatusInternalServerError)
+		return
+	}
+
 	successURL := s.BaseURL + "/shop/success?session_id={CHECKOUT_SESSION_ID}"
 	cancelURL := s.BaseURL + "/shop"
 
@@ -96,9 +104,8 @@ func (s *ShopAPI) createCheckout(w http.ResponseWriter, r *http.Request) {
 
 	order.StripeSessionID = sessionID
 	if _, err := s.OrderStore.UpsertOrder(order); err != nil {
-		log.Printf("payment: save order %s: %v", orderID, err)
-		http.Error(w, "failed to save order", http.StatusInternalServerError)
-		return
+		log.Printf("payment: update order session %s: %v", orderID, err)
+		// 订单已入库，sessionID 更新失败时 webhook 通过 orderID metadata 仍可关联
 	}
 
 	// Redirect browser to Stripe Checkout
