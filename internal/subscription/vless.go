@@ -21,8 +21,11 @@ func Link(nodeInbound inbounds.Inbound, host inbounds.Host, access users.UserInb
 		port = nodeInbound.Port
 	}
 
-	// 节点显示名称：优先用 Inbound Tag，否则用连接地址
-	name := nodeInbound.Tag
+	// 节点显示名称：优先用 Host Remark，其次 Inbound Tag，否则用连接地址
+	name := host.Remark
+	if name == "" {
+		name = nodeInbound.Tag
+	}
 	if name == "" {
 		name = addr
 	}
