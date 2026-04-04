@@ -203,6 +203,15 @@ func (s *NodeStore) ListAllNodeSpeedTests() (map[string]nodes.SpeedTestResult, e
 }
 
 func (s *NodeStore) UpsertNodeCheckResults(nodeID string, results []nodes.CheckResult) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+	// 先清空该节点的旧检测结果，避免服务名变更后旧记录残留
+	if _, err := tx.Exec(`DELETE FROM node_check_results WHERE node_id = ?`, nodeID); err != nil {
+		return fmt.Errorf("clear node check results: %w", err)
+	}
 	for _, r := range results {
 		unlocked := 0
 		if r.Unlocked {
@@ -212,20 +221,15 @@ func (s *NodeStore) UpsertNodeCheckResults(nodeID string, results []nodes.CheckR
 		if checkType == "" {
 			checkType = "direct"
 		}
-		_, err := s.db.Exec(`
+		_, err := tx.Exec(`
 			INSERT INTO node_check_results (node_id, service, check_type, unlocked, region, note, checked_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(node_id, service, check_type) DO UPDATE SET
-				unlocked   = excluded.unlocked,
-				region     = excluded.region,
-				note       = excluded.note,
-				checked_at = excluded.checked_at
 		`, nodeID, r.Service, checkType, unlocked, r.Region, r.Note, r.CheckedAt.UTC().Format(time.RFC3339))
 		if err != nil {
-			return fmt.Errorf("upsert node check result: %w", err)
+			return fmt.Errorf("insert node check result: %w", err)
 		}
 	}
-	return nil
+	return tx.Commit()
 }
 
 func (s *NodeStore) ListAllNodeCheckResults() (map[string][]nodes.CheckResult, error) {
