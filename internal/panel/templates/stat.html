@@ -69,8 +69,8 @@
             {{if not .CheckedAt.IsZero}}
             <span class="text-xs text-gray-600">{{formatCheckTime .CheckedAt}}</span>
             {{end}}
-            {{if gt .Uptime.TotalChecks 0}}
-            <span class="text-xs text-gray-600">节点 <span class="{{if ge .Uptime.OnlinePct 99}}text-emerald-400{{else if ge .Uptime.OnlinePct 95}}text-yellow-400{{else}}text-red-400{{end}} font-medium">{{.Uptime.OnlinePct}}%</span></span>
+            {{if .Uptime.Label}}
+            <span class="text-xs text-gray-600">{{.Uptime.Label}} 节点 <span class="{{if ge .Uptime.OnlinePct 99}}text-emerald-400{{else if ge .Uptime.OnlinePct 95}}text-yellow-400{{else}}text-red-400{{end}} font-medium">{{.Uptime.OnlinePct}}%</span></span>
             <span class="text-xs text-gray-600">sing-box <span class="{{if ge .Uptime.RunningPct 99}}text-emerald-400{{else if ge .Uptime.RunningPct 95}}text-yellow-400{{else}}text-red-400{{end}} font-medium">{{.Uptime.RunningPct}}%</span></span>
             {{end}}
           </div>

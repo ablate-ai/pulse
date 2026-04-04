@@ -275,12 +275,14 @@ func (s *NodeStore) RecordNodeUptime(nodeID string, online, running bool) error 
 }
 
 func (s *NodeStore) ListNodeUptimeSummary(days int) (map[string]nodes.UptimeSummary, error) {
-	cutoff := time.Now().UTC().AddDate(0, 0, -days).Format(time.RFC3339)
+	now := time.Now().UTC()
+	cutoff := now.AddDate(0, 0, -days).Format(time.RFC3339)
 	rows, err := s.db.Query(`
 		SELECT node_id,
-			COUNT(*)     AS total,
-			SUM(online)  AS online_sum,
-			SUM(running) AS running_sum
+			COUNT(*)          AS total,
+			SUM(online)       AS online_sum,
+			SUM(running)      AS running_sum,
+			MIN(checked_at)   AS first_at
 		FROM node_uptime_log
 		WHERE checked_at >= ?
 		GROUP BY node_id
@@ -292,14 +294,26 @@ func (s *NodeStore) ListNodeUptimeSummary(days int) (map[string]nodes.UptimeSumm
 
 	result := make(map[string]nodes.UptimeSummary)
 	for rows.Next() {
-		var nodeID string
+		var nodeID, firstAt string
 		var sum nodes.UptimeSummary
-		if err := rows.Scan(&nodeID, &sum.TotalChecks, &sum.OnlineChecks, &sum.RunningChecks); err != nil {
+		if err := rows.Scan(&nodeID, &sum.TotalChecks, &sum.OnlineChecks, &sum.RunningChecks, &firstAt); err != nil {
 			return nil, fmt.Errorf("scan uptime summary: %w", err)
 		}
 		if sum.TotalChecks > 0 {
 			sum.OnlinePct = sum.OnlineChecks * 100 / sum.TotalChecks
 			sum.RunningPct = sum.RunningChecks * 100 / sum.TotalChecks
+		}
+		// 根据实际最早记录计算覆盖时长标签，不足 1 小时不显示
+		if t, err := time.Parse(time.RFC3339, firstAt); err == nil {
+			mins := int(now.Sub(t).Minutes())
+			switch {
+			case mins < 60:
+				// 不足 1h，不设 Label（外层模板依此隐藏）
+			case mins < 1440:
+				sum.Label = fmt.Sprintf("%dh", mins/60)
+			default:
+				sum.Label = fmt.Sprintf("%dd", mins/1440)
+			}
 		}
 		result[nodeID] = sum
 	}

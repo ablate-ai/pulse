@@ -39,11 +39,12 @@ type SpeedTestResult struct {
 
 // UptimeSummary 某节点在指定天数内的可用性汇总。
 type UptimeSummary struct {
-	TotalChecks   int `json:"total_checks"`
-	OnlineChecks  int `json:"online_checks"`
-	RunningChecks int `json:"running_checks"`
-	OnlinePct     int `json:"online_pct"`  // 0-100
-	RunningPct    int `json:"running_pct"` // 0-100
+	TotalChecks   int    `json:"total_checks"`
+	OnlineChecks  int    `json:"online_checks"`
+	RunningChecks int    `json:"running_checks"`
+	OnlinePct     int    `json:"online_pct"`  // 0-100
+	RunningPct    int    `json:"running_pct"` // 0-100
+	Label         string `json:"label"`        // 实际覆盖时长标签，如 "2h" / "3d"，不足 1h 时为空
 }
 
 // NodeDailyUsage 某节点某日的流量快照。

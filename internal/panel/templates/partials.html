@@ -542,9 +542,9 @@
         {{if .SingboxVer}}<span class="text-xs text-gray-600">sing-box {{.SingboxVer}}</span>{{end}}
       </div>
       {{end}}
-      {{if gt .Uptime.TotalChecks 0}}
+      {{if .Uptime.Label}}
       <div class="flex items-center gap-2 mt-1">
-        <span class="text-xs text-gray-600">7d 节点 <span class="{{if ge .Uptime.OnlinePct 99}}text-emerald-400{{else if ge .Uptime.OnlinePct 95}}text-yellow-400{{else}}text-red-400{{end}}">{{.Uptime.OnlinePct}}%</span></span>
+        <span class="text-xs text-gray-600">{{.Uptime.Label}} 节点 <span class="{{if ge .Uptime.OnlinePct 99}}text-emerald-400{{else if ge .Uptime.OnlinePct 95}}text-yellow-400{{else}}text-red-400{{end}}">{{.Uptime.OnlinePct}}%</span></span>
         <span class="text-xs text-gray-600">sing-box <span class="{{if ge .Uptime.RunningPct 99}}text-emerald-400{{else if ge .Uptime.RunningPct 95}}text-yellow-400{{else}}text-red-400{{end}}">{{.Uptime.RunningPct}}%</span></span>
       </div>
       {{end}}
