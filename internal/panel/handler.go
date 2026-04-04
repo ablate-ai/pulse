@@ -207,6 +207,27 @@ type checkResultsPartialData struct {
 	Results []nodes.CheckResult
 }
 
+// statNodeEntry 公开状态页中单个节点的数据。
+type statNodeEntry struct {
+	Name          string
+	CheckResults  []nodes.CheckResult
+	SpeedTest     *nodes.SpeedTestResult
+	HasData       bool
+	CheckedAt     time.Time
+	UnlockedCount int
+	TotalCount    int
+	UnlockPct     int // 0-100
+}
+
+// statData 公开状态页的完整数据。
+type statData struct {
+	Nodes        []statNodeEntry
+	NodeCount    int
+	UnlockRate   int // 所有节点平均解锁率（%）
+	ServiceCount int // 检测的服务种类数
+	UpdatedAt    time.Time
+}
+
 // speedTestPartialData 传给测速结果局部模板的数据。
 type speedTestPartialData struct {
 	NodeID string
@@ -276,6 +297,7 @@ func (h *Handler) panelPort() int {
 // Register 将所有路由注册到 mux。
 func (h *Handler) Register(mux *http.ServeMux) {
 	// 公开路由
+	mux.HandleFunc("GET /stat", h.statPage)
 	mux.HandleFunc("GET /login", h.loginPage)
 	mux.HandleFunc("POST /login", h.processLogin)
 	mux.HandleFunc("POST /logout", h.processLogout)
@@ -743,6 +765,68 @@ func (h *Handler) renderPartial(w http.ResponseWriter, name string, data any) {
 type loginPageData struct {
 	Error            string // 登录错误消息
 	DiscourseEnabled bool   // 是否显示 Discourse 登录按钮
+}
+
+// statPage 公开节点状态探针页，无需认证。
+func (h *Handler) statPage(w http.ResponseWriter, r *http.Request) {
+	nodeList, _ := h.nodeStore.List()
+	checkMap, _ := h.nodeStore.ListAllNodeCheckResults()
+	speedMap, _ := h.nodeStore.ListAllNodeSpeedTests()
+
+	var (
+		totalUnlocked int
+		totalServices int
+		latestUpdated time.Time
+		maxServices   int
+		entries       = make([]statNodeEntry, 0, len(nodeList))
+	)
+
+	for _, n := range nodeList {
+		results := checkMap[n.ID]
+		entry := statNodeEntry{
+			Name:         n.Name,
+			CheckResults: results,
+			HasData:      len(results) > 0,
+			TotalCount:   len(results),
+		}
+		if st, ok := speedMap[n.ID]; ok {
+			entry.SpeedTest = &st
+		}
+		for _, cr := range results {
+			if cr.Unlocked {
+				entry.UnlockedCount++
+			}
+			if !cr.CheckedAt.IsZero() && cr.CheckedAt.After(latestUpdated) {
+				latestUpdated = cr.CheckedAt
+			}
+			if entry.CheckedAt.IsZero() {
+				entry.CheckedAt = cr.CheckedAt
+			}
+		}
+		if entry.TotalCount > 0 {
+			entry.UnlockPct = entry.UnlockedCount * 100 / entry.TotalCount
+		}
+		if len(results) > maxServices {
+			maxServices = len(results)
+		}
+		totalUnlocked += entry.UnlockedCount
+		totalServices += entry.TotalCount
+		entries = append(entries, entry)
+	}
+
+	avgUnlockRate := 0
+	if totalServices > 0 {
+		avgUnlockRate = totalUnlocked * 100 / totalServices
+	}
+
+	data := statData{
+		Nodes:        entries,
+		NodeCount:    len(nodeList),
+		UnlockRate:   avgUnlockRate,
+		ServiceCount: maxServices,
+		UpdatedAt:    latestUpdated,
+	}
+	h.renderPage(w, r, "stat", pageData{Data: data})
 }
 
 func (h *Handler) loginPage(w http.ResponseWriter, r *http.Request) {
