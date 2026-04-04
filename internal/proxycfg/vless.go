@@ -65,12 +65,16 @@ type inboundBlock struct {
 	Tag        string           `json:"tag"`
 	Listen     string           `json:"listen"`
 	ListenPort int              `json:"listen_port"`
-	Users      []map[string]any `json:"users"`
+	Users      []map[string]any `json:"users,omitempty"`
 	Transport  map[string]any   `json:"transport,omitempty"`
 	TLS        map[string]any   `json:"tls,omitempty"`
 	Method     string           `json:"method,omitempty"`
 	Password   string           `json:"password,omitempty"`
 }
+
+// ProbeInboundPort 探针专用内部混合入站端口，仅监听 127.0.0.1，
+// 供 pulse-node 解锁检测时将流量路由经过 sing-box 分流规则。
+const ProbeInboundPort = 16799
 
 // BuildOptions 控制 BuildSingboxConfig 的可选行为。
 type BuildOptions struct {
@@ -189,6 +193,15 @@ func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.Us
 			Password:   password,
 		})
 	}
+
+	// 注入探针专用入站：仅 127.0.0.1 监听，流量经过 sing-box 路由规则，
+	// 使 pulse-node 解锁检测能反映代理后的解锁效果。
+	blocks = append(blocks, inboundBlock{
+		Type:       "mixed",
+		Tag:        "pulse-probe",
+		Listen:     "127.0.0.1",
+		ListenPort: ProbeInboundPort,
+	})
 
 	sort.Slice(blocks, func(i, j int) bool {
 		if blocks[i].ListenPort == blocks[j].ListenPort {
