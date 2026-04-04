@@ -1831,8 +1831,8 @@
   <td class="px-4 py-3 text-sm text-gray-400 font-mono max-w-[200px] truncate" title="{{.Patterns}}">{{.Patterns}}</td>
   <td class="px-4 py-3 text-sm">
     {{if .OutboundID}}
-      {{$ob := index $.Data.OutboundMap .OutboundID}}
-      {{if $ob.Name}}<span class="text-indigo-400">{{$ob.Name}}</span>{{else}}<span class="text-gray-500">—</span>{{end}}
+      {{$label := index $.Data.OutboundLabels .OutboundID}}
+      {{if $label}}<span class="text-indigo-400">{{$label}}</span>{{else}}<span class="text-gray-500">—</span>{{end}}
     {{else}}
       <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-500/15 text-emerald-400">direct</span>
     {{end}}
@@ -1928,8 +1928,19 @@
       <select name="outbound_id"
               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
         <option value="">直连 (direct)</option>
-        {{range .Data.Outbounds}}
-        <option value="{{.ID}}">{{.Name}} ({{.Protocol}})</option>
+        {{if .Data.Outbounds}}
+        <optgroup label="自定义出口">
+          {{range .Data.Outbounds}}
+          <option value="{{.ID}}">{{.Name}} ({{.Protocol}})</option>
+          {{end}}
+        </optgroup>
+        {{end}}
+        {{if .Data.NodeSSInbounds}}
+        <optgroup label="节点 SS 出口">
+          {{range .Data.NodeSSInbounds}}
+          <option value="{{.ID}}">{{.Label}}</option>
+          {{end}}
+        </optgroup>
         {{end}}
       </select>
     </div>
@@ -2017,8 +2028,19 @@
       <select name="outbound_id"
               class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
         <option value="" {{if eq .Data.Rule.OutboundID ""}}selected{{end}}>直连 (direct)</option>
-        {{range .Data.Outbounds}}
-        <option value="{{.ID}}" {{if eq $.Data.Rule.OutboundID .ID}}selected{{end}}>{{.Name}} ({{.Protocol}})</option>
+        {{if .Data.Outbounds}}
+        <optgroup label="自定义出口">
+          {{range .Data.Outbounds}}
+          <option value="{{.ID}}" {{if eq $.Data.Rule.OutboundID .ID}}selected{{end}}>{{.Name}} ({{.Protocol}})</option>
+          {{end}}
+        </optgroup>
+        {{end}}
+        {{if .Data.NodeSSInbounds}}
+        <optgroup label="节点 SS 出口">
+          {{range .Data.NodeSSInbounds}}
+          <option value="{{.ID}}" {{if eq $.Data.Rule.OutboundID .ID}}selected{{end}}>{{.Label}}</option>
+          {{end}}
+        </optgroup>
         {{end}}
       </select>
     </div>

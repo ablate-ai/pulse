@@ -510,6 +510,10 @@ type Alerter interface {
 type ApplyOptions struct {
 	Alerter        Alerter          // nil 时不发送告警
 	RouteRuleStore routerules.Store // nil 时不应用全局分流规则
+	// UserStore 和 NodeStore 用于将节点 inbound 作为分流出口（nodeib: 前缀）时查找凭据和地址。
+	// nil 时跳过节点 inbound 出口构建。
+	UserStore users.Store
+	NodeStore nodes.Store
 }
 
 // ApplyNodeUsers 根据节点 inbound 配置和用户凭据生成配置并下发到节点。
@@ -544,10 +548,33 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []in
 		globalRouteRules, _ = applyOpts.RouteRuleStore.List()
 	}
 
+	// 加载所有节点 inbound 出口所需数据（用于 nodeib: 前缀出口）
+	allInboundMap := make(map[string]inbounds.Inbound)
+	allNodeMap := make(map[string]nodes.Node)
+	inboundAccesses := make(map[string][]users.UserInbound)
+	if applyOpts.UserStore != nil && applyOpts.NodeStore != nil && ibStore != nil {
+		if allIbs, err := ibStore.ListInbounds(); err == nil {
+			for _, ib := range allIbs {
+				allInboundMap[ib.ID] = ib
+				if accs, err := applyOpts.UserStore.ListUserInboundsByInbound(ib.ID); err == nil {
+					inboundAccesses[ib.ID] = accs
+				}
+			}
+		}
+		if allNodes, err := applyOpts.NodeStore.List(); err == nil {
+			for _, n := range allNodes {
+				allNodeMap[n.ID] = n
+			}
+		}
+	}
+
 	cfg, err := proxycfg.BuildSingboxConfig(nodeInbounds, userAccesses, userMap, proxycfg.BuildOptions{
-		OutboundMap: outboundMap,
-		RouteRules:  globalRouteRules,
-		NodeID:      node.ID,
+		OutboundMap:     outboundMap,
+		RouteRules:      globalRouteRules,
+		NodeID:          node.ID,
+		AllInboundMap:   allInboundMap,
+		AllNodeMap:      allNodeMap,
+		InboundAccesses: inboundAccesses,
 	})
 	if err != nil {
 		return nodes.Status{}, "", err

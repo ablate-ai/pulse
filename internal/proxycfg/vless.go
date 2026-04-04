@@ -4,15 +4,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
 
 	"pulse/internal/inbounds"
+	"pulse/internal/nodes"
 	"pulse/internal/outbounds"
 	"pulse/internal/routerules"
 	"pulse/internal/users"
 )
+
+// NodeInboundPrefix 是路由规则中节点 inbound 出口 ID 的前缀。
+const NodeInboundPrefix = "nodeib:"
 
 type singboxConfig struct {
 	Log          map[string]any     `json:"log"`
@@ -84,6 +89,12 @@ type BuildOptions struct {
 	RouteRules []routerules.RouteRule
 	// NodeID 当前节点 ID，用于过滤 NodeIDs 非空的分流规则。
 	NodeID string
+	// AllInboundMap 所有节点的 Inbound（key 为 Inbound ID），用于 nodeib: 出口解析。
+	AllInboundMap map[string]inbounds.Inbound
+	// AllNodeMap 所有节点（key 为 Node ID），用于 nodeib: 出口解析时获取节点地址。
+	AllNodeMap map[string]nodes.Node
+	// InboundAccesses 各 Inbound 的用户凭据（key 为 Inbound ID），用于构造 SS 客户端密码。
+	InboundAccesses map[string][]users.UserInbound
 }
 
 // BuildSingboxConfig 根据节点 inbound 配置和用户凭据生成 sing-box 配置 JSON。
@@ -217,10 +228,34 @@ func BuildSingboxConfig(nodeInbounds []inbounds.Inbound, userAccesses []users.Us
 	var rules []routeRule
 
 	// ensureOutbound 确保出口已加入列表，返回其 tag。
+	// 支持两种格式：
+	//   普通出口 ID   → 从 OutboundMap 查找
+	//   "nodeib:<ID>" → 从 AllInboundMap + AllNodeMap 构建节点 SS 出口
 	ensureOutbound := func(obID string) string {
 		if obID == "" {
 			return "direct"
 		}
+		// 节点 inbound 出口
+		if strings.HasPrefix(obID, NodeInboundPrefix) {
+			ibID := obID[len(NodeInboundPrefix):]
+			if _, seen := seenOutboundIDs[obID]; seen {
+				return "out-" + obID
+			}
+			ib, ok := opts.AllInboundMap[ibID]
+			if !ok {
+				return "direct"
+			}
+			n, ok := opts.AllNodeMap[ib.NodeID]
+			if !ok {
+				return "direct"
+			}
+			accesses := opts.InboundAccesses[ibID]
+			obTag := "out-" + obID
+			seenOutboundIDs[obID] = struct{}{}
+			outboundList = append(outboundList, buildOutboundFromNodeInbound(ib, n, accesses, obTag))
+			return obTag
+		}
+		// 普通自定义出口
 		ob, ok := opts.OutboundMap[obID]
 		if !ok {
 			return "direct"
@@ -404,6 +439,41 @@ func buildOutboundBlock(ob outbounds.Outbound, tag string) map[string]any {
 		}
 	default:
 		return map[string]any{"type": "direct", "tag": tag}
+	}
+}
+
+// buildOutboundFromNodeInbound 将节点 Inbound 转换为 sing-box SS outbound block。
+// 地址取自 Node.BaseURL 的 hostname，端口取自 Inbound.Port。
+// SS2022 密码格式：server_psk:user_psk（取 accesses 中第一个用户的凭据）。
+func buildOutboundFromNodeInbound(ib inbounds.Inbound, n nodes.Node, accesses []users.UserInbound, tag string) map[string]any {
+	u, err := url.Parse(n.BaseURL)
+	if err != nil || u.Hostname() == "" {
+		return map[string]any{"type": "direct", "tag": tag}
+	}
+	method := ib.Method
+	if method == "" {
+		method = "2022-blake3-aes-128-gcm"
+	}
+	var password string
+	if len(accesses) > 0 {
+		userPSK := accesses[0].Secret
+		if strings.HasPrefix(method, "2022-") {
+			// SS2022 多用户：客户端密码 = server_psk:user_psk
+			password = ib.Password + ":" + userPSK
+		} else {
+			password = userPSK
+		}
+	} else {
+		// 无用户凭据时退回服务端 PSK（单用户 SS2022 或占位）
+		password = ib.Password
+	}
+	return map[string]any{
+		"type":        "shadowsocks",
+		"tag":         tag,
+		"server":      u.Hostname(),
+		"server_port": ib.Port,
+		"method":      method,
+		"password":    password,
 	}
 }
 

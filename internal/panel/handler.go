@@ -3060,17 +3060,54 @@ func (h *Handler) routeRulesListPartial(w http.ResponseWriter, r *http.Request) 
 	h.renderRouteRulesListFromStore(w)
 }
 
+// nodeSSInboundOption 表示一个可用作分流出口的节点 SS Inbound 选项。
+type nodeSSInboundOption struct {
+	// ID 用作 outbound_id 表单值，格式为 "nodeib:<inbound_id>"
+	ID    string
+	Label string // 显示标签，如 "香港节点 - SS:8388"
+}
+
 // routeRuleFormData 传给路由规则表单模板的数据。
 type routeRuleFormData struct {
-	Rule      *routerules.RouteRule
-	Outbounds []outbounds.Outbound
-	Nodes     []nodes.Node
+	Rule            *routerules.RouteRule
+	Outbounds       []outbounds.Outbound
+	Nodes           []nodes.Node
+	NodeSSInbounds  []nodeSSInboundOption
+}
+
+// buildNodeSSInboundOptions 从 ibStore + nodeStore 中提取所有 shadowsocks inbound 选项。
+func (h *Handler) buildNodeSSInboundOptions() []nodeSSInboundOption {
+	allIbs, _ := h.ibStore.ListInbounds()
+	nodeList, _ := h.nodeStore.List()
+	nodeMap := make(map[string]nodes.Node, len(nodeList))
+	for _, n := range nodeList {
+		nodeMap[n.ID] = n
+	}
+	var opts []nodeSSInboundOption
+	for _, ib := range allIbs {
+		if ib.Protocol != "shadowsocks" {
+			continue
+		}
+		nodeName := ib.NodeID
+		if n, ok := nodeMap[ib.NodeID]; ok {
+			nodeName = n.Name
+		}
+		opts = append(opts, nodeSSInboundOption{
+			ID:    "nodeib:" + ib.ID,
+			Label: fmt.Sprintf("%s - SS:%d", nodeName, ib.Port),
+		})
+	}
+	return opts
 }
 
 func (h *Handler) routeRuleNewForm(w http.ResponseWriter, r *http.Request) {
 	obList, _ := h.outboundStore.List()
 	nodeList, _ := h.nodeStore.List()
-	h.renderPartial(w, "partial-routerule-new-form", routeRuleFormData{Outbounds: obList, Nodes: nodeList})
+	h.renderPartial(w, "partial-routerule-new-form", routeRuleFormData{
+		Outbounds:      obList,
+		Nodes:          nodeList,
+		NodeSSInbounds: h.buildNodeSSInboundOptions(),
+	})
 }
 
 func (h *Handler) createRouteRule(w http.ResponseWriter, r *http.Request) {
@@ -3118,7 +3155,12 @@ func (h *Handler) routeRuleEditForm(w http.ResponseWriter, r *http.Request) {
 	}
 	obList, _ := h.outboundStore.List()
 	nodeList, _ := h.nodeStore.List()
-	h.renderPartial(w, "partial-routerule-edit-form", routeRuleFormData{Rule: &rule, Outbounds: obList, Nodes: nodeList})
+	h.renderPartial(w, "partial-routerule-edit-form", routeRuleFormData{
+		Rule:           &rule,
+		Outbounds:      obList,
+		Nodes:          nodeList,
+		NodeSSInbounds: h.buildNodeSSInboundOptions(),
+	})
 }
 
 func (h *Handler) updateRouteRule(w http.ResponseWriter, r *http.Request) {
@@ -3166,19 +3208,36 @@ func (h *Handler) renderRouteRulesListFromStore(w http.ResponseWriter) {
 	}
 	obList, _ := h.outboundStore.List()
 	obMap := make(map[string]outbounds.Outbound, len(obList))
+	// 统一出口标签 map（自定义出口 + nodeib: 节点 SS 出口）
+	outboundLabels := make(map[string]string)
 	for _, ob := range obList {
 		obMap[ob.ID] = ob
+		outboundLabels[ob.ID] = ob.Name
 	}
 	nodeList, _ := h.nodeStore.List()
 	nodeMap := make(map[string]nodes.Node, len(nodeList))
 	for _, n := range nodeList {
 		nodeMap[n.ID] = n
 	}
+	// 将节点 SS inbound 加入标签 map
+	if allIbs, err := h.ibStore.ListInbounds(); err == nil {
+		for _, ib := range allIbs {
+			if ib.Protocol != "shadowsocks" {
+				continue
+			}
+			nodeName := ib.NodeID
+			if n, ok := nodeMap[ib.NodeID]; ok {
+				nodeName = n.Name
+			}
+			outboundLabels["nodeib:"+ib.ID] = fmt.Sprintf("%s - SS:%d", nodeName, ib.Port)
+		}
+	}
 	h.renderPartial(w, "partial-routerule-rows", struct {
-		Rules       []routerules.RouteRule
-		OutboundMap map[string]outbounds.Outbound
-		NodeMap     map[string]nodes.Node
-	}{Rules: list, OutboundMap: obMap, NodeMap: nodeMap})
+		Rules          []routerules.RouteRule
+		OutboundMap    map[string]outbounds.Outbound
+		OutboundLabels map[string]string
+		NodeMap        map[string]nodes.Node
+	}{Rules: list, OutboundMap: obMap, OutboundLabels: outboundLabels, NodeMap: nodeMap})
 }
 
 

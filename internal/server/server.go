@@ -51,6 +51,8 @@ func Run() error {
 	applyOpts := jobs.ApplyOptions{
 		Alerter:        alert.NewBarkSender(db.SettingsStore()),
 		RouteRuleStore: routeRuleStore,
+		UserStore:      userStore,
+		NodeStore:      store,
 	}
 	nodeAPI := serverapi.NewWithUsers(store, userStore, inboundStore, outboundStore, clientOptions, applyOpts)
 	scheduler := jobs.NewScheduler(nil)
