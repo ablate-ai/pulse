@@ -591,16 +591,33 @@
               hx-confirm="确定删除节点 {{.Node.Name}}？">删除</button>
     </div>
   </div>
-  {{if .CheckResults}}
-  <div id="check-results-{{.Node.ID}}" class="flex items-center gap-1.5 mt-2.5 pt-2.5 border-t border-gray-800/60 flex-wrap">
-    {{range .CheckResults}}
-    {{if .Unlocked}}
-    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-emerald-500/15 text-emerald-400">✓ {{.Service}}{{if .Region}} ({{.Region}}){{end}}</span>
-    {{else}}
-    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-red-500/15 text-red-400">✗ {{.Service}}{{if .Note}} · {{.Note}}{{end}}</span>
+  {{if or .DirectChecks .ProxiedChecks}}
+  <div id="check-results-{{.Node.ID}}" class="mt-2.5 pt-2.5 border-t border-gray-800/60 space-y-1.5">
+    {{if .DirectChecks}}
+    <div class="flex items-center gap-1.5 flex-wrap">
+      <span class="text-xs text-gray-600 shrink-0">直连</span>
+      {{range .DirectChecks}}
+      {{if .Unlocked}}
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-emerald-500/15 text-emerald-400">✓ {{.Service}}{{if .Region}} ({{.Region}}){{end}}</span>
+      {{else}}
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-red-500/15 text-red-400">✗ {{.Service}}{{if .Note}} · {{.Note}}{{end}}</span>
+      {{end}}
+      {{end}}
+      {{with index .DirectChecks 0}}<span class="text-xs text-gray-700 ml-1">{{formatCheckTime .CheckedAt}}</span>{{end}}
+    </div>
     {{end}}
+    {{if .ProxiedChecks}}
+    <div class="flex items-center gap-1.5 flex-wrap">
+      <span class="text-xs text-gray-600 shrink-0">代理</span>
+      {{range .ProxiedChecks}}
+      {{if .Unlocked}}
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-blue-500/15 text-blue-400">✓ {{.Service}}{{if .Region}} ({{.Region}}){{end}}</span>
+      {{else}}
+      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-gray-700/50 text-gray-500">✗ {{.Service}}{{if .Note}} · {{.Note}}{{end}}</span>
+      {{end}}
+      {{end}}
+    </div>
     {{end}}
-    {{with index .CheckResults 0}}<span class="text-xs text-gray-700 ml-1">{{formatCheckTime .CheckedAt}}</span>{{end}}
   </div>
   {{else}}
   <div id="check-results-{{.Node.ID}}"></div>
@@ -622,15 +639,32 @@
 
 
 {{define "partial-node-check-results"}}
-<div id="check-results-{{.Data.NodeID}}" class="flex items-center gap-1.5 mt-2.5 pt-2.5 border-t border-gray-800/60 flex-wrap">
-  {{range .Data.Results}}
-  {{if .Unlocked}}
-  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-emerald-500/15 text-emerald-400">✓ {{.Service}}{{if .Region}} ({{.Region}}){{end}}</span>
-  {{else}}
-  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-red-500/15 text-red-400">✗ {{.Service}}{{if .Note}} · {{.Note}}{{end}}</span>
+<div id="check-results-{{.Data.NodeID}}" class="mt-2.5 pt-2.5 border-t border-gray-800/60 space-y-1.5">
+  {{if .Data.DirectChecks}}
+  <div class="flex items-center gap-1.5 flex-wrap">
+    <span class="text-xs text-gray-600 shrink-0">直连</span>
+    {{range .Data.DirectChecks}}
+    {{if .Unlocked}}
+    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-emerald-500/15 text-emerald-400">✓ {{.Service}}{{if .Region}} ({{.Region}}){{end}}</span>
+    {{else}}
+    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-red-500/15 text-red-400">✗ {{.Service}}{{if .Note}} · {{.Note}}{{end}}</span>
+    {{end}}
+    {{end}}
+    {{with index .Data.DirectChecks 0}}<span class="text-xs text-gray-700 ml-1">{{formatCheckTime .CheckedAt}}</span>{{end}}
+  </div>
   {{end}}
+  {{if .Data.ProxiedChecks}}
+  <div class="flex items-center gap-1.5 flex-wrap">
+    <span class="text-xs text-gray-600 shrink-0">代理</span>
+    {{range .Data.ProxiedChecks}}
+    {{if .Unlocked}}
+    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-blue-500/15 text-blue-400">✓ {{.Service}}{{if .Region}} ({{.Region}}){{end}}</span>
+    {{else}}
+    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-gray-700/50 text-gray-500">✗ {{.Service}}{{if .Note}} · {{.Note}}{{end}}</span>
+    {{end}}
+    {{end}}
+  </div>
   {{end}}
-  {{with index .Data.Results 0}}<span class="text-xs text-gray-700 ml-1">{{formatCheckTime .CheckedAt}}</span>{{end}}
 </div>
 {{end}}
 

@@ -294,7 +294,9 @@ type CheckUnlockResult struct {
 
 // CheckUnlockResponse 节点解锁检测接口响应。
 type CheckUnlockResponse struct {
-	Results []CheckUnlockResult `json:"results"`
+	Direct         []CheckUnlockResult `json:"direct"`
+	Proxied        []CheckUnlockResult `json:"proxied,omitempty"`
+	ProxyAvailable bool                `json:"proxy_available"`
 }
 
 // SpeedTestResponse 节点测速接口响应。

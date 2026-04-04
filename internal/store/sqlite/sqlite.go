@@ -198,14 +198,16 @@ func (db *DB) init() error {
 			up_bps    INTEGER NOT NULL DEFAULT 0,
 			tested_at TEXT NOT NULL DEFAULT ''
 		);`,
-		// node_check_results：节点解锁检测结果，按 (node_id, service) 唯一存储
+		// node_check_results：节点解锁检测结果，按 (node_id, service, check_type) 唯一存储
 		`CREATE TABLE IF NOT EXISTS node_check_results (
 			node_id    TEXT NOT NULL,
 			service    TEXT NOT NULL,
+			check_type TEXT NOT NULL DEFAULT 'direct',
 			unlocked   INTEGER NOT NULL DEFAULT 0,
 			region     TEXT NOT NULL DEFAULT '',
+			note       TEXT NOT NULL DEFAULT '',
 			checked_at TEXT NOT NULL,
-			PRIMARY KEY (node_id, service)
+			PRIMARY KEY (node_id, service, check_type)
 		);`,
 		// user_node_daily_usage：用户在各节点的按天流量，用于节点用量分析
 		`CREATE TABLE IF NOT EXISTS user_node_daily_usage (
@@ -816,6 +818,43 @@ func (db *DB) migrateNodeCheckResultsTable() error {
 	if err != nil {
 		return err
 	}
+	// check_type 列缺失说明是旧表（PK 为 node_id+service），需要整表重建以变更 PK
+	if _, ok := columns["check_type"]; !ok {
+		tx, err := db.conn.Begin()
+		if err != nil {
+			return fmt.Errorf("migrate node_check_results begin tx: %w", err)
+		}
+		stmts := []string{
+			`CREATE TABLE node_check_results_new (
+				node_id    TEXT NOT NULL,
+				service    TEXT NOT NULL,
+				check_type TEXT NOT NULL DEFAULT 'direct',
+				unlocked   INTEGER NOT NULL DEFAULT 0,
+				region     TEXT NOT NULL DEFAULT '',
+				note       TEXT NOT NULL DEFAULT '',
+				checked_at TEXT NOT NULL,
+				PRIMARY KEY (node_id, service, check_type)
+			)`,
+			`INSERT INTO node_check_results_new
+				(node_id, service, check_type, unlocked, region, note, checked_at)
+			SELECT node_id, service, 'direct', unlocked, region,
+				COALESCE(note, ''), checked_at
+			FROM node_check_results`,
+			`DROP TABLE node_check_results`,
+			`ALTER TABLE node_check_results_new RENAME TO node_check_results`,
+		}
+		for _, s := range stmts {
+			if _, err := tx.Exec(s); err != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("migrate node_check_results rebuild: %w", err)
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("migrate node_check_results commit: %w", err)
+		}
+		return nil
+	}
+	// 旧表已有 check_type 但可能缺 note（中间状态，理论上不会出现，保险起见）
 	if _, ok := columns["note"]; !ok {
 		if _, err := db.conn.Exec(`ALTER TABLE node_check_results ADD COLUMN note TEXT NOT NULL DEFAULT ''`); err != nil {
 			return fmt.Errorf("migrate node_check_results add note: %w", err)

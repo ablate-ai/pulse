@@ -2,8 +2,11 @@ package nodeapi
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -15,7 +18,7 @@ type serviceCheckResult struct {
 	Service  string `json:"service"`
 	Unlocked bool   `json:"unlocked"`
 	Region   string `json:"region,omitempty"`
-	Note     string `json:"note,omitempty"` // 失败原因或补充信息
+	Note     string `json:"note,omitempty"`
 }
 
 func (a *API) handleCheck(w http.ResponseWriter, r *http.Request) {
@@ -27,13 +30,45 @@ func (a *API) handleCheck(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 
-	results := doServiceChecks(ctx)
-	writeJSON(w, http.StatusOK, map[string]any{"results": results})
+	var (
+		direct  []serviceCheckResult
+		proxied []serviceCheckResult
+		proxyAvailable bool
+		wg      sync.WaitGroup
+	)
+
+	// 直连检测
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		direct = runChecks(ctx, checkHTTPClient)
+	}()
+
+	// 代理检测（如果 sing-box 有 HTTP/SOCKS 入站）
+	if proxyURL := findLocalProxyPort(a.manager.Config()); proxyURL != "" {
+		proxyAvailable = true
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			proxied = runChecks(ctx, newProxiedClient(proxyURL))
+		}()
+	}
+
+	wg.Wait()
+
+	resp := map[string]any{
+		"direct":          direct,
+		"proxy_available": proxyAvailable,
+	}
+	if proxyAvailable {
+		resp["proxied"] = proxied
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 const checkUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-// checkHTTPClient 解锁检测专用 HTTP 客户端，9s 超时，最多 5 次重定向。
+// checkHTTPClient 直连检测专用客户端。
 var checkHTTPClient = &http.Client{
 	Timeout: 9 * time.Second,
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -42,6 +77,49 @@ var checkHTTPClient = &http.Client{
 		}
 		return nil
 	},
+}
+
+// newProxiedClient 创建经过本地代理的 HTTP 客户端。
+func newProxiedClient(proxyURL string) *http.Client {
+	u, _ := url.Parse(proxyURL)
+	return &http.Client{
+		Timeout: 9 * time.Second,
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(u),
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return http.ErrUseLastResponse
+			}
+			return nil
+		},
+	}
+}
+
+// findLocalProxyPort 从 sing-box 运行配置中找到第一个 HTTP/SOCKS/mixed 入站，
+// 返回形如 "http://127.0.0.1:1080" 的代理 URL；找不到则返回空字符串。
+func findLocalProxyPort(configJSON string) string {
+	if configJSON == "" {
+		return ""
+	}
+	var cfg struct {
+		Inbounds []struct {
+			Type       string `json:"type"`
+			ListenPort int    `json:"listen_port"`
+		} `json:"inbounds"`
+	}
+	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+		return ""
+	}
+	for _, ib := range cfg.Inbounds {
+		switch ib.Type {
+		case "mixed", "http":
+			return fmt.Sprintf("http://127.0.0.1:%d", ib.ListenPort)
+		case "socks":
+			return fmt.Sprintf("socks5://127.0.0.1:%d", ib.ListenPort)
+		}
+	}
+	return ""
 }
 
 type streamServiceDef struct {
@@ -205,8 +283,8 @@ var streamServices = []streamServiceDef{
 	},
 }
 
-// doServiceChecks 并发检测所有服务，按定义顺序返回结果。
-func doServiceChecks(ctx context.Context) []serviceCheckResult {
+// runChecks 使用指定 client 并发检测所有服务，按定义顺序返回结果。
+func runChecks(ctx context.Context, client *http.Client) []serviceCheckResult {
 	results := make([]serviceCheckResult, len(streamServices))
 	var wg sync.WaitGroup
 
@@ -226,7 +304,7 @@ func doServiceChecks(ctx context.Context) []serviceCheckResult {
 			req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 			req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 
-			resp, err := checkHTTPClient.Do(req)
+			resp, err := client.Do(req)
 			if err != nil {
 				result.Note = "连接超时"
 				results[idx] = result

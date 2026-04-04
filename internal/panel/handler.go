@@ -193,24 +193,27 @@ type pageData struct {
 
 // nodeWithStatus 节点及其运行状态。
 type nodeWithStatus struct {
-	Node         nodes.Node
-	Status       string // "online" / "offline" / "idle"
-	SingboxVer   string // sing-box 版本
-	NodeVer      string // pulse-node 编译版本
-	CheckResults []nodes.CheckResult
-	SpeedTest    *nodes.SpeedTestResult
+	Node           nodes.Node
+	Status         string // "online" / "offline" / "idle"
+	SingboxVer     string // sing-box 版本
+	NodeVer        string // pulse-node 编译版本
+	DirectChecks   []nodes.CheckResult
+	ProxiedChecks  []nodes.CheckResult
+	SpeedTest      *nodes.SpeedTestResult
 }
 
 // checkResultsPartialData 传给解锁检测结果局部模板的数据。
 type checkResultsPartialData struct {
-	NodeID  string
-	Results []nodes.CheckResult
+	NodeID        string
+	DirectChecks  []nodes.CheckResult
+	ProxiedChecks []nodes.CheckResult
 }
 
 // statNodeEntry 公开状态页中单个节点的数据。
 type statNodeEntry struct {
 	Name          string
-	CheckResults  []nodes.CheckResult
+	DirectChecks  []nodes.CheckResult
+	ProxiedChecks []nodes.CheckResult
 	SpeedTest     *nodes.SpeedTestResult
 	HasData       bool
 	CheckedAt     time.Time
@@ -782,17 +785,19 @@ func (h *Handler) statPage(w http.ResponseWriter, r *http.Request) {
 	)
 
 	for _, n := range nodeList {
-		results := checkMap[n.ID]
+		direct, proxied := splitCheckResults(checkMap[n.ID])
+		// 统计数据仅基于直连结果（代表节点本身解锁能力）
 		entry := statNodeEntry{
-			Name:         n.Name,
-			CheckResults: results,
-			HasData:      len(results) > 0,
-			TotalCount:   len(results),
+			Name:          n.Name,
+			DirectChecks:  direct,
+			ProxiedChecks: proxied,
+			HasData:       len(direct) > 0,
+			TotalCount:    len(direct),
 		}
 		if st, ok := speedMap[n.ID]; ok {
 			entry.SpeedTest = &st
 		}
-		for _, cr := range results {
+		for _, cr := range direct {
 			if cr.Unlocked {
 				entry.UnlockedCount++
 			}
@@ -806,8 +811,8 @@ func (h *Handler) statPage(w http.ResponseWriter, r *http.Request) {
 		if entry.TotalCount > 0 {
 			entry.UnlockPct = entry.UnlockedCount * 100 / entry.TotalCount
 		}
-		if len(results) > maxServices {
-			maxServices = len(results)
+		if len(direct) > maxServices {
+			maxServices = len(direct)
 		}
 		totalUnlocked += entry.UnlockedCount
 		totalServices += entry.TotalCount
@@ -1791,7 +1796,7 @@ func (h *Handler) nodesListPartial(w http.ResponseWriter, r *http.Request) {
 	result := make([]nodeWithStatus, 0, len(nodeList))
 	for _, n := range nodeList {
 		ns := h.fetchNodeStatus(r.Context(), n)
-		ns.CheckResults = checkMap[n.ID]
+		ns.DirectChecks, ns.ProxiedChecks = splitCheckResults(checkMap[n.ID])
 		if st, ok := speedMap[n.ID]; ok {
 			ns.SpeedTest = &st
 		}
@@ -2130,7 +2135,7 @@ func (h *Handler) renderNodesListFromStore(w http.ResponseWriter, r *http.Reques
 	result := make([]nodeWithStatus, 0, len(nodeList))
 	for _, n := range nodeList {
 		ns := h.fetchNodeStatus(r.Context(), n)
-		ns.CheckResults = checkMap[n.ID]
+		ns.DirectChecks, ns.ProxiedChecks = splitCheckResults(checkMap[n.ID])
 		if st, ok := speedMap[n.ID]; ok {
 			ns.SpeedTest = &st
 		}
@@ -2192,23 +2197,44 @@ func (h *Handler) nodeCheckUnlock(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
-	results := make([]nodes.CheckResult, 0, len(resp.Results))
-	for _, cr := range resp.Results {
-		results = append(results, nodes.CheckResult{
-			Service:   cr.Service,
-			Unlocked:  cr.Unlocked,
-			Region:    cr.Region,
-			Note:      cr.Note,
-			CheckedAt: now,
-		})
+	toCheckResults := func(items []nodes.CheckUnlockResult, checkType string) []nodes.CheckResult {
+		out := make([]nodes.CheckResult, 0, len(items))
+		for _, cr := range items {
+			out = append(out, nodes.CheckResult{
+				Service:   cr.Service,
+				CheckType: checkType,
+				Unlocked:  cr.Unlocked,
+				Region:    cr.Region,
+				Note:      cr.Note,
+				CheckedAt: now,
+			})
+		}
+		return out
 	}
 
-	_ = h.nodeStore.UpsertNodeCheckResults(id, results)
+	directResults := toCheckResults(resp.Direct, "direct")
+	proxiedResults := toCheckResults(resp.Proxied, "proxied")
+
+	all := append(directResults, proxiedResults...)
+	_ = h.nodeStore.UpsertNodeCheckResults(id, all)
 
 	h.renderPartial(w, "partial-node-check-results", checkResultsPartialData{
-		NodeID:  id,
-		Results: results,
+		NodeID:        id,
+		DirectChecks:  directResults,
+		ProxiedChecks: proxiedResults,
 	})
+}
+
+// splitCheckResults 将混合结果列表按 check_type 拆分为 direct / proxied 两组。
+func splitCheckResults(all []nodes.CheckResult) (direct, proxied []nodes.CheckResult) {
+	for _, cr := range all {
+		if cr.CheckType == "proxied" {
+			proxied = append(proxied, cr)
+		} else {
+			direct = append(direct, cr)
+		}
+	}
+	return
 }
 
 // userFormData 用户表单页面数据，包含 inbound 列表。

@@ -20,9 +20,10 @@ type Node struct {
 	CaddyEnabled      bool    `json:"caddy_enabled"`
 }
 
-// CheckResult 节点解锁检测结果，按 (node_id, service) 唯一存储。
+// CheckResult 节点解锁检测结果，按 (node_id, service, check_type) 唯一存储。
 type CheckResult struct {
 	Service   string    `json:"service"`
+	CheckType string    `json:"check_type"` // "direct" 或 "proxied"
 	Unlocked  bool      `json:"unlocked"`
 	Region    string    `json:"region"`
 	Note      string    `json:"note"`

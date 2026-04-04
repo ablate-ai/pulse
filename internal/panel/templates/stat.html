@@ -79,27 +79,49 @@
         </div>
 
         <!-- 解锁结果网格 -->
-        <div class="px-5 py-4">
-          {{if .CheckResults}}
-          <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
-            {{range .CheckResults}}
-            <div class="flex flex-col items-center gap-1 px-2 py-2.5 rounded-lg {{if .Unlocked}}bg-emerald-500/10 border border-emerald-500/20{{else}}bg-gray-800/50 border border-gray-700/40{{end}}">
-              <span class="text-base">{{if .Unlocked}}✓{{else}}✗{{end}}</span>
-              <span class="text-xs font-medium {{if .Unlocked}}text-emerald-400{{else}}text-gray-500{{end}} text-center leading-tight">{{.Service}}</span>
-              {{if .Region}}
-              <span class="text-xs text-gray-500">{{.Region}}</span>
-              {{else if and (not .Unlocked) .Note}}
-              <span class="text-xs text-gray-600 text-center leading-tight">{{.Note}}</span>
+        <div class="px-5 py-4 space-y-4">
+          {{if .DirectChecks}}
+          <div>
+            <div class="text-xs text-gray-600 mb-2">直连</div>
+            <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+              {{range .DirectChecks}}
+              <div class="flex flex-col items-center gap-1 px-2 py-2.5 rounded-lg {{if .Unlocked}}bg-emerald-500/10 border border-emerald-500/20{{else}}bg-gray-800/50 border border-gray-700/40{{end}}">
+                <span class="text-base">{{if .Unlocked}}✓{{else}}✗{{end}}</span>
+                <span class="text-xs font-medium {{if .Unlocked}}text-emerald-400{{else}}text-gray-500{{end}} text-center leading-tight">{{.Service}}</span>
+                {{if .Region}}
+                <span class="text-xs text-gray-500">{{.Region}}</span>
+                {{else if and (not .Unlocked) .Note}}
+                <span class="text-xs text-gray-600 text-center leading-tight">{{.Note}}</span>
+                {{end}}
+              </div>
               {{end}}
             </div>
-            {{end}}
+            <div class="mt-2.5 flex items-center gap-1">
+              <div class="h-1 rounded-full bg-emerald-500/70" style="width: {{.UnlockPct}}%"></div>
+              <div class="h-1 rounded-full bg-gray-700 flex-1"></div>
+              <span class="text-xs text-gray-600 ml-1.5">{{.UnlockedCount}}/{{.TotalCount}}</span>
+            </div>
           </div>
-          <div class="mt-2.5 flex items-center gap-1">
-            <div class="h-1 rounded-full bg-emerald-500/70" style="width: {{.UnlockPct}}%"></div>
-            <div class="h-1 rounded-full bg-gray-700 flex-1"></div>
-            <span class="text-xs text-gray-600 ml-1.5">{{.UnlockedCount}}/{{.TotalCount}}</span>
+          {{end}}
+          {{if .ProxiedChecks}}
+          <div>
+            <div class="text-xs text-gray-600 mb-2">代理路由</div>
+            <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+              {{range .ProxiedChecks}}
+              <div class="flex flex-col items-center gap-1 px-2 py-2.5 rounded-lg {{if .Unlocked}}bg-blue-500/10 border border-blue-500/20{{else}}bg-gray-800/50 border border-gray-700/40{{end}}">
+                <span class="text-base">{{if .Unlocked}}✓{{else}}✗{{end}}</span>
+                <span class="text-xs font-medium {{if .Unlocked}}text-blue-400{{else}}text-gray-500{{end}} text-center leading-tight">{{.Service}}</span>
+                {{if .Region}}
+                <span class="text-xs text-gray-500">{{.Region}}</span>
+                {{else if and (not .Unlocked) .Note}}
+                <span class="text-xs text-gray-600 text-center leading-tight">{{.Note}}</span>
+                {{end}}
+              </div>
+              {{end}}
+            </div>
           </div>
-          {{else}}
+          {{end}}
+          {{if not (or .DirectChecks .ProxiedChecks)}}
           <p class="text-sm text-gray-600 text-center py-3">尚未检测，请在管理面板触发检测</p>
           {{end}}
         </div>
