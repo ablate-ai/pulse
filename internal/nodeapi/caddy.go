@@ -55,10 +55,6 @@ type trojanRoute struct {
 }
 
 func (a *API) handleCaddySync(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeMethodNotAllowed(w, http.MethodPost)
-		return
-	}
 	var req struct {
 		Routes []trojanRoute `json:"routes"`
 	}
@@ -133,10 +129,6 @@ type caddyRoute struct {
 }
 
 func (a *API) handleCaddyStatus(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
-		return
-	}
 	_, err := exec.LookPath("caddy")
 	installed := err == nil
 
@@ -181,10 +173,6 @@ func readCaddyRoutes() []caddyRoute {
 }
 
 func (a *API) handleCaddyConfig(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeMethodNotAllowed(w, http.MethodPost)
-		return
-	}
 	var req struct {
 		ACMEEmail    string `json:"acme_email"`
 		PanelDomain  string `json:"panel_domain"`

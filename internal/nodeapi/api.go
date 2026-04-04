@@ -28,28 +28,23 @@ func New(manager *singbox.Manager, certs *certmgr.Manager) *API {
 func (a *API) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/node/check", a.handleCheck)
 	mux.HandleFunc("GET /v1/node/speedtest", a.handleSpeedTest)
-	mux.HandleFunc("/v1/node/caddy/sync", a.handleCaddySync)
+	mux.HandleFunc("POST /v1/node/caddy/sync", a.handleCaddySync)
 	mux.HandleFunc("GET /v1/node/caddy/status", a.handleCaddyStatus)
 	mux.HandleFunc("POST /v1/node/caddy/config", a.handleCaddyConfig)
-	mux.HandleFunc("/v1/node/cert/ensure", a.handleCertEnsure)
-	mux.HandleFunc("/v1/node/runtime", a.handleRuntime)
-	mux.HandleFunc("/v1/node/runtime/status", a.handleStatus)
-	mux.HandleFunc("/v1/node/runtime/usage", a.handleUsage)
-	mux.HandleFunc("/v1/node/runtime/version", a.handleVersion)
-	mux.HandleFunc("/v1/node/runtime/config", a.handleConfig)
-	mux.HandleFunc("/v1/node/runtime/logs", a.handleLogs)
+	mux.HandleFunc("POST /v1/node/cert/ensure", a.handleCertEnsure)
+	mux.HandleFunc("GET /v1/node/runtime", a.handleRuntime)
+	mux.HandleFunc("GET /v1/node/runtime/status", a.handleStatus)
+	mux.HandleFunc("GET /v1/node/runtime/usage", a.handleUsage)
+	mux.HandleFunc("GET /v1/node/runtime/version", a.handleVersion)
+	mux.HandleFunc("GET /v1/node/runtime/config", a.handleConfig)
+	mux.HandleFunc("GET /v1/node/runtime/logs", a.handleLogs)
 	mux.HandleFunc("GET /v1/node/runtime/logs/stream", a.handleLogsStream)
-	mux.HandleFunc("/v1/node/runtime/start", a.handleStart)
-	mux.HandleFunc("/v1/node/runtime/stop", a.handleStop)
-	mux.HandleFunc("/v1/node/runtime/restart", a.handleRestart)
+	mux.HandleFunc("POST /v1/node/runtime/start", a.handleStart)
+	mux.HandleFunc("POST /v1/node/runtime/stop", a.handleStop)
+	mux.HandleFunc("POST /v1/node/runtime/restart", a.handleRestart)
 }
 
 func (a *API) handleRuntime(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
-		return
-	}
-
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
@@ -64,29 +59,15 @@ func (a *API) handleRuntime(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleStatus(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
-		return
-	}
-
 	writeJSON(w, http.StatusOK, a.manager.Status())
 }
 
 func (a *API) handleUsage(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
-		return
-	}
 	reset := r.URL.Query().Get("reset") == "true"
 	writeJSON(w, http.StatusOK, a.manager.Usage(reset))
 }
 
 func (a *API) handleVersion(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
-		return
-	}
-
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 
@@ -100,19 +81,10 @@ func (a *API) handleVersion(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleConfig(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
-		return
-	}
 	writeJSON(w, http.StatusOK, map[string]any{"config": a.manager.Config()})
 }
 
 func (a *API) handleLogs(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeMethodNotAllowed(w, http.MethodGet)
-		return
-	}
-
 	writeJSON(w, http.StatusOK, map[string]any{"logs": a.manager.Logs()})
 }
 
@@ -152,11 +124,6 @@ func (a *API) handleLogsStream(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleStart(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeMethodNotAllowed(w, http.MethodPost)
-		return
-	}
-
 	req, ok := decodeConfigRequest(w, r)
 	if !ok {
 		return
@@ -171,11 +138,6 @@ func (a *API) handleStart(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleStop(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeMethodNotAllowed(w, http.MethodPost)
-		return
-	}
-
 	if err := a.manager.Stop(); err != nil && err != singbox.ErrNotRunning {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
@@ -185,11 +147,6 @@ func (a *API) handleStop(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleRestart(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeMethodNotAllowed(w, http.MethodPost)
-		return
-	}
-
 	req, ok := decodeConfigRequest(w, r)
 	if !ok {
 		return
@@ -204,10 +161,6 @@ func (a *API) handleRestart(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleCertEnsure(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeMethodNotAllowed(w, http.MethodPost)
-		return
-	}
 	var req struct {
 		Domain string `json:"domain"`
 	}
