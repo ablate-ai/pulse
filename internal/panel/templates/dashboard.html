@@ -28,6 +28,37 @@
           </div>
         </div>
       </div>
+
+      <!-- 快捷入口 -->
+      <div class="mt-6">
+        <h2 class="text-xs font-medium text-gray-600 uppercase tracking-wider mb-3">快捷入口</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <a href="/stat" target="_blank" rel="noopener"
+             class="flex items-center gap-3 bg-gray-900 border border-gray-800 rounded-xl px-4 py-3.5 hover:border-indigo-500/50 hover:bg-gray-800/60 transition-colors group">
+            <div class="w-8 h-8 rounded-lg bg-indigo-500/15 flex items-center justify-center flex-shrink-0">
+              <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="min-w-0">
+              <div class="text-sm font-medium text-gray-200 group-hover:text-white transition-colors">节点状态</div>
+              <div class="text-xs text-gray-600 truncate">公开解锁检测状态页 · /stat</div>
+            </div>
+            <svg class="w-3.5 h-3.5 text-gray-700 ml-auto flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </a>
+          {{if .ShopEnabled}}
+          <a href="/shop" target="_blank" rel="noopener"
+             class="flex items-center gap-3 bg-gray-900 border border-gray-800 rounded-xl px-4 py-3.5 hover:border-purple-500/50 hover:bg-gray-800/60 transition-colors group">
+            <div class="w-8 h-8 rounded-lg bg-purple-500/15 flex items-center justify-center flex-shrink-0">
+              <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="3" y1="6" x2="21" y2="6" stroke-width="2" stroke-linecap="round"/><path d="M16 10a4 4 0 0 1-8 0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="min-w-0">
+              <div class="text-sm font-medium text-gray-200 group-hover:text-white transition-colors">订阅商城</div>
+              <div class="text-xs text-gray-600 truncate">用户自助订阅入口 · /shop</div>
+            </div>
+            <svg class="w-3.5 h-3.5 text-gray-700 ml-auto flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </a>
+          {{end}}
+        </div>
+      </div>
     </div>
   </div>
 </div>
