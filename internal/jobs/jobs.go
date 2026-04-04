@@ -551,13 +551,15 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []in
 	// 加载所有节点 inbound 出口所需数据（用于 nodeib: 前缀出口）
 	allInboundMap := make(map[string]inbounds.Inbound)
 	allNodeMap := make(map[string]nodes.Node)
-	inboundAccesses := make(map[string][]users.UserInbound)
+	userInboundMap := make(map[string]users.UserInbound)
 	if applyOpts.UserStore != nil && applyOpts.NodeStore != nil && ibStore != nil {
 		if allIbs, err := ibStore.ListInbounds(); err == nil {
 			for _, ib := range allIbs {
 				allInboundMap[ib.ID] = ib
 				if accs, err := applyOpts.UserStore.ListUserInboundsByInbound(ib.ID); err == nil {
-					inboundAccesses[ib.ID] = accs
+					for _, acc := range accs {
+						userInboundMap[acc.ID] = acc
+					}
 				}
 			}
 		}
@@ -569,12 +571,12 @@ func ApplyNodeUsers(ctx context.Context, client *nodes.Client, nodeInbounds []in
 	}
 
 	cfg, err := proxycfg.BuildSingboxConfig(nodeInbounds, userAccesses, userMap, proxycfg.BuildOptions{
-		OutboundMap:     outboundMap,
-		RouteRules:      globalRouteRules,
-		NodeID:          node.ID,
-		AllInboundMap:   allInboundMap,
-		AllNodeMap:      allNodeMap,
-		InboundAccesses: inboundAccesses,
+		OutboundMap:    outboundMap,
+		RouteRules:     globalRouteRules,
+		NodeID:         node.ID,
+		AllInboundMap:  allInboundMap,
+		AllNodeMap:     allNodeMap,
+		UserInboundMap: userInboundMap,
 	})
 	if err != nil {
 		return nodes.Status{}, "", err

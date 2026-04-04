@@ -3075,13 +3075,19 @@ type routeRuleFormData struct {
 	NodeSSInbounds  []nodeSSInboundOption
 }
 
-// buildNodeSSInboundOptions 从 ibStore + nodeStore 中提取所有 shadowsocks inbound 选项。
+// buildNodeSSInboundOptions 从 ibStore + nodeStore + userStore 中提取所有 shadowsocks inbound
+// 的用户选项，每个 (inbound × 用户) 组合一条，ID 格式为 "nodeib:<ibID>:<userInboundID>"。
 func (h *Handler) buildNodeSSInboundOptions() []nodeSSInboundOption {
 	allIbs, _ := h.ibStore.ListInbounds()
 	nodeList, _ := h.nodeStore.List()
 	nodeMap := make(map[string]nodes.Node, len(nodeList))
 	for _, n := range nodeList {
 		nodeMap[n.ID] = n
+	}
+	allUsers, _ := h.userStore.ListUsers()
+	userMap := make(map[string]string, len(allUsers)) // userID → username
+	for _, u := range allUsers {
+		userMap[u.ID] = u.Username
 	}
 	var opts []nodeSSInboundOption
 	for _, ib := range allIbs {
@@ -3092,10 +3098,17 @@ func (h *Handler) buildNodeSSInboundOptions() []nodeSSInboundOption {
 		if n, ok := nodeMap[ib.NodeID]; ok {
 			nodeName = n.Name
 		}
-		opts = append(opts, nodeSSInboundOption{
-			ID:    "nodeib:" + ib.ID,
-			Label: fmt.Sprintf("%s - SS:%d", nodeName, ib.Port),
-		})
+		accs, _ := h.userStore.ListUserInboundsByInbound(ib.ID)
+		for _, acc := range accs {
+			username := acc.UserID
+			if name, ok := userMap[acc.UserID]; ok {
+				username = name
+			}
+			opts = append(opts, nodeSSInboundOption{
+				ID:    fmt.Sprintf("nodeib:%s:%s", ib.ID, acc.ID),
+				Label: fmt.Sprintf("%s - SS:%d (%s)", nodeName, ib.Port, username),
+			})
+		}
 	}
 	return opts
 }
@@ -3219,8 +3232,13 @@ func (h *Handler) renderRouteRulesListFromStore(w http.ResponseWriter) {
 	for _, n := range nodeList {
 		nodeMap[n.ID] = n
 	}
-	// 将节点 SS inbound 加入标签 map
+	// 将节点 SS inbound 的每个用户选项加入标签 map
 	if allIbs, err := h.ibStore.ListInbounds(); err == nil {
+		allUsers, _ := h.userStore.ListUsers()
+		userNameMap := make(map[string]string, len(allUsers))
+		for _, u := range allUsers {
+			userNameMap[u.ID] = u.Username
+		}
 		for _, ib := range allIbs {
 			if ib.Protocol != "shadowsocks" {
 				continue
@@ -3229,7 +3247,15 @@ func (h *Handler) renderRouteRulesListFromStore(w http.ResponseWriter) {
 			if n, ok := nodeMap[ib.NodeID]; ok {
 				nodeName = n.Name
 			}
-			outboundLabels["nodeib:"+ib.ID] = fmt.Sprintf("%s - SS:%d", nodeName, ib.Port)
+			accs, _ := h.userStore.ListUserInboundsByInbound(ib.ID)
+			for _, acc := range accs {
+				username := acc.UserID
+				if name, ok := userNameMap[acc.UserID]; ok {
+					username = name
+				}
+				key := fmt.Sprintf("nodeib:%s:%s", ib.ID, acc.ID)
+				outboundLabels[key] = fmt.Sprintf("%s - SS:%d (%s)", nodeName, ib.Port, username)
+			}
 		}
 	}
 	h.renderPartial(w, "partial-routerule-rows", struct {
