@@ -221,7 +221,7 @@ var streamServices = []streamServiceDef{
 	},
 	{
 		name: "Claude",
-		url:  "https://claude.ai/api/auth/session",
+		url:  "https://claude.ai/",
 		checkFn: func(status int, finalURL, body string) (bool, string, string) {
 			if strings.Contains(finalURL, "unavailable") {
 				return false, "", "地区不可用"
@@ -238,12 +238,16 @@ var streamServices = []streamServiceDef{
 	},
 	{
 		name: "OpenAI",
-		url:  "https://api.openai.com",
+		url:  "https://api.openai.com/v1/models",
 		checkFn: func(status int, finalURL, body string) (bool, string, string) {
-			if status >= 400 {
-				return false, "", "HTTP " + http.StatusText(status)
+			// 401 = 无 API Key 但地区可访问；200 = 可访问
+			if status == 200 || status == 401 {
+				return true, "", ""
 			}
-			return true, "", ""
+			if status == 403 {
+				return false, "", "地区封锁"
+			}
+			return false, "", "HTTP " + http.StatusText(status)
 		},
 	},
 	{
