@@ -18,10 +18,12 @@ type subAPI struct {
 	inbounds inbounds.InboundStore
 }
 
-// RegisterSubAPI 注册公开订阅端点 GET /user/{token}，无需认证。
+// RegisterSubAPI 注册公开订阅端点，无需认证。
+// GET /sub/{token}  — 返回 sing-box 订阅内容（供客户端拉取）
+// GET /user/{token} — 用户自助页（由 panel handler 注册，此处不重复注册）
 func RegisterSubAPI(mux *http.ServeMux, userStore users.Store, ibStore inbounds.InboundStore) {
 	a := &subAPI{users: userStore, inbounds: ibStore}
-	mux.HandleFunc("/user/", a.handleSub)
+	mux.HandleFunc("/sub/", a.handleSub)
 }
 
 func (a *subAPI) handleSub(w http.ResponseWriter, r *http.Request) {
