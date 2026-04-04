@@ -209,6 +209,14 @@ func (db *DB) init() error {
 			checked_at TEXT NOT NULL,
 			PRIMARY KEY (node_id, service, check_type)
 		);`,
+		// node_uptime_log：节点可用性按分钟快照（每次 sync-usage 写入一行）
+		`CREATE TABLE IF NOT EXISTS node_uptime_log (
+			node_id    TEXT NOT NULL,
+			checked_at TEXT NOT NULL,
+			online     INTEGER NOT NULL DEFAULT 0,
+			running    INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (node_id, checked_at)
+		);`,
 		// user_node_daily_usage：用户在各节点的按天流量，用于节点用量分析
 		`CREATE TABLE IF NOT EXISTS user_node_daily_usage (
 			user_id        TEXT NOT NULL,
@@ -784,6 +792,7 @@ func (db *DB) tableColumns(name string) (map[string]struct{}, error) {
 		"outbounds": {}, "route_rules": {}, "nodes": {}, "users": {},
 		"inbounds": {}, "hosts": {}, "user_inbounds": {}, "plans": {}, "orders": {},
 		"node_check_results": {},
+		"node_uptime_log":    {},
 	}
 	if _, ok := validTables[name]; !ok {
 		return nil, fmt.Errorf("unknown table name: %s", name)

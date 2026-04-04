@@ -254,3 +254,63 @@ func (s *NodeStore) ListAllNodeCheckResults() (map[string][]nodes.CheckResult, e
 	}
 	return result, rows.Err()
 }
+
+func (s *NodeStore) RecordNodeUptime(nodeID string, online, running bool) error {
+	o, r := 0, 0
+	if online {
+		o = 1
+	}
+	if running {
+		r = 1
+	}
+	checkedAt := time.Now().UTC().Format(time.RFC3339)
+	_, err := s.db.Exec(`
+		INSERT OR IGNORE INTO node_uptime_log (node_id, checked_at, online, running)
+		VALUES (?, ?, ?, ?)
+	`, nodeID, checkedAt, o, r)
+	if err != nil {
+		return fmt.Errorf("record node uptime: %w", err)
+	}
+	return nil
+}
+
+func (s *NodeStore) ListNodeUptimeSummary(days int) (map[string]nodes.UptimeSummary, error) {
+	cutoff := time.Now().UTC().AddDate(0, 0, -days).Format(time.RFC3339)
+	rows, err := s.db.Query(`
+		SELECT node_id,
+			COUNT(*)     AS total,
+			SUM(online)  AS online_sum,
+			SUM(running) AS running_sum
+		FROM node_uptime_log
+		WHERE checked_at >= ?
+		GROUP BY node_id
+	`, cutoff)
+	if err != nil {
+		return nil, fmt.Errorf("list node uptime summary: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]nodes.UptimeSummary)
+	for rows.Next() {
+		var nodeID string
+		var sum nodes.UptimeSummary
+		if err := rows.Scan(&nodeID, &sum.TotalChecks, &sum.OnlineChecks, &sum.RunningChecks); err != nil {
+			return nil, fmt.Errorf("scan uptime summary: %w", err)
+		}
+		if sum.TotalChecks > 0 {
+			sum.OnlinePct = sum.OnlineChecks * 100 / sum.TotalChecks
+			sum.RunningPct = sum.RunningChecks * 100 / sum.TotalChecks
+		}
+		result[nodeID] = sum
+	}
+	return result, rows.Err()
+}
+
+func (s *NodeStore) CleanupOldNodeUptime(retainDays int) error {
+	cutoff := time.Now().UTC().AddDate(0, 0, -retainDays).Format(time.RFC3339)
+	_, err := s.db.Exec(`DELETE FROM node_uptime_log WHERE checked_at < ?`, cutoff)
+	if err != nil {
+		return fmt.Errorf("cleanup node uptime log: %w", err)
+	}
+	return nil
+}

@@ -99,6 +99,18 @@ func (s *MemoryStore) ListAllNodeSpeedTests() (map[string]SpeedTestResult, error
 	return nil, nil
 }
 
+func (s *MemoryStore) RecordNodeUptime(nodeID string, online, running bool) error {
+	return nil
+}
+
+func (s *MemoryStore) ListNodeUptimeSummary(days int) (map[string]UptimeSummary, error) {
+	return nil, nil
+}
+
+func (s *MemoryStore) CleanupOldNodeUptime(retainDays int) error {
+	return nil
+}
+
 func (s *MemoryStore) List() ([]Node, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

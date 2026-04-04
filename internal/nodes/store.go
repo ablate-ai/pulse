@@ -37,6 +37,15 @@ type SpeedTestResult struct {
 	TestedAt time.Time `json:"tested_at"`
 }
 
+// UptimeSummary 某节点在指定天数内的可用性汇总。
+type UptimeSummary struct {
+	TotalChecks   int `json:"total_checks"`
+	OnlineChecks  int `json:"online_checks"`
+	RunningChecks int `json:"running_checks"`
+	OnlinePct     int `json:"online_pct"`  // 0-100
+	RunningPct    int `json:"running_pct"` // 0-100
+}
+
 // NodeDailyUsage 某节点某日的流量快照。
 type NodeDailyUsage struct {
 	NodeID        string
@@ -67,4 +76,10 @@ type Store interface {
 	UpsertNodeSpeedTest(nodeID string, result SpeedTestResult) error
 	// ListAllNodeSpeedTests 返回所有节点的最新测速结果。
 	ListAllNodeSpeedTests() (map[string]SpeedTestResult, error)
+	// RecordNodeUptime 写入一条按分钟可用性快照。
+	RecordNodeUptime(nodeID string, online, running bool) error
+	// ListNodeUptimeSummary 返回最近 days 天内所有节点的可用性汇总（基于分钟级快照）。
+	ListNodeUptimeSummary(days int) (map[string]UptimeSummary, error)
+	// CleanupOldNodeUptime 删除超过 retainDays 天的历史快照。
+	CleanupOldNodeUptime(retainDays int) error
 }

@@ -63,11 +63,15 @@
 
         <!-- 卡片头部：节点名 + 测速 -->
         <div class="flex items-center justify-between px-5 py-3.5 border-b border-gray-800/60">
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-3 flex-wrap">
             <div class="w-2 h-2 rounded-full {{if .HasData}}bg-emerald-400{{else}}bg-gray-600{{end}}"></div>
             <span class="font-medium text-white">{{.Name}}</span>
             {{if not .CheckedAt.IsZero}}
             <span class="text-xs text-gray-600">{{formatCheckTime .CheckedAt}}</span>
+            {{end}}
+            {{if gt .Uptime.TotalChecks 0}}
+            <span class="text-xs text-gray-600">节点 <span class="{{if ge .Uptime.OnlinePct 99}}text-emerald-400{{else if ge .Uptime.OnlinePct 95}}text-yellow-400{{else}}text-red-400{{end}} font-medium">{{.Uptime.OnlinePct}}%</span></span>
+            <span class="text-xs text-gray-600">sing-box <span class="{{if ge .Uptime.RunningPct 99}}text-emerald-400{{else if ge .Uptime.RunningPct 95}}text-yellow-400{{else}}text-red-400{{end}} font-medium">{{.Uptime.RunningPct}}%</span></span>
             {{end}}
           </div>
           {{if .SpeedTest}}

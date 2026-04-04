@@ -200,6 +200,7 @@ type nodeWithStatus struct {
 	DirectChecks   []nodes.CheckResult
 	ProxiedChecks  []nodes.CheckResult
 	SpeedTest      *nodes.SpeedTestResult
+	Uptime         nodes.UptimeSummary
 }
 
 // checkResultsPartialData 传给解锁检测结果局部模板的数据。
@@ -215,6 +216,7 @@ type statNodeEntry struct {
 	DirectChecks  []nodes.CheckResult
 	ProxiedChecks []nodes.CheckResult
 	SpeedTest     *nodes.SpeedTestResult
+	Uptime        nodes.UptimeSummary
 	HasData       bool
 	CheckedAt     time.Time
 	UnlockedCount int
@@ -775,6 +777,7 @@ func (h *Handler) statPage(w http.ResponseWriter, r *http.Request) {
 	nodeList, _ := h.nodeStore.List()
 	checkMap, _ := h.nodeStore.ListAllNodeCheckResults()
 	speedMap, _ := h.nodeStore.ListAllNodeSpeedTests()
+	uptimeMap, _ := h.nodeStore.ListNodeUptimeSummary(7)
 
 	var (
 		totalUnlocked int
@@ -791,6 +794,7 @@ func (h *Handler) statPage(w http.ResponseWriter, r *http.Request) {
 			Name:          n.Name,
 			DirectChecks:  direct,
 			ProxiedChecks: proxied,
+			Uptime:        uptimeMap[n.ID],
 			HasData:       len(direct) > 0,
 			TotalCount:    len(direct),
 		}
@@ -1793,6 +1797,7 @@ func (h *Handler) nodesListPartial(w http.ResponseWriter, r *http.Request) {
 	}
 	checkMap, _ := h.nodeStore.ListAllNodeCheckResults()
 	speedMap, _ := h.nodeStore.ListAllNodeSpeedTests()
+	uptimeMap, _ := h.nodeStore.ListNodeUptimeSummary(7)
 	result := make([]nodeWithStatus, 0, len(nodeList))
 	for _, n := range nodeList {
 		ns := h.fetchNodeStatus(r.Context(), n)
@@ -1800,6 +1805,7 @@ func (h *Handler) nodesListPartial(w http.ResponseWriter, r *http.Request) {
 		if st, ok := speedMap[n.ID]; ok {
 			ns.SpeedTest = &st
 		}
+		ns.Uptime = uptimeMap[n.ID]
 		result = append(result, ns)
 	}
 	h.renderPartial(w, "partial-node-rows", result)
@@ -2132,6 +2138,7 @@ func (h *Handler) renderNodesListFromStore(w http.ResponseWriter, r *http.Reques
 	}
 	checkMap, _ := h.nodeStore.ListAllNodeCheckResults()
 	speedMap, _ := h.nodeStore.ListAllNodeSpeedTests()
+	uptimeMap, _ := h.nodeStore.ListNodeUptimeSummary(7)
 	result := make([]nodeWithStatus, 0, len(nodeList))
 	for _, n := range nodeList {
 		ns := h.fetchNodeStatus(r.Context(), n)
@@ -2139,6 +2146,7 @@ func (h *Handler) renderNodesListFromStore(w http.ResponseWriter, r *http.Reques
 		if st, ok := speedMap[n.ID]; ok {
 			ns.SpeedTest = &st
 		}
+		ns.Uptime = uptimeMap[n.ID]
 		result = append(result, ns)
 	}
 	h.renderPartial(w, "partial-node-rows", result)

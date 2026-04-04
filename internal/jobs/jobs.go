@@ -89,6 +89,11 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 	date := now.Format("2006-01-02")
 
 	for _, fr := range fetched {
+		// 记录本次可用性快照（无论节点是否正常，都写入一条记录）
+		online := fr.dialErr == nil && fr.usageErr == nil
+		running := online && (fr.usage.Running || fr.usage.Available)
+		_ = nodeStore.RecordNodeUptime(fr.node.ID, online, running)
+
 		if fr.dialErr != nil {
 			result.Errors = append(result.Errors, fr.node.ID+": "+fr.dialErr.Error())
 			sendAlert(ctx, applyOpts.Alerter, "节点离线", fmt.Sprintf("无法连接节点 %s", fr.node.Name))
@@ -222,6 +227,10 @@ func SyncUsage(ctx context.Context, store users.Store, nodeStore nodes.Store, ib
 	// 定期清理过期的日统计数据（保留 180 天）
 	if err := nodeStore.CleanupOldDailyUsage(180); err != nil {
 		result.Errors = append(result.Errors, "cleanup daily usage: "+err.Error())
+	}
+	// 定期清理过期的可用性快照（保留 30 天）
+	if err := nodeStore.CleanupOldNodeUptime(30); err != nil {
+		result.Errors = append(result.Errors, "cleanup node uptime: "+err.Error())
 	}
 	mu.Unlock()
 
