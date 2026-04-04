@@ -32,8 +32,8 @@ func (a *subAPI) handleSub(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 从路径提取 token：/user/{token}
-	userID := strings.TrimPrefix(r.URL.Path, "/user/")
+	// 从路径提取 token：/sub/{token}
+	userID := strings.TrimPrefix(r.URL.Path, "/sub/")
 	userID = strings.TrimSuffix(userID, "/")
 	if userID == "" {
 		http.NotFound(w, r)
