@@ -289,6 +289,9 @@ func (db *DB) init() error {
 	if err := db.migrateRouteRulesTable(); err != nil {
 		return err
 	}
+	if err := db.migrateNodeCheckResultsTable(); err != nil {
+		return err
+	}
 	// inbound_id 索引必须在迁移完成后创建，避免旧库中该列尚不存在时报错
 	if _, err := db.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_user_inbounds_inbound_id ON user_inbounds(inbound_id)`); err != nil {
 		return fmt.Errorf("init sqlite schema: create idx_user_inbounds_inbound_id: %w", err)
@@ -778,6 +781,7 @@ func (db *DB) tableColumns(name string) (map[string]struct{}, error) {
 	validTables := map[string]struct{}{
 		"outbounds": {}, "route_rules": {}, "nodes": {}, "users": {},
 		"inbounds": {}, "hosts": {}, "user_inbounds": {}, "plans": {}, "orders": {},
+		"node_check_results": {},
 	}
 	if _, ok := validTables[name]; !ok {
 		return nil, fmt.Errorf("unknown table name: %s", name)
@@ -805,4 +809,17 @@ func (db *DB) tableColumns(name string) (map[string]struct{}, error) {
 		return nil, fmt.Errorf("iterate table info for %s: %w", name, err)
 	}
 	return columns, nil
+}
+
+func (db *DB) migrateNodeCheckResultsTable() error {
+	columns, err := db.tableColumns("node_check_results")
+	if err != nil {
+		return err
+	}
+	if _, ok := columns["note"]; !ok {
+		if _, err := db.conn.Exec(`ALTER TABLE node_check_results ADD COLUMN note TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("migrate node_check_results add note: %w", err)
+		}
+	}
+	return nil
 }

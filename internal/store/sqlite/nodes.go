@@ -209,13 +209,14 @@ func (s *NodeStore) UpsertNodeCheckResults(nodeID string, results []nodes.CheckR
 			unlocked = 1
 		}
 		_, err := s.db.Exec(`
-			INSERT INTO node_check_results (node_id, service, unlocked, region, checked_at)
-			VALUES (?, ?, ?, ?, ?)
+			INSERT INTO node_check_results (node_id, service, unlocked, region, note, checked_at)
+			VALUES (?, ?, ?, ?, ?, ?)
 			ON CONFLICT(node_id, service) DO UPDATE SET
 				unlocked   = excluded.unlocked,
 				region     = excluded.region,
+				note       = excluded.note,
 				checked_at = excluded.checked_at
-		`, nodeID, r.Service, unlocked, r.Region, r.CheckedAt.UTC().Format(time.RFC3339))
+		`, nodeID, r.Service, unlocked, r.Region, r.Note, r.CheckedAt.UTC().Format(time.RFC3339))
 		if err != nil {
 			return fmt.Errorf("upsert node check result: %w", err)
 		}
@@ -225,7 +226,7 @@ func (s *NodeStore) UpsertNodeCheckResults(nodeID string, results []nodes.CheckR
 
 func (s *NodeStore) ListAllNodeCheckResults() (map[string][]nodes.CheckResult, error) {
 	rows, err := s.db.Query(`
-		SELECT node_id, service, unlocked, region, checked_at
+		SELECT node_id, service, unlocked, region, note, checked_at
 		FROM node_check_results
 		ORDER BY node_id, service
 	`)
@@ -240,7 +241,7 @@ func (s *NodeStore) ListAllNodeCheckResults() (map[string][]nodes.CheckResult, e
 		var nodeID string
 		var unlocked int
 		var checkedAt string
-		if err := rows.Scan(&nodeID, &r.Service, &unlocked, &r.Region, &checkedAt); err != nil {
+		if err := rows.Scan(&nodeID, &r.Service, &unlocked, &r.Region, &r.Note, &checkedAt); err != nil {
 			return nil, fmt.Errorf("scan node check result: %w", err)
 		}
 		r.Unlocked = unlocked != 0

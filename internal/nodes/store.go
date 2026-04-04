@@ -25,6 +25,7 @@ type CheckResult struct {
 	Service   string    `json:"service"`
 	Unlocked  bool      `json:"unlocked"`
 	Region    string    `json:"region"`
+	Note      string    `json:"note"`
 	CheckedAt time.Time `json:"checked_at"`
 }
 

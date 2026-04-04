@@ -2114,6 +2114,7 @@ func (h *Handler) nodeCheckUnlock(w http.ResponseWriter, r *http.Request) {
 			Service:   cr.Service,
 			Unlocked:  cr.Unlocked,
 			Region:    cr.Region,
+			Note:      cr.Note,
 			CheckedAt: now,
 		})
 	}

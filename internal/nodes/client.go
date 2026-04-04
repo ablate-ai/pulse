@@ -289,6 +289,7 @@ type CheckUnlockResult struct {
 	Service  string `json:"service"`
 	Unlocked bool   `json:"unlocked"`
 	Region   string `json:"region,omitempty"`
+	Note     string `json:"note,omitempty"`
 }
 
 // CheckUnlockResponse 节点解锁检测接口响应。

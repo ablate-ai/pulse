@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +15,7 @@ type serviceCheckResult struct {
 	Service  string `json:"service"`
 	Unlocked bool   `json:"unlocked"`
 	Region   string `json:"region,omitempty"`
+	Note     string `json:"note,omitempty"` // 失败原因或补充信息
 }
 
 func (a *API) handleCheck(w http.ResponseWriter, r *http.Request) {
@@ -25,137 +27,221 @@ func (a *API) handleCheck(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
 	defer cancel()
 
-	type checker struct {
-		fn func(context.Context) serviceCheckResult
-	}
-	checkers := []checker{
-		{checkNetflix},
-		{checkClaude},
-		{checkOpenAI},
-		{checkDisney},
-		{checkYouTubePremium},
-	}
-
-	results := make([]serviceCheckResult, len(checkers))
-	var wg sync.WaitGroup
-	for i, c := range checkers {
-		wg.Add(1)
-		go func(idx int, fn func(context.Context) serviceCheckResult) {
-			defer wg.Done()
-			results[idx] = fn(ctx)
-		}(i, c.fn)
-	}
-	wg.Wait()
-
+	results := doServiceChecks(ctx)
 	writeJSON(w, http.StatusOK, map[string]any{"results": results})
 }
 
 const checkUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-func newCheckClient() *http.Client {
-	return &http.Client{
-		Timeout: 10 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 3 {
-				return http.ErrUseLastResponse
-			}
-			return nil
-		},
-	}
+// checkHTTPClient 解锁检测专用 HTTP 客户端，9s 超时，最多 5 次重定向。
+var checkHTTPClient = &http.Client{
+	Timeout: 9 * time.Second,
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 5 {
+			return http.ErrUseLastResponse
+		}
+		return nil
+	},
 }
 
-func doCheck(ctx context.Context, rawURL string) (*http.Response, error) {
-	client := newCheckClient()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", checkUserAgent)
-	return client.Do(req)
+type streamServiceDef struct {
+	name    string
+	url     string
+	checkFn func(status int, finalURL, body string) (unlocked bool, region, note string)
 }
 
-func checkNetflix(ctx context.Context) serviceCheckResult {
-	r := serviceCheckResult{Service: "netflix"}
-	resp, err := doCheck(ctx, "https://www.netflix.com/title/70143836")
-	if err != nil {
-		return r
+// isoToName 将 ISO 3166-1 alpha-2 国家代码转为中文名，未收录则返回原代码。
+func isoToName(code string) string {
+	if code == "" {
+		return ""
 	}
-	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body)
+	names := map[string]string{
+		"US": "美国", "GB": "英国", "CA": "加拿大", "AU": "澳大利亚",
+		"JP": "日本", "KR": "韩国", "SG": "新加坡", "HK": "香港",
+		"TW": "台湾", "DE": "德国", "FR": "法国", "NL": "荷兰",
+		"IT": "意大利", "ES": "西班牙", "PT": "葡萄牙", "SE": "瑞典",
+		"NO": "挪威", "FI": "芬兰", "DK": "丹麦", "CH": "瑞士",
+		"AT": "奥地利", "BE": "比利时", "PL": "波兰", "CZ": "捷克",
+		"TR": "土耳其", "RU": "俄罗斯", "IN": "印度", "BR": "巴西",
+		"MX": "墨西哥", "AR": "阿根廷", "CL": "智利", "CO": "哥伦比亚",
+		"ZA": "南非", "TH": "泰国", "MY": "马来西亚", "ID": "印度尼西亚",
+		"PH": "菲律宾", "VN": "越南", "NZ": "新西兰",
+		"SA": "沙特阿拉伯", "AE": "阿联酋", "IL": "以色列",
+	}
+	if name, ok := names[strings.ToUpper(code)]; ok {
+		return name
+	}
+	return strings.ToUpper(code)
+}
 
-	finalURL := resp.Request.URL.String()
-	if resp.StatusCode == 200 && !strings.Contains(finalURL, "unavailable") {
-		r.Unlocked = true
-		// 从重定向后的 URL 路径中提取地区代码，如 /hk-zh/ -> "HK"
-		for _, seg := range strings.Split(finalURL, "/") {
-			if len(seg) == 5 && seg[2] == '-' {
-				r.Region = strings.ToUpper(seg[:2])
-				break
-			}
+// parseCountry 按优先级依次尝试 patterns，从响应体中提取 ISO 国家代码。
+func parseCountry(body string, patterns []string) string {
+	for _, p := range patterns {
+		re := regexp.MustCompile(p)
+		if m := re.FindStringSubmatch(body); len(m) > 1 {
+			return strings.ToUpper(m[1])
 		}
 	}
-	return r
+	return ""
 }
 
-func checkClaude(ctx context.Context) serviceCheckResult {
-	r := serviceCheckResult{Service: "claude"}
-	// /api/auth/session 对封锁地区会重定向到 /unavailable，可访问地区返回 JSON
-	resp, err := doCheck(ctx, "https://claude.ai/api/auth/session")
-	if err != nil {
-		return r
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-
-	finalURL := resp.Request.URL.String()
-	if strings.Contains(finalURL, "unavailable") {
-		return r
-	}
-	// 响应体含地区限制提示
-	lower := strings.ToLower(string(body))
-	if strings.Contains(lower, "unavailable") || strings.Contains(lower, "not available") {
-		return r
-	}
-	r.Unlocked = resp.StatusCode < 400
-	return r
+// streamServices 是所有待检测服务的定义列表。
+var streamServices = []streamServiceDef{
+	{
+		name: "Netflix",
+		url:  "https://www.netflix.com/",
+		checkFn: func(status int, finalURL, body string) (bool, string, string) {
+			if status != 200 {
+				return false, "", "HTTP " + http.StatusText(status)
+			}
+			if strings.Contains(finalURL, "unavailable") || strings.Contains(body, "NotAvailable") {
+				return false, "", "地区不可用"
+			}
+			code := parseCountry(body, []string{
+				`"requestCountry"\s*:\s*\{\s*"id"\s*:\s*"([A-Z]{2})"`,
+				`"countryCode"\s*:\s*"([A-Z]{2})"`,
+				`"country"\s*:\s*"([A-Z]{2})"`,
+			})
+			return true, isoToName(code), ""
+		},
+	},
+	{
+		name: "YouTube",
+		url:  "https://www.youtube.com/",
+		checkFn: func(status int, finalURL, body string) (bool, string, string) {
+			if status != 200 {
+				return false, "", "HTTP " + http.StatusText(status)
+			}
+			code := parseCountry(body, []string{
+				`"GL"\s*:\s*"([A-Z]{2})"`,
+				`"gl"\s*:\s*"([a-zA-Z]{2})"`,
+				`INNERTUBE_CONTEXT_GL[" ]*:\s*"([A-Z]{2})"`,
+			})
+			return true, isoToName(code), ""
+		},
+	},
+	{
+		name: "Disney+",
+		url:  "https://www.disneyplus.com/",
+		checkFn: func(status int, finalURL, body string) (bool, string, string) {
+			if status == 200 {
+				if strings.Contains(body, "not available") || strings.Contains(body, "coming soon") {
+					return false, "", "地区不可用"
+				}
+				code := parseCountry(body, []string{
+					`"countryCode"\s*:\s*"([A-Z]{2})"`,
+					`"country"\s*:\s*"([A-Z]{2})"`,
+					`"region"\s*:\s*"([A-Z]{2})"`,
+				})
+				return true, isoToName(code), ""
+			}
+			if status == 403 || status == 451 {
+				return false, "", "地区封锁"
+			}
+			return false, "", "HTTP " + http.StatusText(status)
+		},
+	},
+	{
+		name: "Claude",
+		url:  "https://claude.ai/api/auth/session",
+		checkFn: func(status int, finalURL, body string) (bool, string, string) {
+			if strings.Contains(finalURL, "unavailable") {
+				return false, "", "地区不可用"
+			}
+			lower := strings.ToLower(body)
+			if strings.Contains(lower, "unavailable") || strings.Contains(lower, "not available") {
+				return false, "", "地区不可用"
+			}
+			if status >= 400 {
+				return false, "", "HTTP " + http.StatusText(status)
+			}
+			return true, "", ""
+		},
+	},
+	{
+		name: "OpenAI",
+		url:  "https://api.openai.com",
+		checkFn: func(status int, finalURL, body string) (bool, string, string) {
+			if status >= 400 {
+				return false, "", "HTTP " + http.StatusText(status)
+			}
+			return true, "", ""
+		},
+	},
+	{
+		name: "Spotify",
+		url:  "https://open.spotify.com/",
+		checkFn: func(status int, finalURL, body string) (bool, string, string) {
+			if status != 200 {
+				return false, "", "HTTP " + http.StatusText(status)
+			}
+			code := parseCountry(body, []string{
+				`"country"\s*:\s*"([A-Z]{2})"`,
+				`"market"\s*:\s*"([A-Z]{2})"`,
+			})
+			return true, isoToName(code), ""
+		},
+	},
+	{
+		name: "TikTok",
+		url:  "https://www.tiktok.com/",
+		checkFn: func(status int, finalURL, body string) (bool, string, string) {
+			return status == 200, "", ""
+		},
+	},
+	{
+		name: "Twitter/X",
+		url:  "https://x.com/",
+		checkFn: func(status int, finalURL, body string) (bool, string, string) {
+			return status == 200, "", ""
+		},
+	},
+	{
+		name: "GitHub",
+		url:  "https://github.com/",
+		checkFn: func(status int, finalURL, body string) (bool, string, string) {
+			return status == 200, "", ""
+		},
+	},
 }
 
-func checkOpenAI(ctx context.Context) serviceCheckResult {
-	r := serviceCheckResult{Service: "openai"}
-	resp, err := doCheck(ctx, "https://api.openai.com")
-	if err != nil {
-		return r
-	}
-	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body)
-	r.Unlocked = resp.StatusCode < 400
-	return r
-}
+// doServiceChecks 并发检测所有服务，按定义顺序返回结果。
+func doServiceChecks(ctx context.Context) []serviceCheckResult {
+	results := make([]serviceCheckResult, len(streamServices))
+	var wg sync.WaitGroup
 
-func checkYouTubePremium(ctx context.Context) serviceCheckResult {
-	r := serviceCheckResult{Service: "youtube premium"}
-	resp, err := doCheck(ctx, "https://www.youtube.com/premium")
-	if err != nil {
-		return r
-	}
-	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body)
+	for i, svc := range streamServices {
+		wg.Add(1)
+		go func(idx int, s streamServiceDef) {
+			defer wg.Done()
+			result := serviceCheckResult{Service: s.name}
 
-	finalURL := resp.Request.URL.String()
-	// 重定向到 /unavailable 或非 premium 路径说明该地区不支持
-	r.Unlocked = resp.StatusCode == 200 && strings.Contains(finalURL, "premium")
-	return r
-}
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.url, nil)
+			if err != nil {
+				result.Note = "请求构建失败"
+				results[idx] = result
+				return
+			}
+			req.Header.Set("User-Agent", checkUserAgent)
+			req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+			req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 
-func checkDisney(ctx context.Context) serviceCheckResult {
-	r := serviceCheckResult{Service: "disney+"}
-	resp, err := doCheck(ctx, "https://www.disneyplus.com")
-	if err != nil {
-		return r
+			resp, err := checkHTTPClient.Do(req)
+			if err != nil {
+				result.Note = "连接超时"
+				results[idx] = result
+				return
+			}
+			defer resp.Body.Close()
+
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
+			result.Unlocked, result.Region, result.Note = s.checkFn(
+				resp.StatusCode, resp.Request.URL.String(), string(body),
+			)
+			results[idx] = result
+		}(i, svc)
 	}
-	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body)
-	// 200 = 可访问；403/451 = 地区限制
-	r.Unlocked = resp.StatusCode == 200 || resp.StatusCode == 302
-	return r
+
+	wg.Wait()
+	return results
 }

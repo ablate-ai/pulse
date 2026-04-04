@@ -597,7 +597,7 @@
     {{if .Unlocked}}
     <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-emerald-500/15 text-emerald-400">✓ {{.Service}}{{if .Region}} ({{.Region}}){{end}}</span>
     {{else}}
-    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-red-500/15 text-red-400">✗ {{.Service}}</span>
+    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-red-500/15 text-red-400">✗ {{.Service}}{{if .Note}} · {{.Note}}{{end}}</span>
     {{end}}
     {{end}}
     {{with index .CheckResults 0}}<span class="text-xs text-gray-700 ml-1">{{formatCheckTime .CheckedAt}}</span>{{end}}
@@ -627,7 +627,7 @@
   {{if .Unlocked}}
   <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-emerald-500/15 text-emerald-400">✓ {{.Service}}{{if .Region}} ({{.Region}}){{end}}</span>
   {{else}}
-  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-red-500/15 text-red-400">✗ {{.Service}}</span>
+  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-red-500/15 text-red-400">✗ {{.Service}}{{if .Note}} · {{.Note}}{{end}}</span>
   {{end}}
   {{end}}
   {{with index .Data.Results 0}}<span class="text-xs text-gray-700 ml-1">{{formatCheckTime .CheckedAt}}</span>{{end}}
