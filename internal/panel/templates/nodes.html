@@ -15,7 +15,7 @@
           <h1 class="text-xl font-semibold text-gray-100">Nodes</h1>
           <p class="text-sm text-gray-500 mt-0.5">节点管理</p>
         </div>
-        <button class="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+        <button class="btn btn-primary btn-sm gap-1.5"
                 hx-get="/panel/nodes/new"
                 hx-target="#modal-body"
                 hx-on::after-request="document.getElementById('app-modal').showModal()">

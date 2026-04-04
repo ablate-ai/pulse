@@ -240,19 +240,19 @@ function setExpireIn(btn, fieldName, days) {
   if (input) { input.value = iso; }
   // 高亮选中按钮
   btn.closest('div').querySelectorAll('button[type="button"]').forEach(function(b) {
-    b.classList.remove('bg-indigo-600','text-white');
-    b.classList.add('bg-gray-700','text-gray-300');
+    b.classList.remove('btn-primary');
+    b.classList.add('btn-ghost');
   });
-  btn.classList.remove('bg-gray-700','text-gray-300');
-  btn.classList.add('bg-indigo-600','text-white');
+  btn.classList.remove('btn-ghost');
+  btn.classList.add('btn-primary');
 }
 function clearExpire(btn, fieldName) {
   var form = btn.closest('form');
   var input = form ? form.querySelector('[name="' + fieldName + '"]') : null;
   if (input) { input.value = ''; }
   btn.closest('div').querySelectorAll('button[type="button"]').forEach(function(b) {
-    b.classList.remove('bg-indigo-600','text-white');
-    b.classList.add('bg-gray-700','text-gray-300');
+    b.classList.remove('btn-primary');
+    b.classList.add('btn-ghost');
   });
 }
 function showToast(msg, type) {

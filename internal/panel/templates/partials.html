@@ -205,64 +205,64 @@
 
 
 {{define "partial-user-new-form"}}
+<script>(function(){ var m=document.getElementById('app-modal'); m.style.maxWidth='42rem'; m.addEventListener('close',function(){m.style.maxWidth='';},{once:true}); })();</script>
 <form hx-post="/panel/users"
       hx-target="#users-tbody"
       hx-swap="innerHTML"
       hx-on::after-request="if(event.detail.successful) { document.getElementById('app-modal').close(); this.reset(); }">
   <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
     <h3 class="text-sm font-semibold text-gray-100">添加用户</h3>
-    <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="btn btn-sm btn-ghost btn-circle">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
     </button>
   </div>
-  <div class="px-5 py-4 space-y-4">
-    <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">用户名</label>
-      <input type="text" name="username" required
-             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors">
+  <div class="px-5 py-4 space-y-4 overflow-y-auto max-h-[72vh]">
+    <label class="form-control w-full">
+      <div class="label py-1"><span class="label-text text-xs text-gray-400">用户名</span></div>
+      <input type="text" name="username" required class="input input-bordered input-sm w-full">
+    </label>
+    <div class="grid grid-cols-2 gap-3">
+      <label class="form-control w-full">
+        <div class="label py-1"><span class="label-text text-xs text-gray-400">流量上限 GB（0 = 不限）</span></div>
+        <input type="number" name="traffic_limit_gb" value="0" min="0" step="0.1"
+               class="input input-bordered input-sm w-full">
+      </label>
+      <label class="form-control w-full">
+        <div class="label py-1"><span class="label-text text-xs text-gray-400">流量重置策略</span></div>
+        <select name="reset_strategy" class="select select-bordered select-sm w-full">
+          <option value="no_reset">不重置</option>
+          <option value="day">每天</option>
+          <option value="week">每周</option>
+          <option value="month">每月</option>
+          <option value="year">每年</option>
+        </select>
+      </label>
     </div>
     <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">流量上限 GB（0 = 不限）</label>
-      <input type="number" name="traffic_limit_gb" value="0" min="0" step="0.1"
-             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-    </div>
-    <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">流量重置策略</label>
-      <select name="reset_strategy"
-              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-        <option value="no_reset">不重置</option>
-        <option value="day">每天</option>
-        <option value="week">每周</option>
-        <option value="month">每月</option>
-        <option value="year">每年</option>
-      </select>
-    </div>
-    <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">过期时间（可选）</label>
+      <div class="text-xs text-gray-400 mb-1.5">过期时间（可选）</div>
       <div class="flex gap-1 mb-1.5 flex-wrap">
-        <button type="button" onclick="setExpireIn(this,'expire_at',30)"  class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">30天</button>
-        <button type="button" onclick="setExpireIn(this,'expire_at',90)"  class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">90天</button>
-        <button type="button" onclick="setExpireIn(this,'expire_at',180)" class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">180天</button>
-        <button type="button" onclick="setExpireIn(this,'expire_at',365)" class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">1年</button>
-        <button type="button" onclick="clearExpire(this,'expire_at')"     class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-500 hover:bg-gray-600 hover:text-white transition-colors">×清除</button>
+        <button type="button" onclick="setExpireIn(this,'expire_at',30)"  class="btn btn-xs btn-ghost">30天</button>
+        <button type="button" onclick="setExpireIn(this,'expire_at',90)"  class="btn btn-xs btn-ghost">90天</button>
+        <button type="button" onclick="setExpireIn(this,'expire_at',180)" class="btn btn-xs btn-ghost">180天</button>
+        <button type="button" onclick="setExpireIn(this,'expire_at',365)" class="btn btn-xs btn-ghost">1年</button>
+        <button type="button" onclick="clearExpire(this,'expire_at')"     class="btn btn-xs btn-ghost text-gray-500">×清除</button>
       </div>
-      <input type="date" name="expire_at"
-             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+      <input type="date" name="expire_at" class="input input-bordered input-sm w-full">
     </div>
-    <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">备注（可选）</label>
+    <label class="form-control w-full">
+      <div class="label py-1"><span class="label-text text-xs text-gray-400">备注（可选）</span></div>
       <input type="text" name="note" placeholder="用于标识用户的备注信息"
-             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-    </div>
+             class="input input-bordered input-sm w-full">
+    </label>
     {{if .Data.Inbounds}}
     <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">关联 Inbound（可多选）</label>
-      <div class="space-y-1.5 max-h-32 overflow-y-auto bg-gray-800 border border-gray-700 rounded-lg p-2">
+      <div class="text-xs text-gray-400 mb-2">关联 Inbound（可多选）</div>
+      <div class="grid grid-cols-2 gap-1.5">
         {{range .Data.Inbounds}}
-        <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-700 rounded px-1 py-0.5">
+        <label class="flex items-center gap-2 cursor-pointer border border-gray-700 rounded-lg px-2.5 py-2 hover:border-indigo-500/50 hover:bg-gray-800 transition-colors has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-500/10">
           <input type="checkbox" name="inbound_ids" value="{{.ID}}"
-                 class="rounded border-gray-600 bg-gray-700 text-indigo-500 focus:ring-indigo-500">
-          <span class="text-xs text-gray-300"><span class="text-sky-400">{{index $.Data.NodeMap .NodeID}}</span> — {{.Tag}} <span class="text-gray-500">({{.Protocol}}:{{.Port}})</span></span>
+                 class="checkbox checkbox-primary checkbox-xs flex-shrink-0">
+          <span class="text-xs text-gray-300 leading-tight"><span class="text-sky-400">{{index $.Data.NodeMap .NodeID}}</span> — {{.Tag}} <span class="text-gray-500">({{.Protocol}}:{{.Port}})</span></span>
         </label>
         {{end}}
       </div>
@@ -270,52 +270,52 @@
     {{end}}
   </div>
   <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
-    <button type="button" onclick="document.getElementById('app-modal').close()"
-            class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">取消</button>
-    <button type="submit"
-            class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">创建</button>
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="btn btn-sm">取消</button>
+    <button type="submit" class="btn btn-primary btn-sm">创建</button>
   </div>
 </form>
 {{end}}
 
 
 {{define "partial-user-edit-form"}}
+<script>(function(){ var m=document.getElementById('app-modal'); m.style.maxWidth='42rem'; m.addEventListener('close',function(){m.style.maxWidth='';},{once:true}); })();</script>
 <form hx-put="/panel/users/{{.Data.User.ID}}"
       hx-target="#users-tbody"
       hx-swap="innerHTML"
       hx-on::after-request="if(event.detail.successful) document.getElementById('app-modal').close()">
   <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
     <h3 class="text-sm font-semibold text-gray-100">编辑用户 — <span class="text-indigo-400">{{.Data.User.Username}}</span></h3>
-    <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="btn btn-sm btn-ghost btn-circle">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
     </button>
   </div>
-  <div class="px-5 py-4 space-y-4">
-    <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">用户名</label>
-      <input type="text" name="username" required value="{{.Data.User.Username}}"
-             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-    </div>
-    <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">状态</label>
-      <select name="status"
-              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-        <option value="active" {{if eq .Data.User.Status "active"}}selected{{end}}>Active</option>
-        <option value="disabled" {{if eq .Data.User.Status "disabled"}}selected{{end}}>Disabled</option>
-        <option value="on_hold" {{if eq .Data.User.Status "on_hold"}}selected{{end}}>On Hold</option>
-      </select>
+  <div class="px-5 py-4 space-y-4 overflow-y-auto max-h-[72vh]">
+    <div class="grid grid-cols-2 gap-3">
+      <label class="form-control w-full">
+        <div class="label py-1"><span class="label-text text-xs text-gray-400">用户名</span></div>
+        <input type="text" name="username" required value="{{.Data.User.Username}}"
+               class="input input-bordered input-sm w-full">
+      </label>
+      <label class="form-control w-full">
+        <div class="label py-1"><span class="label-text text-xs text-gray-400">状态</span></div>
+        <select name="status" class="select select-bordered select-sm w-full">
+          <option value="active" {{if eq .Data.User.Status "active"}}selected{{end}}>Active</option>
+          <option value="disabled" {{if eq .Data.User.Status "disabled"}}selected{{end}}>Disabled</option>
+          <option value="on_hold" {{if eq .Data.User.Status "on_hold"}}selected{{end}}>On Hold</option>
+        </select>
+      </label>
     </div>
     <div id="on-hold-expire-section" {{if ne .Data.User.Status "on_hold"}}style="display:none"{{end}}>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">On Hold 到期自动激活（留空 = 永久暂停）</label>
+      <div class="text-xs text-gray-400 mb-1.5">On Hold 到期自动激活（留空 = 永久暂停）</div>
       <div class="flex gap-1 mb-1.5 flex-wrap">
-        <button type="button" onclick="setExpireIn(this,'on_hold_expire_at',30)"  class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">30天</button>
-        <button type="button" onclick="setExpireIn(this,'on_hold_expire_at',90)"  class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">90天</button>
-        <button type="button" onclick="setExpireIn(this,'on_hold_expire_at',180)" class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">180天</button>
-        <button type="button" onclick="setExpireIn(this,'on_hold_expire_at',365)" class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">1年</button>
-        <button type="button" onclick="clearExpire(this,'on_hold_expire_at')"     class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-500 hover:bg-gray-600 hover:text-white transition-colors">×清除</button>
+        <button type="button" onclick="setExpireIn(this,'on_hold_expire_at',30)"  class="btn btn-xs btn-ghost">30天</button>
+        <button type="button" onclick="setExpireIn(this,'on_hold_expire_at',90)"  class="btn btn-xs btn-ghost">90天</button>
+        <button type="button" onclick="setExpireIn(this,'on_hold_expire_at',180)" class="btn btn-xs btn-ghost">180天</button>
+        <button type="button" onclick="setExpireIn(this,'on_hold_expire_at',365)" class="btn btn-xs btn-ghost">1年</button>
+        <button type="button" onclick="clearExpire(this,'on_hold_expire_at')"     class="btn btn-xs btn-ghost text-gray-500">×清除</button>
       </div>
       <input type="date" name="on_hold_expire_at" value="{{formatExpire .Data.User.OnHoldExpireAt}}"
-             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+             class="input input-bordered input-sm w-full">
     </div>
     <script>
     (function(){
@@ -324,57 +324,60 @@
       if(sel && sec) sel.addEventListener('change', function(){ sec.style.display = sel.value === 'on_hold' ? '' : 'none'; });
     })();
     </script>
-    <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">流量上限 GB（0 = 不限）</label>
-      <input type="number" name="traffic_limit_gb" value="{{formatGB .Data.User.TrafficLimit}}" min="0" step="0.1"
-             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+    <div class="grid grid-cols-2 gap-3">
+      <label class="form-control w-full">
+        <div class="label py-1"><span class="label-text text-xs text-gray-400">流量上限 GB（0 = 不限）</span></div>
+        <input type="number" name="traffic_limit_gb" value="{{formatGB .Data.User.TrafficLimit}}" min="0" step="0.1"
+               class="input input-bordered input-sm w-full">
+      </label>
+      <label class="form-control w-full">
+        <div class="label py-1"><span class="label-text text-xs text-gray-400">流量重置策略</span></div>
+        <select name="reset_strategy" class="select select-bordered select-sm w-full">
+          <option value="no_reset" {{if eq .Data.User.DataLimitResetStrategy "no_reset"}}selected{{end}}>不重置</option>
+          <option value="day" {{if eq .Data.User.DataLimitResetStrategy "day"}}selected{{end}}>每天</option>
+          <option value="week" {{if eq .Data.User.DataLimitResetStrategy "week"}}selected{{end}}>每周</option>
+          <option value="month" {{if eq .Data.User.DataLimitResetStrategy "month"}}selected{{end}}>每月</option>
+          <option value="year" {{if eq .Data.User.DataLimitResetStrategy "year"}}selected{{end}}>每年</option>
+        </select>
+      </label>
     </div>
     <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">流量重置策略</label>
-      <select name="reset_strategy"
-              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-        <option value="no_reset" {{if eq .Data.User.DataLimitResetStrategy "no_reset"}}selected{{end}}>不重置</option>
-        <option value="day" {{if eq .Data.User.DataLimitResetStrategy "day"}}selected{{end}}>每天</option>
-        <option value="week" {{if eq .Data.User.DataLimitResetStrategy "week"}}selected{{end}}>每周</option>
-        <option value="month" {{if eq .Data.User.DataLimitResetStrategy "month"}}selected{{end}}>每月</option>
-        <option value="year" {{if eq .Data.User.DataLimitResetStrategy "year"}}selected{{end}}>每年</option>
-      </select>
-    </div>
-    <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">过期时间（留空 = 永不）</label>
+      <div class="text-xs text-gray-400 mb-1.5">过期时间（留空 = 永不）</div>
       <div class="flex gap-1 mb-1.5 flex-wrap">
-        <button type="button" onclick="setExpireIn(this,'expire_at',30)"  class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">30天</button>
-        <button type="button" onclick="setExpireIn(this,'expire_at',90)"  class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">90天</button>
-        <button type="button" onclick="setExpireIn(this,'expire_at',180)" class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">180天</button>
-        <button type="button" onclick="setExpireIn(this,'expire_at',365)" class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-indigo-600 hover:text-white transition-colors">1年</button>
-        <button type="button" onclick="clearExpire(this,'expire_at')"     class="text-xs px-2 py-1 rounded bg-gray-700 text-gray-500 hover:bg-gray-600 hover:text-white transition-colors">×清除</button>
+        <button type="button" onclick="setExpireIn(this,'expire_at',30)"  class="btn btn-xs btn-ghost">30天</button>
+        <button type="button" onclick="setExpireIn(this,'expire_at',90)"  class="btn btn-xs btn-ghost">90天</button>
+        <button type="button" onclick="setExpireIn(this,'expire_at',180)" class="btn btn-xs btn-ghost">180天</button>
+        <button type="button" onclick="setExpireIn(this,'expire_at',365)" class="btn btn-xs btn-ghost">1年</button>
+        <button type="button" onclick="clearExpire(this,'expire_at')"     class="btn btn-xs btn-ghost text-gray-500">×清除</button>
       </div>
       <input type="date" name="expire_at" value="{{formatExpire .Data.User.ExpireAt}}"
-             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
+             class="input input-bordered input-sm w-full">
     </div>
-    <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">备注（可选）</label>
-      <input type="text" name="note" value="{{.Data.User.Note}}" placeholder="用于标识用户的备注信息"
-             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-    </div>
-    <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">订阅 Token</label>
-      <input type="text" name="sub_token" value="{{.Data.User.SubToken}}" pattern="[a-zA-Z0-9_-]+" title="仅允许字母、数字、下划线、短横线"
-             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors font-mono text-xs">
-      <p class="mt-1 text-xs text-gray-600">订阅链接 /sub/{token}，留空保持不变</p>
+    <div class="grid grid-cols-2 gap-3">
+      <label class="form-control w-full">
+        <div class="label py-1"><span class="label-text text-xs text-gray-400">备注（可选）</span></div>
+        <input type="text" name="note" value="{{.Data.User.Note}}" placeholder="备注信息"
+               class="input input-bordered input-sm w-full">
+      </label>
+      <label class="form-control w-full">
+        <div class="label py-1"><span class="label-text text-xs text-gray-400">订阅 Token</span></div>
+        <input type="text" name="sub_token" value="{{.Data.User.SubToken}}" pattern="[a-zA-Z0-9_-]+" title="仅允许字母、数字、下划线、短横线"
+               class="input input-bordered input-sm w-full font-mono">
+        <div class="label py-0.5"><span class="label-text-alt text-gray-600">/sub/{token}，留空不变</span></div>
+      </label>
     </div>
     {{if .Data.Inbounds}}
     <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">关联 Inbound（可多选）</label>
+      <div class="text-xs text-gray-400 mb-2">关联 Inbound（可多选）</div>
       <input type="hidden" name="inbound_sync" value="1">
-      <div class="space-y-1.5 max-h-32 overflow-y-auto bg-gray-800 border border-gray-700 rounded-lg p-2">
+      <div class="grid grid-cols-2 gap-1.5">
         {{$selectedIDs := .Data.SelectedInboundIDs}}
         {{range .Data.Inbounds}}
-        <label class="flex items-center gap-2 cursor-pointer hover:bg-gray-700 rounded px-1 py-0.5">
+        <label class="flex items-center gap-2 cursor-pointer border border-gray-700 rounded-lg px-2.5 py-2 hover:border-indigo-500/50 hover:bg-gray-800 transition-colors has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-500/10">
           <input type="checkbox" name="inbound_ids" value="{{.ID}}"
                  {{if index $selectedIDs .ID}}checked{{end}}
-                 class="rounded border-gray-600 bg-gray-700 text-indigo-500 focus:ring-indigo-500">
-          <span class="text-xs text-gray-300"><span class="text-sky-400">{{index $.Data.NodeMap .NodeID}}</span> — {{.Tag}} <span class="text-gray-500">({{.Protocol}}:{{.Port}})</span></span>
+                 class="checkbox checkbox-primary checkbox-xs flex-shrink-0">
+          <span class="text-xs text-gray-300 leading-tight"><span class="text-sky-400">{{index $.Data.NodeMap .NodeID}}</span> — {{.Tag}} <span class="text-gray-500">({{.Protocol}}:{{.Port}})</span></span>
         </label>
         {{end}}
       </div>
@@ -382,10 +385,8 @@
     {{end}}
   </div>
   <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
-    <button type="button" onclick="document.getElementById('app-modal').close()"
-            class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">取消</button>
-    <button type="submit"
-            class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">保存</button>
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="btn btn-sm">取消</button>
+    <button type="submit" class="btn btn-primary btn-sm">保存</button>
   </div>
 </form>
 {{end}}
@@ -533,7 +534,7 @@
     <div class="flex-1 min-w-0 mr-4">
       <div class="flex items-center gap-2">
         <span class="font-medium text-gray-100 text-sm">{{.Node.Name}}</span>
-        {{if ne .Node.TrafficRate 1.0}}<span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400">×{{printf "%.2g" .Node.TrafficRate}}</span>{{end}}
+        {{if ne .Node.TrafficRate 1.0}}<span class="badge badge-warning badge-sm">×{{printf "%.2g" .Node.TrafficRate}}</span>{{end}}
       </div>
       <div class="text-xs text-gray-500 mt-0.5 truncate">{{.Node.BaseURL}}</div>
       {{if or .SingboxVer .NodeVer}}
@@ -549,48 +550,42 @@
       </div>
       {{end}}
     </div>
-    <div class="flex items-center gap-3 flex-shrink-0">
+    <div class="flex items-center gap-1 flex-shrink-0">
       {{if eq .Status "online"}}
-      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/15 text-emerald-400">
-        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>Online
-      </span>
+      <span class="badge badge-success gap-1.5 mr-2"><span class="w-1.5 h-1.5 rounded-full bg-current"></span>Online</span>
       {{else if eq .Status "idle"}}
-      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-yellow-500/15 text-yellow-400">
-        <span class="w-1.5 h-1.5 rounded-full bg-yellow-400"></span>未配置
-      </span>
+      <span class="badge badge-warning gap-1.5 mr-2"><span class="w-1.5 h-1.5 rounded-full bg-current"></span>未配置</span>
       {{else}}
-      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-red-500/15 text-red-400">
-        <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span>Offline
-      </span>
+      <span class="badge badge-error gap-1.5 mr-2"><span class="w-1.5 h-1.5 rounded-full bg-current"></span>Offline</span>
       {{end}}
-      <button class="text-xs text-gray-400 hover:text-purple-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-wait"
+      <button class="btn btn-xs btn-ghost"
               hx-post="/panel/nodes/{{.Node.ID}}/check"
               hx-target="#check-results-{{.Node.ID}}"
               hx-swap="outerHTML"
               hx-disabled-elt="this">检测</button>
-      <button class="text-xs text-gray-400 hover:text-cyan-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-wait"
+      <button class="btn btn-xs btn-ghost"
               hx-post="/panel/nodes/{{.Node.ID}}/speedtest"
               hx-target="#speedtest-{{.Node.ID}}"
               hx-swap="outerHTML"
               hx-disabled-elt="this">测速</button>
-      <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+      <button class="btn btn-xs btn-ghost"
               hx-get="/panel/nodes/{{.Node.ID}}/edit"
               hx-target="#modal-body"
               hx-on::after-request="document.getElementById('app-modal').showModal()">编辑</button>
-      <button class="text-xs text-gray-400 hover:text-sky-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+      <button class="btn btn-xs btn-ghost"
               hx-get="/panel/nodes/{{.Node.ID}}/config"
               hx-target="#modal-body"
               hx-on::after-request="var m=document.getElementById('app-modal'); m.style.maxWidth='56rem'; m.showModal(); m.addEventListener('close',function(){m.style.maxWidth='';},{once:true})">查看配置</button>
-      <button class="text-xs text-gray-400 hover:text-emerald-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors"
+      <button class="btn btn-xs btn-ghost"
               hx-get="/panel/nodes/{{.Node.ID}}/logs"
               hx-target="#modal-body"
               hx-on::after-request="var m=document.getElementById('app-modal'); m.style.maxWidth='56rem'; m.showModal(); m.addEventListener('close',function(){m.style.maxWidth='';},{once:true})">日志</button>
-      <button class="text-xs text-gray-400 hover:text-indigo-400 px-2 py-1 rounded hover:bg-gray-800 transition-colors disabled:opacity-40 disabled:cursor-wait"
+      <button class="btn btn-xs btn-ghost"
               hx-post="/panel/nodes/{{.Node.ID}}/restart"
               hx-target="#nodes-list"
               hx-swap="innerHTML"
               hx-disabled-elt="this">重启</button>
-      <button class="text-xs text-red-500 hover:text-red-400 px-2 py-1 rounded hover:bg-red-500/10 transition-colors"
+      <button class="btn btn-xs btn-ghost text-error"
               hx-delete="/panel/nodes/{{.Node.ID}}"
               hx-target="#nodes-list"
               hx-swap="innerHTML"
@@ -604,9 +599,9 @@
       <span class="text-xs text-gray-600 shrink-0">直连</span>
       {{range .DirectChecks}}
       {{if .Unlocked}}
-      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-emerald-500/15 text-emerald-400">✓ {{.Service}}{{if .Region}} ({{.Region}}){{end}}</span>
+      <span class="badge badge-success badge-sm gap-1">✓ {{.Service}}{{if .Region}} ({{.Region}}){{end}}</span>
       {{else}}
-      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-red-500/15 text-red-400">✗ {{.Service}}{{if .Note}} · {{.Note}}{{end}}</span>
+      <span class="badge badge-error badge-sm gap-1">✗ {{.Service}}{{if .Note}} · {{.Note}}{{end}}</span>
       {{end}}
       {{end}}
       {{with index .DirectChecks 0}}<span class="text-xs text-gray-700 ml-1">{{formatCheckTime .CheckedAt}}</span>{{end}}
@@ -617,9 +612,9 @@
       <span class="text-xs text-gray-600 shrink-0">代理</span>
       {{range .ProxiedChecks}}
       {{if .Unlocked}}
-      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-blue-500/15 text-blue-400">✓ {{.Service}}{{if .Region}} ({{.Region}}){{end}}</span>
+      <span class="badge badge-info badge-sm gap-1">✓ {{.Service}}{{if .Region}} ({{.Region}}){{end}}</span>
       {{else}}
-      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-gray-700/50 text-gray-500">✗ {{.Service}}{{if .Note}} · {{.Note}}{{end}}</span>
+      <span class="badge badge-ghost badge-sm gap-1">✗ {{.Service}}{{if .Note}} · {{.Note}}{{end}}</span>
       {{end}}
       {{end}}
     </div>
@@ -691,33 +686,31 @@
       hx-on::after-request="if(event.detail.successful) { document.getElementById('app-modal').close(); this.reset(); }">
   <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
     <h3 class="text-sm font-semibold text-gray-100">添加节点</h3>
-    <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="btn btn-sm btn-ghost btn-circle">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
     </button>
   </div>
   <div class="px-5 py-4 space-y-4 overflow-y-auto max-h-[70vh]">
-    <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">节点名称</label>
+    <label class="form-control w-full">
+      <div class="label py-1"><span class="label-text text-xs text-gray-400">节点名称</span></div>
       <input type="text" name="name" required placeholder="如：香港节点"
-             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
-    </div>
-    <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">节点地址</label>
+             class="input input-bordered input-sm w-full">
+    </label>
+    <label class="form-control w-full">
+      <div class="label py-1"><span class="label-text text-xs text-gray-400">节点地址</span></div>
       <input type="url" name="base_url" required placeholder="https://127.0.0.1:8081" value="https://"
-             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors">
-    </div>
-    <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">流量倍率</label>
+             class="input input-bordered input-sm w-full">
+    </label>
+    <label class="form-control w-full">
+      <div class="label py-1"><span class="label-text text-xs text-gray-400">流量倍率</span></div>
       <input type="number" name="traffic_rate" value="1" min="0.1" max="100" step="0.1"
-             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-      <p class="mt-1 text-xs text-gray-600">用户在此节点产生的流量将乘以该倍率计入配额，默认 1</p>
-    </div>
+             class="input input-bordered input-sm w-full">
+      <div class="label py-1"><span class="label-text-alt text-gray-600">用户在此节点产生的流量将乘以该倍率计入配额，默认 1</span></div>
+    </label>
   </div>
   <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
-    <button type="button" onclick="document.getElementById('app-modal').close()"
-            class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">取消</button>
-    <button type="submit"
-            class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">添加</button>
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="btn btn-sm">取消</button>
+    <button type="submit" class="btn btn-primary btn-sm">添加</button>
   </div>
 </form>
 {{end}}
@@ -1037,33 +1030,31 @@
       hx-on::after-request="if(event.detail.successful) document.getElementById('app-modal').close()">
   <div class="flex items-center justify-between px-5 py-4 border-b border-gray-700">
     <h3 class="text-sm font-semibold text-gray-100">编辑节点 — <span class="text-indigo-400">{{.Data.Name}}</span></h3>
-    <button type="button" onclick="document.getElementById('app-modal').close()" class="text-gray-500 hover:text-gray-300 transition-colors">
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="btn btn-sm btn-ghost btn-circle">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
     </button>
   </div>
   <div class="px-5 py-4 space-y-4 overflow-y-auto max-h-[70vh]">
-    <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">节点名称</label>
+    <label class="form-control w-full">
+      <div class="label py-1"><span class="label-text text-xs text-gray-400">节点名称</span></div>
       <input type="text" name="name" value="{{.Data.Name}}" required
-             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-    </div>
-    <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">节点地址</label>
+             class="input input-bordered input-sm w-full">
+    </label>
+    <label class="form-control w-full">
+      <div class="label py-1"><span class="label-text text-xs text-gray-400">节点地址</span></div>
       <input type="url" name="base_url" value="{{.Data.BaseURL}}" required
-             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-    </div>
-    <div>
-      <label class="block text-xs font-medium text-gray-400 mb-1.5">流量倍率</label>
+             class="input input-bordered input-sm w-full">
+    </label>
+    <label class="form-control w-full">
+      <div class="label py-1"><span class="label-text text-xs text-gray-400">流量倍率</span></div>
       <input type="number" name="traffic_rate" value="{{printf "%.2g" .Data.TrafficRate}}" min="0.1" max="100" step="0.1"
-             class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-indigo-500 transition-colors">
-      <p class="mt-1 text-xs text-gray-600">用户在此节点产生的流量将乘以该倍率计入配额，默认 1</p>
-    </div>
+             class="input input-bordered input-sm w-full">
+      <div class="label py-1"><span class="label-text-alt text-gray-600">用户在此节点产生的流量将乘以该倍率计入配额，默认 1</span></div>
+    </label>
   </div>
   <div class="flex justify-end gap-2 px-5 py-4 border-t border-gray-700">
-    <button type="button" onclick="document.getElementById('app-modal').close()"
-            class="px-4 py-2 text-sm text-gray-400 hover:text-gray-100 border border-gray-700 rounded-lg hover:bg-gray-800 transition-colors">取消</button>
-    <button type="submit"
-            class="px-4 py-2 text-sm text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors">保存</button>
+    <button type="button" onclick="document.getElementById('app-modal').close()" class="btn btn-sm">取消</button>
+    <button type="submit" class="btn btn-primary btn-sm">保存</button>
   </div>
 </form>
 {{end}}
